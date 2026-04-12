@@ -15,9 +15,22 @@ import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
-import { Colors } from '@/constants/colors';
 import { useSettings } from '@/hooks/useSettings';
 import { clearMessages, loadNotes, loadMemories } from '@/services/storage';
+
+// ─── Light palette ────────────────────────────────────────────────────────────
+const C = {
+  bg: '#F5F5F7',
+  surface: '#FFFFFF',
+  card: '#FFFFFF',
+  border: '#E5E7EB',
+  primary: '#4F46E5',
+  danger: '#EF4444',
+  textPrimary: '#1A1A2E',
+  textSecondary: '#6B7280',
+  textMuted: '#9CA3AF',
+  inputBg: '#F9FAFB',
+};
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -35,6 +48,7 @@ function Row({
   right,
   onPress,
   danger,
+  first,
 }: {
   icon: keyof typeof import('@expo/vector-icons').Ionicons.glyphMap;
   label: string;
@@ -42,22 +56,25 @@ function Row({
   right?: React.ReactNode;
   onPress?: () => void;
   danger?: boolean;
+  first?: boolean;
 }) {
   return (
     <Pressable
-      style={({ pressed }) => [styles.row, pressed && onPress && styles.rowPressed]}
+      style={({ pressed }) => [
+        styles.row,
+        !first && styles.rowBorder,
+        pressed && onPress && styles.rowPressed,
+      ]}
       onPress={onPress}
     >
       <View style={[styles.rowIcon, danger && styles.rowIconDanger]}>
-        <Ionicons name={icon} size={18} color={danger ? Colors.error : Colors.primary} />
+        <Ionicons name={icon} size={17} color={danger ? C.danger : C.primary} />
       </View>
       <View style={styles.rowContent}>
         <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]}>{label}</Text>
         {sublabel && <Text style={styles.rowSublabel}>{sublabel}</Text>}
       </View>
-      {right ?? (onPress && !right ? (
-        <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
-      ) : null)}
+      {right ?? (onPress ? <Ionicons name="chevron-forward" size={15} color={C.textMuted} /> : null)}
     </Pressable>
   );
 }
@@ -67,7 +84,7 @@ export default function SettingsScreen() {
   const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
   const [userName, setUserName] = useState(settings?.userName ?? '');
   const [isSaving, setIsSaving] = useState(false);
-  const [showApiKey, setShowApiKey] = useState(false);
+  const [showKey, setShowKey] = useState(false);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
@@ -78,41 +95,34 @@ export default function SettingsScreen() {
   }, [apiKey, userName, updateSettings]);
 
   const handleToggleVoice = useCallback(
-    (val: boolean) => {
-      updateSettings({ voiceEnabled: val });
-    },
+    (val: boolean) => updateSettings({ voiceEnabled: val }),
     [updateSettings]
   );
 
   const handleClearHistory = useCallback(() => {
-    Alert.alert('Clear Chat History', 'This will permanently delete all messages.', [
+    Alert.alert('Clear Chat History', 'Permanently delete all messages?', [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Clear',
+        text: 'Delete',
         style: 'destructive',
         onPress: async () => {
           await clearMessages();
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          Alert.alert('Done', 'Chat history cleared.');
         },
       },
     ]);
   }, []);
 
-  const handleShowStats = useCallback(async () => {
+  const handleStats = useCallback(async () => {
     const notes = await loadNotes();
     const memories = await loadMemories();
-    Alert.alert(
-      'Your Data',
-      `Notes: ${notes.length}\nMemories: ${memories.length}`,
-      [{ text: 'OK' }]
-    );
+    Alert.alert('Stored Data', `Notes: ${notes.length}\nMemories: ${memories.length}`);
   }, []);
 
   if (!settings) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ActivityIndicator color={Colors.primary} />
+        <ActivityIndicator color={C.primary} />
       </SafeAreaView>
     );
   }
@@ -122,58 +132,51 @@ export default function SettingsScreen() {
       {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="close" size={24} color={Colors.textPrimary} />
+          <Ionicons name="close" size={22} color={C.textPrimary} />
         </Pressable>
         <Text style={styles.headerTitle}>Settings</Text>
-        <Pressable onPress={handleSave} hitSlop={12} disabled={isSaving}>
-          {isSaving ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
-          ) : (
-            <Text style={styles.saveButton}>Save</Text>
-          )}
+        <Pressable onPress={handleSave} disabled={isSaving} hitSlop={12}>
+          {isSaving
+            ? <ActivityIndicator size="small" color={C.primary} />
+            : <Text style={styles.saveBtn}>Save</Text>}
         </Pressable>
       </View>
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+
         {/* API Key */}
-        <Section title="API Key">
-          <Text style={styles.apiKeyLabel}>Anthropic API Key</Text>
-          <View style={styles.apiKeyRow}>
+        <Section title="Anthropic API Key">
+          <View style={styles.keyField}>
             <TextInput
-              style={styles.apiKeyInput}
+              style={styles.keyInput}
               value={apiKey}
               onChangeText={setApiKey}
               placeholder="sk-ant-..."
-              placeholderTextColor={Colors.textMuted}
-              secureTextEntry={!showApiKey}
+              placeholderTextColor={C.textMuted}
+              secureTextEntry={!showKey}
               autoCapitalize="none"
               autoCorrect={false}
-              selectionColor={Colors.primary}
+              selectionColor={C.primary}
             />
-            <Pressable onPress={() => setShowApiKey((v) => !v)} hitSlop={8}>
-              <Ionicons
-                name={showApiKey ? 'eye-off-outline' : 'eye-outline'}
-                size={20}
-                color={Colors.textMuted}
-              />
+            <Pressable onPress={() => setShowKey(v => !v)} hitSlop={8} style={styles.eyeBtn}>
+              <Ionicons name={showKey ? 'eye-off-outline' : 'eye-outline'} size={19} color={C.textMuted} />
             </Pressable>
           </View>
-          <Text style={styles.apiKeyHint}>
-            Get your key at console.anthropic.com. It stays on your device.
+          <Text style={styles.hint}>
+            Get yours at console.anthropic.com — stored only on your device.
           </Text>
         </Section>
 
         {/* Profile */}
         <Section title="Profile">
-          <Text style={styles.apiKeyLabel}>Your Name (optional)</Text>
           <TextInput
-            style={styles.textInput}
+            style={styles.nameInput}
             value={userName}
             onChangeText={setUserName}
-            placeholder="So Max can address you personally"
-            placeholderTextColor={Colors.textMuted}
+            placeholder="Your name (so Max knows you)"
+            placeholderTextColor={C.textMuted}
             autoCapitalize="words"
-            selectionColor={Colors.primary}
+            selectionColor={C.primary}
           />
         </Section>
 
@@ -183,11 +186,12 @@ export default function SettingsScreen() {
             icon="volume-high-outline"
             label="Voice Responses"
             sublabel="Max speaks replies aloud"
+            first
             right={
               <Switch
                 value={settings.voiceEnabled}
                 onValueChange={handleToggleVoice}
-                trackColor={{ false: Colors.border, true: Colors.primary }}
+                trackColor={{ false: C.border, true: C.primary }}
                 thumbColor="#fff"
               />
             }
@@ -196,202 +200,125 @@ export default function SettingsScreen() {
 
         {/* Data */}
         <Section title="Data">
-          <Row
-            icon="analytics-outline"
-            label="Storage Stats"
-            sublabel="Notes, memories saved locally"
-            onPress={handleShowStats}
-          />
-          <Row
-            icon="trash-outline"
-            label="Clear Chat History"
-            danger
-            onPress={handleClearHistory}
-          />
+          <Row icon="bar-chart-outline" label="Storage Stats" sublabel="Notes & memories" onPress={handleStats} first />
+          <Row icon="trash-outline" label="Clear History" danger onPress={handleClearHistory} />
         </Section>
 
         {/* About */}
         <Section title="About">
           <View style={styles.aboutCard}>
-            <View style={styles.aboutAvatar}>
-              <Text style={styles.aboutAvatarText}>M</Text>
+            <View style={styles.aboutOrb}>
+              <Text style={styles.aboutOrbText}>M</Text>
             </View>
             <Text style={styles.aboutName}>{settings.assistantName}</Text>
-            <Text style={styles.aboutVersion}>AI Personal Assistant · v1.0</Text>
+            <Text style={styles.aboutSub}>AI Personal Assistant · v1.0</Text>
             <Text style={styles.aboutPowered}>Powered by Claude claude-sonnet-4-6</Text>
           </View>
         </Section>
+
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: Colors.surface,
-  },
+  safeArea: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 14,
+    backgroundColor: C.surface,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    borderBottomColor: C.border,
   },
-  headerTitle: {
-    color: Colors.textPrimary,
-    fontSize: 17,
-    fontWeight: '600',
-  },
-  saveButton: {
-    color: Colors.primary,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  scroll: {
-    flex: 1,
-    backgroundColor: Colors.background,
-  },
-  scrollContent: {
-    padding: 16,
-    gap: 8,
-    paddingBottom: 40,
-  },
-  section: {
-    marginBottom: 20,
-  },
+  headerTitle: { fontSize: 16, fontWeight: '600', color: C.textPrimary },
+  saveBtn: { fontSize: 15, fontWeight: '600', color: C.primary },
+  scroll: { flex: 1 },
+  scrollContent: { padding: 16, paddingBottom: 48, gap: 8 },
+  section: { marginBottom: 16 },
   sectionTitle: {
-    color: Colors.textMuted,
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginBottom: 8,
+    letterSpacing: 0.9,
+    color: C.textMuted,
+    marginBottom: 6,
     paddingHorizontal: 4,
   },
   sectionCard: {
-    backgroundColor: Colors.card,
+    backgroundColor: C.card,
     borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: C.border,
   },
-  apiKeyLabel: {
-    color: Colors.textSecondary,
-    fontSize: 13,
-    marginBottom: 8,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-  },
-  apiKeyRow: {
+  // Key input
+  keyField: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     gap: 8,
   },
-  apiKeyInput: {
+  keyInput: {
     flex: 1,
-    color: Colors.textPrimary,
-    fontSize: 14,
-    fontFamily: 'monospace',
-    paddingVertical: 8,
-    backgroundColor: Colors.inputBg,
+    backgroundColor: C.inputBg,
     borderRadius: 8,
     paddingHorizontal: 12,
+    paddingVertical: 9,
+    fontFamily: 'monospace',
+    fontSize: 13,
+    color: C.textPrimary,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: C.border,
   },
-  apiKeyHint: {
-    color: Colors.textMuted,
-    fontSize: 12,
+  eyeBtn: { padding: 4 },
+  hint: { fontSize: 11, color: C.textMuted, paddingHorizontal: 14, paddingBottom: 12, lineHeight: 16 },
+  // Name input
+  nameInput: {
     paddingHorizontal: 16,
-    paddingBottom: 14,
-    paddingTop: 6,
-    lineHeight: 18,
-  },
-  textInput: {
-    color: Colors.textPrimary,
+    paddingVertical: 13,
     fontSize: 15,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: Colors.inputBg,
-    borderRadius: 8,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    color: C.textPrimary,
   },
+  // Rows
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 14,
-    borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    gap: 12,
   },
-  rowPressed: {
-    backgroundColor: Colors.cardHover,
-  },
+  rowBorder: { borderTopWidth: 1, borderTopColor: C.border },
+  rowPressed: { backgroundColor: '#F9FAFB' },
   rowIcon: {
-    width: 32,
-    height: 32,
+    width: 30,
+    height: 30,
     borderRadius: 8,
-    backgroundColor: 'rgba(124,58,237,0.12)',
+    backgroundColor: 'rgba(79,70,229,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rowIconDanger: {
-    backgroundColor: 'rgba(239,68,68,0.12)',
-  },
-  rowContent: {
-    flex: 1,
-  },
-  rowLabel: {
-    color: Colors.textPrimary,
-    fontSize: 15,
-  },
-  rowLabelDanger: {
-    color: Colors.error,
-  },
-  rowSublabel: {
-    color: Colors.textMuted,
-    fontSize: 12,
-    marginTop: 1,
-  },
-  aboutCard: {
-    alignItems: 'center',
-    paddingVertical: 24,
-    gap: 6,
-  },
-  aboutAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: Colors.primary,
+  rowIconDanger: { backgroundColor: 'rgba(239,68,68,0.1)' },
+  rowContent: { flex: 1 },
+  rowLabel: { fontSize: 15, color: C.textPrimary },
+  rowLabelDanger: { color: C.danger },
+  rowSublabel: { fontSize: 12, color: C.textMuted, marginTop: 1 },
+  // About
+  aboutCard: { alignItems: 'center', paddingVertical: 28, gap: 5 },
+  aboutOrb: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#4F46E5',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  aboutAvatarText: {
-    color: '#fff',
-    fontSize: 26,
-    fontWeight: '700',
-  },
-  aboutName: {
-    color: Colors.textPrimary,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  aboutVersion: {
-    color: Colors.textSecondary,
-    fontSize: 13,
-  },
-  aboutPowered: {
-    color: Colors.textMuted,
-    fontSize: 12,
-  },
+  aboutOrbText: { fontSize: 24, fontWeight: '700', color: '#fff' },
+  aboutName: { fontSize: 17, fontWeight: '700', color: C.textPrimary },
+  aboutSub: { fontSize: 13, color: C.textSecondary },
+  aboutPowered: { fontSize: 11, color: C.textMuted },
 });

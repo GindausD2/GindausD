@@ -120,7 +120,7 @@ export async function removeReminder(id: string): Promise<void> {
 
 const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: '',
-  assistantName: 'Aria',
+  assistantName: 'Max',
   voiceEnabled: true,
   voiceSpeed: 1.0,
   voicePitch: 1.1,

@@ -144,7 +144,7 @@ export const ChatBubble = memo(function ChatBubble({ message, onSpeak, isSpeakin
       {!isUser && (
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>A</Text>
+            <Text style={styles.avatarText}>M</Text>
           </View>
         </View>
       )}

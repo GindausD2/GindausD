@@ -186,7 +186,7 @@ export async function executeTool(
 
         const notificationId = await Notifications.scheduleNotificationAsync({
           content: {
-            title: 'Aria Reminder',
+            title: 'Max Reminder',
             body: input.message as string,
             sound: true,
           },

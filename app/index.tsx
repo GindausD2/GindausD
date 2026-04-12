@@ -1,54 +1,123 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
   View,
-  FlatList,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
   Text,
   Pressable,
+  StyleSheet,
+  Alert,
+  Dimensions,
+  Animated,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
-import { Header } from '@/components/Header';
-import { ChatBubble } from '@/components/ChatBubble';
-import { TypingIndicator } from '@/components/TypingIndicator';
-import { InputBar } from '@/components/InputBar';
-import { QuickActions } from '@/components/QuickActions';
-
+import { Orb } from '@/components/Orb';
 import { useChat } from '@/hooks/useChat';
 import { useSettings } from '@/hooks/useSettings';
 import { useVoice } from '@/hooks/useVoice';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
-
-import { Colors } from '@/constants/colors';
 import { Message } from '@/types';
 
-export default function ChatScreen() {
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+// ─── Clock ───────────────────────────────────────────────────────────────────
+
+function useClock() {
+  const [time, setTime] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  return time;
+}
+
+function formatClock(d: Date): string {
+  const h = d.getHours().toString().padStart(2, '0');
+  const m = d.getMinutes().toString().padStart(2, '0');
+  const s = d.getSeconds().toString().padStart(2, '0');
+  return `${h}-${m}-${s}`;
+}
+
+// ─── Transcript bubble ────────────────────────────────────────────────────────
+
+function TranscriptBubble({ message, isLatest }: { message: Message; isLatest: boolean }) {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(8)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: isLatest ? 1 : 0.55,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 280,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [isLatest]);
+
+  const isUser = message.role === 'user';
+
+  // Strip markdown stars/hashes for cleaner transcript display
+  const cleanText = message.content
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/\*(.+?)\*/g, '$1')
+    .replace(/#+\s/g, '')
+    .trim();
+
+  return (
+    <Animated.View
+      style={[
+        styles.bubbleRow,
+        isUser ? styles.bubbleRowUser : styles.bubbleRowAI,
+        { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+      ]}
+    >
+      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
+        <Text style={[styles.bubbleText, isUser ? styles.bubbleTextUser : styles.bubbleTextAI]}>
+          {cleanText}
+        </Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+// ─── Main screen ─────────────────────────────────────────────────────────────
+
+export default function HomeScreen() {
   const { settings, isLoaded } = useSettings();
   const apiKey = settings?.apiKey ?? '';
 
-  const { messages, isLoading, error, activeToolName, sendMessage, clearConversation, stopStreaming } =
-    useChat(apiKey);
+  const {
+    messages,
+    isLoading,
+    activeToolName,
+    sendMessage,
+    clearConversation,
+    stopStreaming,
+    error,
+  } = useChat(apiKey);
 
   const { speak, stop: stopSpeaking, isSpeaking } = useVoice(settings);
   const voiceRecorder = useVoiceRecorder(settings);
 
-  const flatListRef = useRef<FlatList<Message>>(null);
-  const [showQuickActions, setShowQuickActions] = useState(true);
+  const now = useClock();
+  const scrollRef = useRef<ScrollView>(null);
+  const micScale = useRef(new Animated.Value(1)).current;
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll transcript to bottom
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
   }, [messages.length, isLoading]);
 
-  // Auto-read last AI message if voice is enabled
+  // Auto-speak AI responses
   useEffect(() => {
     if (!settings?.voiceEnabled) return;
     const last = messages[messages.length - 1];
@@ -57,142 +126,192 @@ export default function ChatScreen() {
     }
   }, [messages]);
 
-  const handleSend = useCallback(
-    (text: string) => {
-      setShowQuickActions(false);
-      sendMessage(text);
-    },
-    [sendMessage]
-  );
+  // Mic button press animation
+  const animateMicPress = (pressed: boolean) => {
+    Animated.spring(micScale, {
+      toValue: pressed ? 0.88 : 1,
+      useNativeDriver: true,
+      speed: 30,
+    }).start();
+  };
 
-  const handleClearChat = useCallback(() => {
-    Alert.alert('Clear Chat', 'Start a fresh conversation with Max?', [
+  // Derive orb state
+  type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
+  let orbState: OrbState = 'idle';
+  if (voiceRecorder.state === 'recording') orbState = 'listening';
+  else if (voiceRecorder.state === 'transcribing' || isLoading) orbState = 'thinking';
+  else if (isSpeaking) orbState = 'speaking';
+
+  // Voice stop → transcribe → send
+  const handleVoiceToggle = useCallback(async () => {
+    if (voiceRecorder.state === 'recording') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const transcript = await voiceRecorder.stopAndTranscribe();
+      if (transcript) {
+        sendMessage(transcript);
+      } else if (voiceRecorder.errorMessage) {
+        Alert.alert('Voice Error', voiceRecorder.errorMessage);
+      }
+    } else if (voiceRecorder.state === 'idle' && !isLoading) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      await voiceRecorder.startRecording();
+    }
+  }, [voiceRecorder, isLoading, sendMessage]);
+
+  const handleStopAll = useCallback(() => {
+    stopSpeaking();
+    stopStreaming();
+    voiceRecorder.cancel();
+  }, [stopSpeaking, stopStreaming, voiceRecorder]);
+
+  const handleClear = useCallback(() => {
+    Alert.alert('New conversation', 'Start fresh with Max?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Clear',
         style: 'destructive',
         onPress: () => {
-          stopSpeaking();
+          handleStopAll();
           clearConversation();
-          setShowQuickActions(true);
         },
       },
     ]);
-  }, [clearConversation, stopSpeaking]);
+  }, [handleStopAll, clearConversation]);
 
-  // Voice: stop → transcribe → send
-  const handleVoiceStop = useCallback(async () => {
-    const transcript = await voiceRecorder.stopAndTranscribe();
-    if (transcript) {
-      handleSend(transcript);
-    } else if (voiceRecorder.errorMessage) {
-      Alert.alert('Voice Error', voiceRecorder.errorMessage);
-    }
-  }, [voiceRecorder, handleSend]);
+  // Visible transcript: last 6 non-empty messages (skip welcome-only state)
+  const allReal = messages.filter((m) => m.content.trim());
+  const transcript = allReal.length <= 1 ? [] : allReal.slice(-6);
 
-  const renderItem = useCallback(
-    ({ item }: { item: Message }) => (
-      <ChatBubble
-        message={item}
-        onSpeak={speak}
-        isSpeaking={isSpeaking}
-      />
-    ),
-    [speak, isSpeaking]
-  );
-
-  const keyExtractor = useCallback((item: Message) => item.id, []);
-
-  if (!isLoaded) {
-    return (
-      <SafeAreaView style={styles.safeArea} edges={['top']}>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>Starting Max...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Show setup prompt if no API key
-  const noApiKey = !apiKey;
+  const isRecording = voiceRecorder.state === 'recording';
+  const isTranscribing = voiceRecorder.state === 'transcribing';
+  const isBusy = isLoading || isTranscribing;
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={0}
-      >
-        <Header
-          onClearChat={handleClearChat}
-          isSpeaking={isSpeaking}
-          onStopSpeaking={stopSpeaking}
-          assistantName={settings?.assistantName ?? 'Max'}
-        />
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
+      {/* ── Top bar ─────────────────────────────────────────────────────── */}
+      <View style={styles.topBar}>
+        <Pressable onPress={handleClear} hitSlop={12} style={styles.topBtn}>
+          <Ionicons name="refresh-outline" size={22} color="#999" />
+        </Pressable>
 
-        {/* API Key warning banner */}
-        {noApiKey && (
-          <Pressable
-            style={styles.apiBanner}
-            onPress={() => {
-              const { router } = require('expo-router');
-              router.push('/settings');
-            }}
-          >
-            <Ionicons name="warning-outline" size={16} color={Colors.warning} />
-            <Text style={styles.apiBannerText}>
-              Tap to add your Anthropic API key in Settings
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color={Colors.warning} />
-          </Pressable>
-        )}
+        <Text style={styles.appName}>{settings?.assistantName ?? 'Max'}</Text>
 
-        {/* Error banner */}
-        {error && (
-          <View style={styles.errorBanner}>
-            <Ionicons name="alert-circle-outline" size={16} color={Colors.error} />
-            <Text style={styles.errorBannerText} numberOfLines={2}>{error}</Text>
+        <Pressable onPress={() => router.push('/settings')} hitSlop={12} style={styles.topBtn}>
+          <Ionicons name="settings-outline" size={22} color="#999" />
+        </Pressable>
+      </View>
+
+      {/* ── Transcript area ──────────────────────────────────────────────── */}
+      <View style={styles.transcriptArea}>
+        {error ? (
+          <View style={styles.errorBox}>
+            <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
+            <Text style={styles.errorText} numberOfLines={2}>{error}</Text>
           </View>
+        ) : transcript.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyLine1}>
+              {isRecording ? 'Listening...' : `Hi, I'm Max`}
+            </Text>
+            <Text style={styles.emptyLine2}>
+              {isRecording ? 'Tap stop when done' : 'Tap the mic and start talking'}
+            </Text>
+          </View>
+        ) : (
+          <ScrollView
+            ref={scrollRef}
+            style={styles.scroll}
+            contentContainerStyle={styles.scrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {transcript.map((m, i) => (
+              <TranscriptBubble
+                key={m.id}
+                message={m}
+                isLatest={i === transcript.length - 1}
+              />
+            ))}
+          </ScrollView>
         )}
+      </View>
 
-        {/* Message list */}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          style={styles.messageList}
-          contentContainerStyle={styles.messageContent}
-          showsVerticalScrollIndicator={false}
-          keyboardDismissMode="interactive"
-          ListFooterComponent={
-            isLoading ? (
-              <TypingIndicator toolName={activeToolName} />
-            ) : null
-          }
+      {/* ── Bottom canvas with gradient + orb ───────────────────────────── */}
+      <View style={styles.bottomCanvas}>
+        {/* Gradient fade */}
+        <LinearGradient
+          colors={['rgba(255,255,255,0)', 'rgba(240,240,245,1)']}
+          style={styles.gradientFade}
+          pointerEvents="none"
         />
 
-        {/* Quick actions (shown on empty/fresh conversation) */}
-        <QuickActions
-          visible={showQuickActions && messages.length <= 1}
-          onSelect={handleSend}
-        />
+        {/* Status row: clock + orb state label */}
+        <View style={styles.statusRow}>
+          <Text style={styles.clock}>{formatClock(now)}</Text>
+          {activeToolName && (
+            <Text style={styles.toolLabel}>
+              {activeToolName.replace(/_/g, ' ')}...
+            </Text>
+          )}
+          {isSpeaking && !activeToolName && (
+            <Text style={styles.toolLabel}>Speaking</Text>
+          )}
+          {isRecording && !activeToolName && (
+            <Text style={[styles.toolLabel, { color: '#EF4444' }]}>Recording</Text>
+          )}
+        </View>
 
-        {/* Input bar with voice */}
-        <InputBar
-          onSend={handleSend}
-          onStop={stopStreaming}
-          isLoading={isLoading}
-          activeToolName={activeToolName}
-          voiceState={voiceRecorder.state}
-          voiceDurationMs={voiceRecorder.durationMs}
-          onVoiceStart={voiceRecorder.startRecording}
-          onVoiceStop={handleVoiceStop}
-          onVoiceCancel={voiceRecorder.cancel}
-        />
+        {/* Orb row */}
+        <View style={styles.orbRow}>
+          {/* Stop / placeholder left */}
+          <Pressable
+            style={styles.sideBtn}
+            onPress={isBusy || isSpeaking ? handleStopAll : undefined}
+            hitSlop={12}
+          >
+            {(isBusy || isSpeaking) ? (
+              <Ionicons name="stop-circle-outline" size={28} color="#999" />
+            ) : (
+              <Ionicons name="chatbubble-outline" size={26} color="#ccc" />
+            )}
+          </Pressable>
 
-        <SafeAreaView edges={['bottom']} style={styles.bottomSafe} />
-      </KeyboardAvoidingView>
+          {/* Central orb */}
+          <Pressable onPress={handleVoiceToggle} disabled={isBusy}>
+            <Orb state={orbState} size={128} />
+          </Pressable>
+
+          {/* Mic button */}
+          <Pressable
+            onPressIn={() => animateMicPress(true)}
+            onPressOut={() => animateMicPress(false)}
+            onPress={handleVoiceToggle}
+            disabled={isBusy}
+            hitSlop={12}
+            style={styles.sideBtn}
+          >
+            <Animated.View style={{ transform: [{ scale: micScale }] }}>
+              <Ionicons
+                name={isRecording ? 'mic' : 'mic-outline'}
+                size={30}
+                color={isRecording ? '#EF4444' : '#999'}
+              />
+            </Animated.View>
+          </Pressable>
+        </View>
+
+        {/* Blue progress / active indicator bar */}
+        <View style={styles.indicatorBar}>
+          <Animated.View
+            style={[
+              styles.indicatorFill,
+              {
+                width: isRecording || isBusy || isSpeaking ? '100%' : '0%',
+                backgroundColor: isRecording ? '#EF4444' : '#4F46E5',
+              },
+            ]}
+          />
+        </View>
+      </View>
     </SafeAreaView>
   );
 }
@@ -200,60 +319,169 @@ export default function ChatScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: Colors.surface,
+    backgroundColor: '#FFFFFF',
   },
-  flex: {
-    flex: 1,
-    backgroundColor: Colors.background,
+
+  // ── Top bar ─────────────────────────────────────────────────────────────
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 4,
+    paddingBottom: 12,
   },
-  loadingContainer: {
-    flex: 1,
+  topBtn: {
+    width: 38,
+    height: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  loadingText: {
-    color: Colors.textSecondary,
-    fontSize: 16,
+  appName: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1A1A2E',
+    letterSpacing: 1.5,
   },
-  apiBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(245,158,11,0.1)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(245,158,11,0.2)',
+
+  // ── Transcript ───────────────────────────────────────────────────────────
+  transcriptArea: {
+    flex: 1,
     paddingHorizontal: 16,
-    paddingVertical: 10,
   },
-  apiBannerText: {
-    flex: 1,
-    color: Colors.warning,
-    fontSize: 13,
-  },
-  errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(239,68,68,0.1)',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(239,68,68,0.2)',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  errorBannerText: {
-    flex: 1,
-    color: Colors.error,
-    fontSize: 13,
-  },
-  messageList: {
-    flex: 1,
-  },
-  messageContent: {
-    paddingVertical: 12,
+  scroll: { flex: 1 },
+  scrollContent: {
     flexGrow: 1,
     justifyContent: 'flex-end',
+    gap: 6,
+    paddingBottom: 12,
+    paddingTop: 8,
   },
-  bottomSafe: {
-    backgroundColor: Colors.surface,
+  // Row wrappers control alignment
+  bubbleRow: {
+    flexDirection: 'row',
+    marginHorizontal: 4,
+  },
+  bubbleRowUser: {
+    justifyContent: 'flex-end',
+  },
+  bubbleRowAI: {
+    justifyContent: 'flex-start',
+  },
+  // The speech bubble itself
+  bubble: {
+    maxWidth: '78%',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  bubbleUser: {
+    backgroundColor: '#E8E8EA',       // light gray — matches mockup
+    borderBottomRightRadius: 5,
+  },
+  bubbleAI: {
+    backgroundColor: '#FFFFFF',        // white card
+    borderBottomLeftRadius: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.07,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  bubbleText: {
+    fontSize: 15,
+    lineHeight: 22,
+  },
+  bubbleTextUser: {
+    color: '#1A1A2E',
+  },
+  bubbleTextAI: {
+    color: '#1A1A2E',
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  emptyLine1: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: '#1A1A2E',
+  },
+  emptyLine2: {
+    fontSize: 14,
+    color: '#999',
+  },
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#FFF1F1',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  errorText: {
+    flex: 1,
+    color: '#EF4444',
+    fontSize: 13,
+  },
+
+  // ── Bottom canvas ────────────────────────────────────────────────────────
+  bottomCanvas: {
+    paddingBottom: 8,
+    backgroundColor: 'transparent',
+  },
+  gradientFade: {
+    position: 'absolute',
+    top: -60,
+    left: 0,
+    right: 0,
+    height: 80,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 28,
+    marginBottom: 4,
+  },
+  clock: {
+    fontSize: 22,
+    fontWeight: '300',
+    color: '#1A1A2E',
+    letterSpacing: 2,
+    fontVariant: ['tabular-nums'],
+  },
+  toolLabel: {
+    fontSize: 13,
+    color: '#7C3AED',
+    fontWeight: '500',
+  },
+  orbRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 32,
+  },
+  sideBtn: {
+    width: 52,
+    height: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Indicator bar ────────────────────────────────────────────────────────
+  indicatorBar: {
+    height: 3,
+    backgroundColor: '#E5E7EB',
+    marginTop: 12,
+    overflow: 'hidden',
+  },
+  indicatorFill: {
+    height: 3,
+    borderRadius: 2,
   },
 });
