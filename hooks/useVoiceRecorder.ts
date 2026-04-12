@@ -4,7 +4,6 @@ import {
   startRecording,
   stopRecording,
   cancelRecording,
-  transcribeWithWhisper,
   transcribeWithClaude,
 } from '@/services/whisper';
 import { AssistantSettings } from '@/types';

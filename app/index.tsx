@@ -114,7 +114,8 @@ export default function HomeScreen() {
 
   // Auto-scroll transcript to bottom
   useEffect(() => {
-    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+    return () => clearTimeout(id);
   }, [messages.length, isLoading]);
 
   // Auto-speak AI responses
@@ -124,7 +125,7 @@ export default function HomeScreen() {
     if (last?.role === 'assistant' && !last.isStreaming && last.content) {
       speak(last.content);
     }
-  }, [messages]);
+  }, [messages, speak, settings?.voiceEnabled]);
 
   // Mic button press animation
   const animateMicPress = (pressed: boolean) => {
@@ -152,7 +153,7 @@ export default function HomeScreen() {
       } else if (voiceRecorder.errorMessage) {
         Alert.alert('Voice Error', voiceRecorder.errorMessage);
       }
-    } else if (voiceRecorder.state === 'idle' && !isLoading) {
+    } else if ((voiceRecorder.state === 'idle' || voiceRecorder.state === 'error') && !isLoading) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       await voiceRecorder.startRecording();
     }

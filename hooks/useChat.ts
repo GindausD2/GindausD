@@ -23,6 +23,8 @@ export function useChat(apiKey: string) {
   const [error, setError] = useState<string | null>(null);
   const [activeToolName, setActiveToolName] = useState<string | null>(null);
   const abortRef = useRef<boolean>(false);
+  // Keep a ref so sendMessage always reads the latest messages without stale closure
+  const messagesRef = useRef<Message[]>([]);
 
   // Load persisted messages on mount
   useEffect(() => {
@@ -37,7 +39,12 @@ export function useChat(apiKey: string) {
     });
   }, []);
 
-  // Persist messages whenever they change (debounced via useEffect)
+  // Keep ref in sync with state
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  // Persist messages whenever they change
   useEffect(() => {
     if (messages.length > 0) {
       const finalMessages = messages.filter((m) => !m.isStreaming);
@@ -80,8 +87,8 @@ export function useChat(apiKey: string) {
       let accText = '';
 
       try {
-        // We need all messages (including the new user one) for context
-        const contextMessages = [...messages.filter((m) => !m.isStreaming), userMsg];
+        // Use the ref to get the latest messages without a stale closure
+        const contextMessages = [...messagesRef.current.filter((m) => !m.isStreaming), userMsg];
 
         const handleChunk = (chunk: StreamChunk) => {
           if (abortRef.current) return;
@@ -132,7 +139,7 @@ export function useChat(apiKey: string) {
         setActiveToolName(null);
       }
     },
-    [apiKey, isLoading, messages]
+    [apiKey, isLoading]
   );
 
   const clearConversation = useCallback(async () => {
