@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 
 import { useSettings } from '@/hooks/useSettings';
 import { clearMessages, loadNotes, loadMemories } from '@/services/storage';
+import { signOut } from '@/services/auth';
 
 // ─── Light palette ────────────────────────────────────────────────────────────
 const C = {
@@ -119,6 +120,20 @@ export default function SettingsScreen() {
     Alert.alert('Stored Data', `Notes: ${notes.length}\nMemories: ${memories.length}`);
   }, []);
 
+  const handleSignOut = useCallback(() => {
+    Alert.alert('Sign Out', 'Sign out and return to the welcome screen?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Sign Out',
+        style: 'destructive',
+        onPress: async () => {
+          await signOut();
+          router.replace('/welcome');
+        },
+      },
+    ]);
+  }, []);
+
   if (!settings) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -202,6 +217,11 @@ export default function SettingsScreen() {
         <Section title="Data">
           <Row icon="bar-chart-outline" label="Storage Stats" sublabel="Notes & memories" onPress={handleStats} first />
           <Row icon="trash-outline" label="Clear History" danger onPress={handleClearHistory} />
+        </Section>
+
+        {/* Account */}
+        <Section title="Account">
+          <Row icon="log-out-outline" label="Sign Out" danger onPress={handleSignOut} first />
         </Section>
 
         {/* About */}
