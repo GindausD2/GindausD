@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "Max",
+    "slug": "max-ai-assistant",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.max.aiassistant",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Max needs microphone access for voice input.",
+        "NSSpeechRecognitionUsageDescription": "Max uses speech recognition to understand your voice."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0A0A0F"
+      },
+      "permissions": [
+        "RECORD_AUDIO",
+        "RECEIVE_BOOT_COMPLETED",
+        "VIBRATE"
+      ],
+      "package": "com.max.aiassistant"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-notifications",
+        {
+          "color": "#7C3AED",
+          "sounds": []
+        }
+      ]
+    ],
+    "scheme": "max",
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
