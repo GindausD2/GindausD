@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Max — AI Assistant Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #111;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
+    gap: 48px;
+    padding: 40px;
+    flex-wrap: wrap;
+  }
+
+  /* ── Phone shell ───────────────────────────────────────── */
+  .phone {
+    width: 300px;
+    height: 640px;
+    background: #1a1a1a;
+    border-radius: 48px;
+    padding: 12px;
+    box-shadow:
+      0 0 0 1px #333,
+      0 30px 80px rgba(0,0,0,.8),
+      inset 0 0 0 1px #444;
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .phone-screen {
+    width: 100%;
+    height: 100%;
+    background: #fff;
+    border-radius: 38px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Dynamic island */
+  .island {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90px;
+    height: 26px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 10;
+  }
+
+  /* ── Status bar ────────────────────────────────────────── */
+  .statusbar {
+    height: 44px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 20px 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #111;
+    flex-shrink: 0;
+  }
+  .statusbar-time { font-size: 13px; font-weight: 700; }
+  .statusbar-icons { display: flex; gap: 5px; align-items: center; }
+  .statusbar-icons svg { width: 14px; height: 14px; fill: #111; }
+
+  /* ── Top bar ───────────────────────────────────────────── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 20px 10px;
+    flex-shrink: 0;
+  }
+  .topbar-icon {
+    width: 34px; height: 34px;
+    display: flex; align-items: center; justify-content: center;
+    color: #aaa;
+  }
+  .topbar-icon svg { width: 20px; height: 20px; stroke: #aaa; fill: none; stroke-width: 1.8; }
+  .topbar-name {
+    font-size: 17px;
+    font-weight: 600;
+    color: #1a1a2e;
+    letter-spacing: 1.5px;
+  }
+
+  /* ── Chat area ─────────────────────────────────────────── */
+  .chat-area {
+    flex: 1;
+    overflow: hidden;
+    padding: 4px 14px 8px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+
+  .bubble-row {
+    display: flex;
+    animation: slideUp .28s ease both;
+  }
+  .bubble-row.user { justify-content: flex-end; }
+  .bubble-row.ai   { justify-content: flex-start; }
+
+  .bubble {
+    max-width: 76%;
+    border-radius: 18px;
+    padding: 9px 13px;
+    font-size: 14px;
+    line-height: 20px;
+    color: #1a1a2e;
+  }
+  .bubble.user {
+    background: #e8e8ea;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble.ai {
+    background: #fff;
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.09);
+  }
+
+  .bubble-row.dim { opacity: 0.55; }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Bottom canvas ─────────────────────────────────────── */
+  .bottom-canvas {
+    flex-shrink: 0;
+    padding-bottom: 8px;
+    position: relative;
+  }
+
+  .gradient-fade {
+    position: absolute;
+    top: -60px; left: 0; right: 0;
+    height: 70px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(242,242,247,1));
+    pointer-events: none;
+  }
+
+  .status-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 26px;
+    margin-bottom: 2px;
+  }
+  .clock {
+    font-size: 22px;
+    font-weight: 300;
+    color: #1a1a2e;
+    letter-spacing: 2px;
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+  .state-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: #7c3aed;
+  }
+
+  .orb-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 30px;
+  }
+
+  .side-btn {
+    width: 48px; height: 48px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .side-btn svg { width: 26px; height: 26px; stroke: #aaa; fill: none; stroke-width: 1.6; }
+  .side-btn svg.mic-active { stroke: #ef4444; }
+
+  /* ── ORB ───────────────────────────────────────────────── */
+  .orb-wrap {
+    width: 160px; height: 160px;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+    cursor: pointer;
+  }
+
+  .orb-glow {
+    position: absolute;
+    width: 148px; height: 148px;
+    border-radius: 50%;
+    background: rgba(201,169,122,.15);
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+
+  .orb {
+    width: 112px; height: 112px;
+    border-radius: 50%;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 28px rgba(0,0,0,.32);
+    animation: pulse 2.2s ease-in-out infinite;
+  }
+
+  .orb-gradient {
+    position: absolute; inset: 0;
+    background: conic-gradient(from 0deg, #c9a97a, #8b5e3c, #3b1f0a, #c9a97a);
+    animation: spin 12s linear infinite;
+    border-radius: 50%;
+  }
+
+  .orb-highlight {
+    position: absolute;
+    top: 13px; left: 50%; transform: translateX(-50%);
+    width: 38px; height: 22px;
+    background: rgba(255,255,255,.25);
+    border-radius: 50%;
+  }
+
+  /* Listening state */
+  .orb-wrap.listening .orb-gradient {
+    background: conic-gradient(from 0deg, #7c3aed, #4f46e5, #1e1b4b, #7c3aed);
+    animation: spin 4s linear infinite;
+  }
+  .orb-wrap.listening .orb,
+  .orb-wrap.listening .orb-glow {
+    animation: pulseFast .5s ease-in-out infinite;
+  }
+  .orb-wrap.listening .orb-glow {
+    background: rgba(124,58,237,.2);
+  }
+
+  /* Speaking state */
+  .orb-wrap.speaking .orb-gradient {
+    background: conic-gradient(from 0deg, #7c3aed, #9d5fff, #4f46e5, #7c3aed);
+    animation: spin 2s linear infinite;
+  }
+  .orb-wrap.speaking .orb,
+  .orb-wrap.speaking .orb-glow {
+    animation: pulseSpeaking .35s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50%       { transform: scale(1.04); }
+  }
+  @keyframes pulseFast {
+    0%, 100% { transform: scale(1); }
+    50%       { transform: scale(1.12); }
+  }
+  @keyframes pulseSpeaking {
+    0%, 100% { transform: scale(0.96); }
+    50%       { transform: scale(1.13); }
+  }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+
+  /* ── Indicator bar ─────────────────────────────────────── */
+  .indicator-track {
+    height: 3px;
+    background: #e5e7eb;
+    margin-top: 10px;
+    overflow: hidden;
+  }
+  .indicator-fill {
+    height: 3px;
+    border-radius: 2px;
+    background: #4f46e5;
+    transition: width .4s ease;
+  }
+
+  /* ── Labels under phones ───────────────────────────────── */
+  .phone-label {
+    text-align: center;
+    margin-top: 14px;
+    color: #666;
+    font-size: 13px;
+    letter-spacing: .5px;
+  }
+
+  .phone-wrap { display: flex; flex-direction: column; }
+
+  /* ── Settings screen ───────────────────────────────────── */
+  .settings-screen {
+    background: #f5f5f7;
+  }
+  .settings-header {
+    background: #fff;
+    padding: 14px 18px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #e5e7eb;
+    flex-shrink: 0;
+  }
+  .settings-header-title { font-size: 15px; font-weight: 600; color: #1a1a2e; }
+  .settings-save { font-size: 14px; font-weight: 600; color: #4f46e5; }
+  .settings-close { color: #1a1a2e; font-size: 18px; }
+  .settings-body { flex: 1; overflow: hidden; padding: 14px 14px 0; display: flex; flex-direction: column; gap: 14px; }
+  .settings-section-label {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .9px; color: #9ca3af; margin-bottom: 5px; padding-left: 3px;
+  }
+  .settings-card {
+    background: #fff;
+    border-radius: 13px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+  }
+  .settings-field {
+    padding: 10px 13px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .settings-input {
+    flex: 1; background: #f9fafb; border: 1px solid #e5e7eb;
+    border-radius: 8px; padding: 7px 10px;
+    font-family: monospace; font-size: 12px; color: #1a1a2e;
+  }
+  .settings-row {
+    padding: 12px 13px;
+    display: flex; align-items: center; gap: 11px;
+    border-top: 1px solid #e5e7eb;
+  }
+  .settings-row:first-child { border-top: none; }
+  .row-icon {
+    width: 28px; height: 28px; border-radius: 7px;
+    background: rgba(79,70,229,.1);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+  }
+  .row-icon.danger { background: rgba(239,68,68,.1); }
+  .row-text { flex: 1; }
+  .row-label { font-size: 14px; color: #1a1a2e; }
+  .row-sub { font-size: 11px; color: #9ca3af; margin-top: 1px; }
+  .row-label.danger { color: #ef4444; }
+  .toggle {
+    width: 40px; height: 24px; border-radius: 12px;
+    background: #4f46e5; position: relative;
+  }
+  .toggle-thumb {
+    width: 20px; height: 20px; border-radius: 10px;
+    background: #fff; position: absolute; top: 2px; right: 2px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  }
+  .settings-about {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px; gap: 4px;
+  }
+  .about-orb {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: #4f46e5; display: flex; align-items: center;
+    justify-content: center; font-size: 20px; font-weight: 700;
+    color: #fff; margin-bottom: 4px;
+  }
+  .about-name { font-size: 16px; font-weight: 700; color: #1a1a2e; }
+  .about-sub { font-size: 12px; color: #6b7280; }
+  .hint { font-size: 10px; color: #9ca3af; padding: 0 13px 10px; line-height: 15px; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     PHONE 1 — Main chat (idle, after convo)
+══════════════════════════════════════════════ -->
+<div class="phone-wrap">
+  <div class="phone">
+    <div class="phone-screen">
+      <div class="island"></div>
+
+      <!-- Status bar -->
+      <div class="statusbar">
+        <span class="statusbar-time">9:41</span>
+        <div class="statusbar-icons">
+          <svg viewBox="0 0 24 24"><path d="M1 6l7 7 4-4 11 11"/></svg>
+          <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10h2v4h-2"/></svg>
+        </div>
+      </div>
+
+      <!-- Top bar -->
+      <div class="topbar">
+        <div class="topbar-icon">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+        </div>
+        <span class="topbar-name">Max</span>
+        <div class="topbar-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+      </div>
+
+      <!-- Chat bubbles -->
+      <div class="chat-area">
+        <div class="bubble-row user dim"><div class="bubble user">Hi Max, I'm Gindaus</div></div>
+        <div class="bubble-row ai dim">
+          <div class="bubble ai">Hello Gindaus! It's great to meet you.<br><br>How may I assist you today?</div>
+        </div>
+        <div class="bubble-row user dim"><div class="bubble user">What time is it?</div></div>
+        <div class="bubble-row ai dim">
+          <div class="bubble ai">Let me check that for you...</div>
+        </div>
+        <div class="bubble-row user"><div class="bubble user">Save a note: buy groceries</div></div>
+        <div class="bubble-row ai">
+          <div class="bubble ai">Done! I've saved the note "buy groceries" for you. Anything else?</div>
+        </div>
+      </div>
+
+      <!-- Bottom -->
+      <div class="bottom-canvas">
+        <div class="gradient-fade"></div>
+        <div class="status-row">
+          <span class="clock" id="clock1">06-03-34</span>
+          <span class="state-label"></span>
+        </div>
+        <div class="orb-row">
+          <div class="side-btn">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="orb-wrap idle" onclick="cycleState(this)">
+            <div class="orb-glow"></div>
+            <div class="orb">
+              <div class="orb-gradient"></div>
+              <div class="orb-highlight"></div>
+            </div>
+          </div>
+          <div class="side-btn">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+        </div>
+        <div class="indicator-track">
+          <div class="indicator-fill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="phone-label">Idle — after conversation</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PHONE 2 — Recording (listening state)
+══════════════════════════════════════════════ -->
+<div class="phone-wrap">
+  <div class="phone">
+    <div class="phone-screen">
+      <div class="island"></div>
+      <div class="statusbar">
+        <span class="statusbar-time">9:41</span>
+        <div class="statusbar-icons">
+          <svg viewBox="0 0 24 24"><path d="M1 6l7 7 4-4 11 11"/></svg>
+          <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10h2v4h-2"/></svg>
+        </div>
+      </div>
+      <div class="topbar">
+        <div class="topbar-icon">
+          <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+        </div>
+        <span class="topbar-name">Max</span>
+        <div class="topbar-icon">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </div>
+      </div>
+      <div class="chat-area">
+        <div style="flex:1; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:8px;">
+          <span style="font-size:20px; font-weight:500; color:#1a1a2e">Listening...</span>
+          <span style="font-size:13px; color:#999">Tap stop when done</span>
+        </div>
+      </div>
+      <div class="bottom-canvas">
+        <div class="gradient-fade"></div>
+        <div class="status-row">
+          <span class="clock" id="clock2">06-03-34</span>
+          <span class="state-label" style="color:#ef4444">Recording</span>
+        </div>
+        <div class="orb-row">
+          <div class="side-btn">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6"/></svg>
+          </div>
+          <div class="orb-wrap listening">
+            <div class="orb-glow"></div>
+            <div class="orb">
+              <div class="orb-gradient"></div>
+              <div class="orb-highlight"></div>
+            </div>
+          </div>
+          <div class="side-btn">
+            <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" class="mic-active" style="stroke:#ef4444"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+        </div>
+        <div class="indicator-track">
+          <div class="indicator-fill" style="width:100%; background:#ef4444"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="phone-label">Listening — mic active</div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     PHONE 3 — Settings screen
+══════════════════════════════════════════════ -->
+<div class="phone-wrap">
+  <div class="phone">
+    <div class="phone-screen settings-screen">
+      <div class="island"></div>
+      <div class="statusbar" style="background:#fff">
+        <span class="statusbar-time">9:41</span>
+        <div class="statusbar-icons">
+          <svg viewBox="0 0 24 24"><path d="M1 6l7 7 4-4 11 11"/></svg>
+          <svg viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M22 10h2v4h-2"/></svg>
+        </div>
+      </div>
+      <div class="settings-header">
+        <span class="settings-close">✕</span>
+        <span class="settings-header-title">Settings</span>
+        <span class="settings-save">Save</span>
+      </div>
+      <div class="settings-body">
+        <div>
+          <div class="settings-section-label">Anthropic API Key</div>
+          <div class="settings-card">
+            <div class="settings-field">
+              <input class="settings-input" type="password" value="sk-ant-••••••••••••••••" readonly />
+              <span style="color:#9ca3af; font-size:16px">👁</span>
+            </div>
+            <div class="hint">Get yours at console.anthropic.com — stored only on your device.</div>
+          </div>
+        </div>
+
+        <div>
+          <div class="settings-section-label">Profile</div>
+          <div class="settings-card">
+            <div class="settings-field" style="border:none">
+              <input class="settings-input" style="font-family:inherit; font-size:14px" type="text" value="Gindaus" readonly />
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="settings-section-label">Voice</div>
+          <div class="settings-card">
+            <div class="settings-row">
+              <div class="row-icon">🔊</div>
+              <div class="row-text">
+                <div class="row-label">Voice Responses</div>
+                <div class="row-sub">Max speaks replies aloud</div>
+              </div>
+              <div class="toggle"><div class="toggle-thumb"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div class="settings-section-label">About</div>
+          <div class="settings-card">
+            <div class="settings-about">
+              <div class="about-orb">M</div>
+              <div class="about-name">Max</div>
+              <div class="about-sub">AI Personal Assistant · v1.0</div>
+              <div class="about-sub" style="font-size:10px; color:#9ca3af; margin-top:2px">Powered by Claude Sonnet</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="phone-label">Settings screen</div>
+</div>
+
+<script>
+  // Live clock
+  function tick() {
+    const now = new Date();
+    const h = String(now.getHours()).padStart(2,'0');
+    const m = String(now.getMinutes()).padStart(2,'0');
+    const s = String(now.getSeconds()).padStart(2,'0');
+    const str = `${h}-${m}-${s}`;
+    document.getElementById('clock1').textContent = str;
+    document.getElementById('clock2').textContent = str;
+  }
+  tick();
+  setInterval(tick, 1000);
+
+  // Click orb to cycle through states
+  const states = ['idle','listening','speaking'];
+  const labels = { idle:'', listening:'Recording', speaking:'Speaking' };
+  const labelColors = { idle:'#7c3aed', listening:'#ef4444', speaking:'#7c3aed' };
+  function cycleState(orb) {
+    const cur = orb.className.replace('orb-wrap ','');
+    const idx = states.indexOf(cur);
+    const next = states[(idx+1)%states.length];
+    orb.className = 'orb-wrap '+next;
+    const row = orb.closest('.bottom-canvas');
+    const label = row.querySelector('.state-label');
+    label.textContent = labels[next];
+    label.style.color = labelColors[next];
+    const fill = row.querySelector('.indicator-fill');
+    fill.style.width = next === 'idle' ? '0%' : '100%';
+    fill.style.background = next === 'listening' ? '#ef4444' : '#4f46e5';
+  }
+</script>
+</body>
+</html>
