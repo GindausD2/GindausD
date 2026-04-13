@@ -12,10 +12,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, Redirect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
-
-import { Redirect } from 'expo-router';
 import { Orb } from '@/components/Orb';
 import { useChat } from '@/hooks/useChat';
 import { useSettings } from '@/hooks/useSettings';
@@ -24,7 +22,6 @@ import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useAuth } from '@/hooks/useAuth';
 import { Message } from '@/types';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 // ─── Clock ───────────────────────────────────────────────────────────────────
 
@@ -94,14 +91,10 @@ function TranscriptBubble({ message, isLatest }: { message: Message; isLatest: b
 // ─── Main screen ─────────────────────────────────────────────────────────────
 
 export default function HomeScreen() {
+  // ── All hooks unconditionally at the top (Rules of Hooks) ──────────────────
   const { user, isLoading: authLoading } = useAuth();
 
-  // Redirect to welcome screen if not authenticated
-  if (!authLoading && !user) {
-    return <Redirect href="/welcome" />;
-  }
-
-  const { settings, isLoaded } = useSettings();
+  const { settings } = useSettings();
   const apiKey = settings?.apiKey ?? '';
 
   const {
@@ -135,22 +128,6 @@ export default function HomeScreen() {
       speak(last.content);
     }
   }, [messages, speak, settings?.voiceEnabled]);
-
-  // Mic button press animation
-  const animateMicPress = (pressed: boolean) => {
-    Animated.spring(micScale, {
-      toValue: pressed ? 0.88 : 1,
-      useNativeDriver: true,
-      speed: 30,
-    }).start();
-  };
-
-  // Derive orb state
-  type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
-  let orbState: OrbState = 'idle';
-  if (voiceRecorder.state === 'recording') orbState = 'listening';
-  else if (voiceRecorder.state === 'transcribing' || isLoading) orbState = 'thinking';
-  else if (isSpeaking) orbState = 'speaking';
 
   // Voice stop → transcribe → send
   const handleVoiceToggle = useCallback(async () => {
@@ -187,6 +164,26 @@ export default function HomeScreen() {
       },
     ]);
   }, [handleStopAll, clearConversation]);
+
+  // ── Auth gate (after ALL hooks including useCallback) ──────────────────────
+  if (authLoading) return null;
+  if (!user) return <Redirect href="/welcome" />;
+
+  // Mic button press animation
+  const animateMicPress = (pressed: boolean) => {
+    Animated.spring(micScale, {
+      toValue: pressed ? 0.88 : 1,
+      useNativeDriver: true,
+      speed: 30,
+    }).start();
+  };
+
+  // Derive orb state
+  type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
+  let orbState: OrbState = 'idle';
+  if (voiceRecorder.state === 'recording') orbState = 'listening';
+  else if (voiceRecorder.state === 'transcribing' || isLoading) orbState = 'thinking';
+  else if (isSpeaking) orbState = 'speaking';
 
   // Visible transcript: last 6 non-empty messages (skip welcome-only state)
   const allReal = messages.filter((m) => m.content.trim());
