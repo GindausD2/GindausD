@@ -19,10 +19,11 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { Orb } from '@/components/Orb';
 import { signIn, signUp, startDemo } from '@/services/auth';
 
-const { width: W, height: H } = Dimensions.get('window');
+const { width: W } = Dimensions.get('window');
 
 const PAGE_LOGIN = 0;
 const PAGE_WELCOME = 1;
@@ -38,7 +39,6 @@ function GlassCard({ children, style }: { children: React.ReactNode; style?: obj
       </BlurView>
     );
   }
-  // Android fallback — translucent white
   return (
     <View style={[styles.glassCard, styles.glassCardAndroid, style]}>
       {children}
@@ -89,32 +89,54 @@ function GlassField({
   );
 }
 
+// ─── Social button ────────────────────────────────────────────────────────────
+
+function SocialBtn({
+  onPress,
+  disabled,
+  children,
+}: {
+  onPress: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Pressable
+      style={({ pressed }) => [styles.socialBtn, pressed && styles.socialBtnPressed, disabled && styles.btnDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
+      {children}
+    </Pressable>
+  );
+}
+
 // ─── Main welcome screen ──────────────────────────────────────────────────────
 
 export default function WelcomeScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [currentPage, setCurrentPage] = useState(PAGE_WELCOME);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingProvider, setLoadingProvider] = useState<string | null>(null);
 
   // Login form
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPass, setShowLoginPass] = useState(false);
 
-  // Signup form
+  // Email sign-up form (revealed when user picks "Email")
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const emailFormHeight = useRef(new Animated.Value(0)).current;
   const [signupName, setSignupName] = useState('');
   const [signupEmail, setSignupEmail] = useState('');
   const [signupPassword, setSignupPassword] = useState('');
   const [showSignupPass, setShowSignupPass] = useState(false);
 
-  // Subtle shimmer animation for the glass highlight
+  // Shimmer
   const shimmer = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Start at center page
     scrollRef.current?.scrollTo({ x: W, animated: false });
-
-    // Looping shimmer on the glass cards
     Animated.loop(
       Animated.sequence([
         Animated.timing(shimmer, { toValue: 1, duration: 2800, useNativeDriver: true }),
@@ -122,6 +144,16 @@ export default function WelcomeScreen() {
       ])
     ).start();
   }, []);
+
+  // Animate email form in/out
+  useEffect(() => {
+    Animated.spring(emailFormHeight, {
+      toValue: showEmailForm ? 1 : 0,
+      useNativeDriver: false,
+      tension: 60,
+      friction: 10,
+    }).start();
+  }, [showEmailForm]);
 
   const handleScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const page = Math.round(e.nativeEvent.contentOffset.x / W);
@@ -131,6 +163,8 @@ export default function WelcomeScreen() {
   const goToPage = (page: number) => {
     scrollRef.current?.scrollTo({ x: page * W, animated: true });
   };
+
+  // ── Login ──────────────────────────────────────────────────────────────────
 
   const handleLogin = async () => {
     if (!loginEmail.trim() || !loginPassword.trim()) {
@@ -148,7 +182,51 @@ export default function WelcomeScreen() {
     }
   };
 
-  const handleSignUp = async () => {
+  // ── Sign-up providers ──────────────────────────────────────────────────────
+
+  const handleGoogleSignUp = async () => {
+    setLoadingProvider('google');
+    try {
+      // Simulate Google OAuth — stores a Google-sourced user locally
+      await signUp('Google User', `google_${Date.now()}@gmail.com`, 'oauth');
+      router.replace('/');
+    } catch {
+      Alert.alert('Error', 'Google sign-in failed. Please try again.');
+    } finally {
+      setLoadingProvider(null);
+    }
+  };
+
+  const handleAppleSignUp = async () => {
+    setLoadingProvider('apple');
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      const name = [
+        credential.fullName?.givenName,
+        credential.fullName?.familyName,
+      ].filter(Boolean).join(' ') || 'Apple User';
+      const email = credential.email ?? `apple_${credential.user}@privaterelay.appleid.com`;
+      await signUp(name, email, 'oauth');
+      router.replace('/');
+    } catch (e: any) {
+      if (e?.code !== 'ERR_REQUEST_CANCELED') {
+        Alert.alert('Error', 'Apple sign-in failed. Please try again.');
+      }
+    } finally {
+      setLoadingProvider(null);
+    }
+  };
+
+  const handleEmailSignUp = async () => {
+    if (!showEmailForm) {
+      setShowEmailForm(true);
+      return;
+    }
     if (!signupName.trim() || !signupEmail.trim() || !signupPassword.trim()) {
       Alert.alert('Missing fields', 'Please fill in all fields.');
       return;
@@ -157,14 +235,14 @@ export default function WelcomeScreen() {
       Alert.alert('Weak password', 'Password must be at least 6 characters.');
       return;
     }
-    setIsLoading(true);
+    setLoadingProvider('email');
     try {
       await signUp(signupName.trim(), signupEmail.trim(), signupPassword);
       router.replace('/');
     } catch {
       Alert.alert('Error', 'Sign up failed. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLoadingProvider(null);
     }
   };
 
@@ -178,40 +256,34 @@ export default function WelcomeScreen() {
   };
 
   const shimmerOpacity = shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.06, 0.18] });
+  const formMaxHeight = emailFormHeight.interpolate({ inputRange: [0, 1], outputRange: [0, 340] });
+  const formOpacity = emailFormHeight.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0, 0, 1] });
+
+  const anyLoading = isLoading || !!loadingProvider;
 
   return (
     <View style={styles.root}>
-      {/* ── Background gradient ─────────────────────────────────────────── */}
       <LinearGradient
         colors={['#2D1B69', '#4F46E5', '#7C3AED', '#C084FC']}
         start={{ x: 0.1, y: 0 }}
         end={{ x: 0.9, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-
-      {/* Animated shimmer overlay */}
       <Animated.View
         pointerEvents="none"
         style={[StyleSheet.absoluteFill, { opacity: shimmerOpacity, backgroundColor: '#fff' }]}
       />
-
-      {/* Decorative blobs */}
       <View style={[styles.blob, styles.blob1]} />
       <View style={[styles.blob, styles.blob2]} />
 
       <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
-
-        {/* ── Page indicator dots ──────────────────────────────────────── */}
+        {/* Dots */}
         <View style={styles.dotsRow}>
           {[PAGE_LOGIN, PAGE_WELCOME, PAGE_SIGNUP].map((p) => (
-            <Animated.View
-              key={p}
-              style={[styles.dot, currentPage === p && styles.dotActive]}
-            />
+            <Animated.View key={p} style={[styles.dot, currentPage === p && styles.dotActive]} />
           ))}
         </View>
 
-        {/* ── Horizontal pager ─────────────────────────────────────────── */}
         <ScrollView
           ref={scrollRef}
           horizontal
@@ -262,9 +334,9 @@ export default function WelcomeScreen() {
             </GlassCard>
 
             <Pressable
-              style={[styles.primaryBtn, isLoading && styles.btnDisabled]}
+              style={[styles.primaryBtn, anyLoading && styles.btnDisabled]}
               onPress={handleLogin}
-              disabled={isLoading}
+              disabled={anyLoading}
             >
               {isLoading
                 ? <ActivityIndicator color="#fff" />
@@ -280,14 +352,11 @@ export default function WelcomeScreen() {
 
           {/* ═══ PAGE 1: Welcome (center) ════════════════════════════════ */}
           <View style={[styles.page, styles.welcomePage]}>
-            {/* Orb */}
             <View style={styles.orbContainer}>
               <Orb state="idle" size={96} />
             </View>
 
-            {/* Logo glass card */}
             <GlassCard style={styles.logoCard}>
-              {/* Specular highlight line */}
               <View style={styles.specular} />
               <Text style={styles.appName}>Max</Text>
               <Text style={styles.appTagline}>
@@ -295,7 +364,6 @@ export default function WelcomeScreen() {
               </Text>
             </GlassCard>
 
-            {/* Swipe action row */}
             <View style={styles.swipeRow}>
               <Pressable style={styles.swipeBtn} onPress={() => goToPage(PAGE_LOGIN)}>
                 <GlassCard style={styles.swipePill}>
@@ -312,20 +380,14 @@ export default function WelcomeScreen() {
               </Pressable>
             </View>
 
-            {/* Divider */}
             <View style={styles.dividerRow}>
               <View style={styles.dividerLine} />
               <Text style={styles.dividerText}>or</Text>
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Try Demo */}
-            <Pressable
-              style={styles.demoBtn}
-              onPress={handleDemo}
-              disabled={isLoading}
-            >
-              {isLoading ? (
+            <Pressable style={styles.demoBtn} onPress={handleDemo} disabled={anyLoading}>
+              {anyLoading ? (
                 <ActivityIndicator color="rgba(255,255,255,0.9)" />
               ) : (
                 <>
@@ -337,67 +399,115 @@ export default function WelcomeScreen() {
           </View>
 
           {/* ═══ PAGE 2: Sign up ═════════════════════════════════════════ */}
-          <View style={styles.page}>
+          <ScrollView
+            style={{ width: W }}
+            contentContainerStyle={styles.signupScroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
             <Pressable onPress={() => goToPage(PAGE_WELCOME)} hitSlop={12} style={styles.backRow}>
               <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.8)" />
               <Text style={styles.backLabel}>Back</Text>
             </Pressable>
 
             <Text style={styles.formTitle}>Create account</Text>
-            <Text style={styles.formSubtitle}>Start your Max journey today</Text>
+            <Text style={styles.formSubtitle}>Choose how to get started</Text>
 
-            <GlassCard style={styles.formCard}>
-              <GlassField
-                icon="person-outline"
-                placeholder="Your name"
-                value={signupName}
-                onChangeText={setSignupName}
-                autoCapitalize="words"
-                autoCorrect={false}
-              />
-              <View style={styles.fieldSep} />
-              <GlassField
-                icon="mail-outline"
-                placeholder="Email address"
-                value={signupEmail}
-                onChangeText={setSignupEmail}
-                keyboardType="email-address"
-              />
-              <View style={styles.fieldSep} />
-              <GlassField
-                icon="lock-closed-outline"
-                placeholder="Password (min 6 chars)"
-                value={signupPassword}
-                onChangeText={setSignupPassword}
-                secureTextEntry={!showSignupPass}
-                rightElement={
-                  <Pressable onPress={() => setShowSignupPass(v => !v)} hitSlop={8}>
-                    <Ionicons
-                      name={showSignupPass ? 'eye-off-outline' : 'eye-outline'}
-                      size={18}
-                      color="rgba(255,255,255,0.6)"
-                    />
-                  </Pressable>
-                }
-              />
-            </GlassCard>
+            {/* ── Google ── */}
+            <SocialBtn onPress={handleGoogleSignUp} disabled={anyLoading}>
+              <GlassCard style={styles.socialCard}>
+                <View style={styles.googleDot}>
+                  <Text style={styles.googleG}>G</Text>
+                </View>
+                {loadingProvider === 'google'
+                  ? <ActivityIndicator color="#fff" style={{ flex: 1 }} />
+                  : <Text style={styles.socialBtnText}>Continue with Google</Text>}
+              </GlassCard>
+            </SocialBtn>
 
-            <Pressable
-              style={[styles.primaryBtn, isLoading && styles.btnDisabled]}
-              onPress={handleSignUp}
-              disabled={isLoading}
-            >
-              {isLoading
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.primaryBtnText}>Get Started</Text>}
-            </Pressable>
+            {/* ── Apple (iOS only) ── */}
+            {Platform.OS === 'ios' && (
+              <View style={styles.appleWrap}>
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE_OUTLINE}
+                  cornerRadius={18}
+                  style={styles.appleNativeBtn}
+                  onPress={handleAppleSignUp}
+                />
+              </View>
+            )}
 
-            <Pressable onPress={() => goToPage(PAGE_LOGIN)} style={styles.linkRow}>
+            {/* ── Email ── */}
+            <SocialBtn onPress={handleEmailSignUp} disabled={anyLoading && loadingProvider !== 'email'}>
+              <GlassCard style={styles.socialCard}>
+                <Ionicons name="mail-outline" size={19} color="#fff" />
+                <Text style={styles.socialBtnText}>Continue with Email</Text>
+                <Ionicons
+                  name={showEmailForm ? 'chevron-up' : 'chevron-down'}
+                  size={15}
+                  color="rgba(255,255,255,0.5)"
+                />
+              </GlassCard>
+            </SocialBtn>
+
+            {/* Email form — slides in */}
+            <Animated.View style={{ maxHeight: formMaxHeight, opacity: formOpacity, overflow: 'hidden' }}>
+              <View style={styles.emailFormInner}>
+                <GlassCard style={{ marginBottom: 12 }}>
+                  <GlassField
+                    icon="person-outline"
+                    placeholder="Your name"
+                    value={signupName}
+                    onChangeText={setSignupName}
+                    autoCapitalize="words"
+                    autoCorrect={false}
+                  />
+                  <View style={styles.fieldSep} />
+                  <GlassField
+                    icon="mail-outline"
+                    placeholder="Email address"
+                    value={signupEmail}
+                    onChangeText={setSignupEmail}
+                    keyboardType="email-address"
+                  />
+                  <View style={styles.fieldSep} />
+                  <GlassField
+                    icon="lock-closed-outline"
+                    placeholder="Password (min 6 chars)"
+                    value={signupPassword}
+                    onChangeText={setSignupPassword}
+                    secureTextEntry={!showSignupPass}
+                    rightElement={
+                      <Pressable onPress={() => setShowSignupPass(v => !v)} hitSlop={8}>
+                        <Ionicons
+                          name={showSignupPass ? 'eye-off-outline' : 'eye-outline'}
+                          size={18}
+                          color="rgba(255,255,255,0.6)"
+                        />
+                      </Pressable>
+                    }
+                  />
+                </GlassCard>
+
+                <Pressable
+                  style={[styles.primaryBtn, loadingProvider === 'email' && styles.btnDisabled]}
+                  onPress={handleEmailSignUp}
+                  disabled={loadingProvider === 'email'}
+                >
+                  {loadingProvider === 'email'
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.primaryBtnText}>Sign Up</Text>}
+                </Pressable>
+              </View>
+            </Animated.View>
+
+            <Pressable onPress={() => goToPage(PAGE_LOGIN)} style={[styles.linkRow, { marginTop: 12 }]}>
               <Text style={styles.linkText}>
                 Already have an account? <Text style={styles.linkBold}>← Login</Text>
               </Text>
             </Pressable>
-          </View>
+          </ScrollView>
 
         </ScrollView>
       </SafeAreaView>
@@ -408,33 +518,12 @@ export default function WelcomeScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: '#1E1B4B',
-  },
+  root: { flex: 1, backgroundColor: '#1E1B4B' },
 
-  // ── Decorative blobs ────────────────────────────────────────────────────────
-  blob: {
-    position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.25,
-  },
-  blob1: {
-    width: 280,
-    height: 280,
-    backgroundColor: '#C084FC',
-    top: -60,
-    right: -80,
-  },
-  blob2: {
-    width: 220,
-    height: 220,
-    backgroundColor: '#818CF8',
-    bottom: 60,
-    left: -60,
-  },
+  blob: { position: 'absolute', borderRadius: 999, opacity: 0.25 },
+  blob1: { width: 280, height: 280, backgroundColor: '#C084FC', top: -60, right: -80 },
+  blob2: { width: 220, height: 220, backgroundColor: '#818CF8', bottom: 60, left: -60 },
 
-  // ── Page dots ───────────────────────────────────────────────────────────────
   dotsRow: {
     flexDirection: 'row',
     justifyContent: 'center',
@@ -442,19 +531,9 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 6,
   },
-  dot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(255,255,255,0.3)',
-  },
-  dotActive: {
-    width: 20,
-    backgroundColor: '#fff',
-    borderRadius: 3,
-  },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
+  dotActive: { width: 20, backgroundColor: '#fff', borderRadius: 3 },
 
-  // ── Page layout ─────────────────────────────────────────────────────────────
   page: {
     width: W,
     flex: 1,
@@ -463,11 +542,14 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     justifyContent: 'center',
   },
-  welcomePage: {
-    alignItems: 'center',
+  welcomePage: { alignItems: 'center' },
+
+  signupScroll: {
+    paddingHorizontal: 28,
+    paddingTop: 8,
+    paddingBottom: 32,
   },
 
-  // ── Back button ─────────────────────────────────────────────────────────────
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -475,26 +557,11 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     alignSelf: 'flex-start',
   },
-  backLabel: {
-    color: 'rgba(255,255,255,0.8)',
-    fontSize: 15,
-    fontWeight: '500',
-  },
+  backLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 15, fontWeight: '500' },
 
-  // ── Form titles ─────────────────────────────────────────────────────────────
-  formTitle: {
-    fontSize: 30,
-    fontWeight: '700',
-    color: '#fff',
-    marginBottom: 6,
-  },
-  formSubtitle: {
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.65)',
-    marginBottom: 28,
-  },
+  formTitle: { fontSize: 30, fontWeight: '700', color: '#fff', marginBottom: 6 },
+  formSubtitle: { fontSize: 15, color: 'rgba(255,255,255,0.65)', marginBottom: 24 },
 
-  // ── Glass card ──────────────────────────────────────────────────────────────
   glassCard: {
     borderRadius: 22,
     overflow: 'hidden',
@@ -506,19 +573,11 @@ const styles = StyleSheet.create({
     shadowRadius: 32,
     elevation: 12,
   },
-  glassCardAndroid: {
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  glassInner: {
-    // Ensures content renders on top of the blur
-  },
+  glassCardAndroid: { backgroundColor: 'rgba(255,255,255,0.18)' },
+  glassInner: {},
 
-  // ── Form card ───────────────────────────────────────────────────────────────
-  formCard: {
-    marginBottom: 16,
-  },
+  formCard: { marginBottom: 16 },
 
-  // ── Input field ─────────────────────────────────────────────────────────────
   fieldWrap: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -526,23 +585,10 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     gap: 12,
   },
-  fieldIcon: {
-    width: 20,
-    textAlign: 'center',
-  },
-  fieldInput: {
-    flex: 1,
-    fontSize: 15,
-    color: '#fff',
-    fontWeight: '400',
-  },
-  fieldSep: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    marginHorizontal: 16,
-  },
+  fieldIcon: { width: 20, textAlign: 'center' },
+  fieldInput: { flex: 1, fontSize: 15, color: '#fff', fontWeight: '400' },
+  fieldSep: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 16 },
 
-  // ── Primary button ──────────────────────────────────────────────────────────
   primaryBtn: {
     height: 54,
     borderRadius: 16,
@@ -558,34 +604,14 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 6,
   },
-  btnDisabled: {
-    opacity: 0.5,
-  },
-  primaryBtnText: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#fff',
-    letterSpacing: 0.3,
-  },
+  btnDisabled: { opacity: 0.5 },
+  primaryBtnText: { fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
 
-  // ── Link row ────────────────────────────────────────────────────────────────
-  linkRow: {
-    alignItems: 'center',
-    paddingVertical: 4,
-  },
-  linkText: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  linkBold: {
-    fontWeight: '700',
-    color: 'rgba(255,255,255,0.95)',
-  },
+  linkRow: { alignItems: 'center', paddingVertical: 4 },
+  linkText: { fontSize: 14, color: 'rgba(255,255,255,0.6)' },
+  linkBold: { fontWeight: '700', color: 'rgba(255,255,255,0.95)' },
 
-  // ── Welcome page ────────────────────────────────────────────────────────────
-  orbContainer: {
-    marginBottom: 24,
-  },
+  orbContainer: { marginBottom: 24 },
   logoCard: {
     width: W - 64,
     alignItems: 'center',
@@ -602,13 +628,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.55)',
     borderRadius: 1,
   },
-  appName: {
-    fontSize: 40,
-    fontWeight: '800',
-    color: '#fff',
-    letterSpacing: 3,
-    marginBottom: 10,
-  },
+  appName: { fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: 3, marginBottom: 10 },
   appTagline: {
     fontSize: 15,
     color: 'rgba(255,255,255,0.75)',
@@ -616,7 +636,6 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
 
-  // ── Swipe action pills ──────────────────────────────────────────────────────
   swipeRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -624,9 +643,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 12,
   },
-  swipeBtn: {
-    flex: 1,
-  },
+  swipeBtn: { flex: 1 },
   swipePill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -635,13 +652,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  swipePillText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  swipePillText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 
-  // ── Divider ─────────────────────────────────────────────────────────────────
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -649,18 +661,9 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     gap: 12,
   },
-  dividerLine: {
-    flex: 1,
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-  },
-  dividerText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 13,
-    fontWeight: '500',
-  },
+  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
+  dividerText: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '500' },
 
-  // ── Try Demo button ──────────────────────────────────────────────────────────
   demoBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -673,9 +676,42 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  demoBtnText: {
+  demoBtnText: { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.95)' },
+
+  // ── Social sign-up buttons ──────────────────────────────────────────────────
+  socialBtn: { marginBottom: 12 },
+  socialBtnPressed: { opacity: 0.75 },
+  socialCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 14,
+  },
+  socialBtnText: {
+    flex: 1,
     fontSize: 16,
     fontWeight: '600',
-    color: 'rgba(255,255,255,0.95)',
+    color: '#fff',
   },
+  // Google coloured G badge
+  googleDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleG: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#4285F4',
+    lineHeight: 20,
+  },
+  // Apple native button wrapper
+  appleWrap: { marginBottom: 12 },
+  appleNativeBtn: { width: '100%', height: 54 },
+  // Email form reveal
+  emailFormInner: { paddingTop: 4 },
 });
