@@ -11,6 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -195,26 +196,20 @@ fun MessageBubble(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = alignment
     ) {
+        val bubbleShape = RoundedCornerShape(
+            topStart = if (isUser) 18.dp else 4.dp,
+            topEnd = if (isUser) 4.dp else 18.dp,
+            bottomStart = 18.dp,
+            bottomEnd = 18.dp
+        )
         Row(
             modifier = Modifier
                 .widthIn(max = 300.dp)
-                .shadow(
-                    elevation = if (isUser) 0.dp else 2.dp,
-                    shape = RoundedCornerShape(
-                        topStart = if (isUser) 18.dp else 4.dp,
-                        topEnd = if (isUser) 4.dp else 18.dp,
-                        bottomStart = 18.dp,
-                        bottomEnd = 18.dp
-                    )
+                .then(
+                    if (!isUser) Modifier.shadow(elevation = 2.dp, shape = bubbleShape)
+                    else Modifier
                 )
-                .clip(
-                    RoundedCornerShape(
-                        topStart = if (isUser) 18.dp else 4.dp,
-                        topEnd = if (isUser) 4.dp else 18.dp,
-                        bottomStart = 18.dp,
-                        bottomEnd = 18.dp
-                    )
-                )
+                .clip(bubbleShape)
                 .background(bgColor)
                 .padding(horizontal = 14.dp, vertical = 10.dp)
         ) {
@@ -226,11 +221,4 @@ fun MessageBubble(
             )
         }
     }
-}
-
-// ─── Helper: shadow modifier via drawBehind ───────────────────────────────────
-
-private fun Modifier.shadow(elevation: Dp, shape: RoundedCornerShape): Modifier {
-    return if (elevation == 0.dp) this
-    else this.padding(bottom = elevation / 2)
 }
