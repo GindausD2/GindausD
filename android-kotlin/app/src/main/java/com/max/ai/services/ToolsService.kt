@@ -203,10 +203,9 @@ class BootReceiver : BroadcastReceiver() {
         val reminders = storageRepo.getReminders()
         val now = System.currentTimeMillis()
 
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         reminders.filter { it.triggerAtMillis > now }.forEach { reminder ->
-            val toolsService = ToolsService(context, storageRepo)
             // Re-schedule alarm directly
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             val alarmIntent = Intent(context, ReminderReceiver::class.java).apply {
                 putExtra(ToolsService.EXTRA_REMINDER_ID, reminder.id)
                 putExtra(ToolsService.EXTRA_REMINDER_TITLE, reminder.title)

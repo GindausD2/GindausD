@@ -137,6 +137,7 @@ class ClaudeService {
 
             var currentToolUseId = ""
             var currentToolName = ""
+            var currentBlockIsToolUse = false
             val toolInputBuilder = StringBuilder()
             val pendingToolCalls = mutableListOf<Triple<String, String, String>>() // id, name, input
 
@@ -187,19 +188,26 @@ class ClaudeService {
                                     onToolStart = { id, name ->
                                         currentToolUseId = id
                                         currentToolName = name
+                                        currentBlockIsToolUse = true
                                         toolInputBuilder.clear()
                                         trySend(StreamChunk.ToolStart(name, id))
+                                    },
+                                    onNonToolBlockStart = {
+                                        currentBlockIsToolUse = false
                                     },
                                     onToolInputDelta = { partial ->
                                         toolInputBuilder.append(partial)
                                         trySend(StreamChunk.ToolInput(partial))
                                     },
-                                    onToolEnd = {
-                                        pendingToolCalls.add(
-                                            Triple(currentToolUseId, currentToolName, toolInputBuilder.toString())
-                                        )
-                                        trySend(StreamChunk.ToolDone)
-                                        toolInputBuilder.clear()
+                                    onBlockStop = {
+                                        if (currentBlockIsToolUse) {
+                                            pendingToolCalls.add(
+                                                Triple(currentToolUseId, currentToolName, toolInputBuilder.toString())
+                                            )
+                                            trySend(StreamChunk.ToolDone)
+                                            toolInputBuilder.clear()
+                                            currentBlockIsToolUse = false
+                                        }
                                     },
                                     onStopReason = { reason -> stopReason = reason }
                                 )
@@ -263,8 +271,9 @@ class ClaudeService {
         data: String,
         onText: (String) -> Unit,
         onToolStart: (id: String, name: String) -> Unit,
+        onNonToolBlockStart: () -> Unit,
         onToolInputDelta: (String) -> Unit,
-        onToolEnd: () -> Unit,
+        onBlockStop: () -> Unit,
         onStopReason: (String) -> Unit
     ) {
         if (data == "[DONE]") return
@@ -281,6 +290,8 @@ class ClaudeService {
                         val id = block["id"]?.jsonPrimitive?.content ?: ""
                         val name = block["name"]?.jsonPrimitive?.content ?: ""
                         onToolStart(id, name)
+                    } else {
+                        onNonToolBlockStart()
                     }
                 }
                 "content_block_delta" -> {
@@ -298,8 +309,7 @@ class ClaudeService {
                     }
                 }
                 "content_block_stop" -> {
-                    // Check if a tool block just ended — we track via index but simplified here
-                    onToolEnd()
+                    onBlockStop()
                 }
                 "message_delta" -> {
                     val delta = element["delta"]?.jsonObject ?: return

@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -263,10 +265,7 @@ private fun MicButton(
             .background(bgColor)
     ) {
         Icon(
-            imageVector = if (isRecording)
-                Icons.Default.Settings // mic-off placeholder; use real mic icons
-            else
-                Icons.Default.Settings, // mic placeholder
+            imageVector = if (isRecording) Icons.Default.MicOff else Icons.Default.Mic,
             contentDescription = if (isRecording) "Stop recording" else "Start recording",
             tint = Color.White,
             modifier = Modifier.size(28.dp)
