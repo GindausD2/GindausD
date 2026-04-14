@@ -3,6 +3,7 @@ package com.max.ai.ui
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -18,23 +19,33 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.max.ai.OrbState
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
+import com.max.ai.R
 import com.max.ai.ui.components.MessageBubble
 import com.max.ai.ui.components.OrbComponent
 import com.max.ai.ui.theme.RecordingRed
 import com.max.ai.ui.theme.ThinkingPurple
 import com.max.ai.viewmodels.HomeViewModel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import java.text.SimpleDateFormat
-import java.util.*
+
+// Deep-space background colors
+private val BgTop    = Color(0xFF06030F)
+private val BgMid    = Color(0xFF0E0620)
+private val BgBottom = Color(0xFF100825)
+private val AccentViolet = Color(0xFF7C3AED)
+private val AccentIndigo = Color(0xFF4F46E5)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -45,23 +56,13 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
-    // Live clock state
-    var clockText by remember { mutableStateOf(formatTime()) }
-    LaunchedEffect(Unit) {
-        while (isActive) {
-            clockText = formatTime()
-            delay(1000L)
-        }
-    }
-
-    // Auto-scroll to bottom when new messages arrive
+    // Auto-scroll when messages arrive
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.lastIndex)
         }
     }
 
-    // Error Snackbar host
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.error) {
         if (uiState.error != null) {
@@ -72,150 +73,145 @@ fun HomeScreen(
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            HomeTopBar(
-                onRefresh = viewModel::refreshHistory,
-                onSettings = onNavigateToSettings
+    // Root: deep-space gradient + ambient blobs
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(colors = listOf(BgTop, BgMid, BgBottom))
             )
-        },
-        containerColor = Color.White
-    ) { paddingValues ->
-        Column(
+    ) {
+        // Ambient purple glow blobs
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            // ── Chat transcript ──────────────────────────────────────────────
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(vertical = 12.dp)
-            ) {
-                if (uiState.messages.isEmpty()) {
-                    item {
-                        EmptyTranscriptPlaceholder()
-                    }
-                }
-                items(
-                    items = uiState.messages,
-                    key = { it.id }
-                ) { message ->
-                    MessageBubble(
-                        content = message.content,
-                        isUser = message.role == "user",
-                        isStreaming = message.isStreaming
+                .size(380.dp)
+                .offset(x = 60.dp, y = 380.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(AccentViolet.copy(alpha = 0.12f), Color.Transparent)
                     )
-                }
-            }
+                )
+                .blur(80.dp)
+        )
+        Box(
+            modifier = Modifier
+                .size(260.dp)
+                .offset(x = (-80).dp, y = 40.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(AccentIndigo.copy(alpha = 0.09f), Color.Transparent)
+                    )
+                )
+                .blur(60.dp)
+        )
 
-            // ── Status indicator ─────────────────────────────────────────────
-            AnimatedVisibility(
-                visible = uiState.statusMessage != null,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 4.dp)
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(
-                            if (uiState.isRecording) RecordingRed.copy(alpha = 0.12f)
-                            else ThinkingPurple.copy(alpha = 0.10f)
-                        )
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Pulsing dot
-                        PulsingDot(
-                            color = if (uiState.isRecording) RecordingRed else ThinkingPurple
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            text = uiState.statusMessage ?: "",
-                            color = if (uiState.isRecording) RecordingRed else ThinkingPurple,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
-
-            // ── Bottom: clock + orb + mic button ─────────────────────────────
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                GlassTopBar(
+                    onRefresh = viewModel::refreshHistory,
+                    onSettings = onNavigateToSettings
+                )
+            },
+            containerColor = Color.Transparent
+        ) { paddingValues ->
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp, top = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .padding(paddingValues)
             ) {
-                // Live clock
-                Text(
-                    text = clockText,
-                    fontSize = 13.sp,
-                    color = Color(0xFF9CA3AF),
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 1.sp
-                )
+                // ── Chat transcript ──────────────────────────────────────────
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(vertical = 14.dp)
+                ) {
+                    if (uiState.messages.isEmpty()) {
+                        item { EmptyTranscriptPlaceholder() }
+                    }
+                    items(items = uiState.messages, key = { it.id }) { message ->
+                        MessageBubble(
+                            content = message.content,
+                            isUser = message.role == "user",
+                            isStreaming = message.isStreaming
+                        )
+                    }
+                }
 
-                Spacer(Modifier.height(12.dp))
+                // ── Status indicator ─────────────────────────────────────────
+                AnimatedVisibility(
+                    visible = uiState.statusMessage != null,
+                    enter = fadeIn() + expandVertically(),
+                    exit  = fadeOut() + shrinkVertically()
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp)
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(
+                                if (uiState.isRecording) RecordingRed.copy(alpha = 0.14f)
+                                else ThinkingPurple.copy(alpha = 0.12f)
+                            )
+                            .padding(horizontal = 14.dp, vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            PulsingDot(color = if (uiState.isRecording) RecordingRed else ThinkingPurple)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = uiState.statusMessage ?: "",
+                                color = if (uiState.isRecording) RecordingRed else ThinkingPurple,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+                }
 
-                // Orb
-                OrbComponent(
-                    state = uiState.orbState,
-                    size = 128.dp
-                )
-
-                Spacer(Modifier.height(16.dp))
-
-                // Mic button
-                MicButton(
+                // ── Bottom glass dock ─────────────────────────────────────────
+                GlassBottomDock(
+                    orbState = uiState.orbState,
                     isRecording = uiState.isRecording,
                     isThinking = uiState.isThinking,
-                    onClick = viewModel::onMicPressed
+                    onMicPressed = viewModel::onMicPressed
                 )
             }
-
-            // ── Bottom status bar ─────────────────────────────────────────────
-            BottomStatusBar(
-                isRecording = uiState.isRecording,
-                isThinking = uiState.isThinking
-            )
         }
     }
 }
 
-// ─── Top bar ──────────────────────────────────────────────────────────────────
+// ─── Glass top bar ────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeTopBar(
+private fun GlassTopBar(
     onRefresh: () -> Unit,
     onSettings: () -> Unit
 ) {
     TopAppBar(
         title = {
-            Text(
-                text = "Max",
-                fontWeight = FontWeight.Bold,
-                fontSize = 22.sp,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Center,
-                color = Color(0xFF1A1A2E)
-            )
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Image(
+                    painter = painterResource(id = R.drawable.ic_max_logo),
+                    contentDescription = "Max",
+                    modifier = Modifier
+                        .height(28.dp)
+                        .width(64.dp),
+                    colorFilter = ColorFilter.tint(Color.White)
+                )
+            }
         },
         navigationIcon = {
             IconButton(onClick = onRefresh) {
                 Icon(
                     imageVector = Icons.Default.Refresh,
-                    contentDescription = "Refresh",
-                    tint = Color(0xFF6B7280)
+                    contentDescription = "New chat",
+                    tint = Color.White.copy(alpha = 0.70f)
                 )
             }
         },
@@ -224,15 +220,85 @@ private fun HomeTopBar(
                 Icon(
                     imageVector = Icons.Default.Settings,
                     contentDescription = "Settings",
-                    tint = Color(0xFF6B7280)
+                    tint = Color.White.copy(alpha = 0.70f)
                 )
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color.White,
-            titleContentColor = Color(0xFF1A1A2E)
+            containerColor = Color.White.copy(alpha = 0.07f),
+            titleContentColor = Color.White
+        ),
+        modifier = Modifier.border(
+            width = 0.5.dp,
+            brush = Brush.horizontalGradient(
+                colors = listOf(
+                    Color.White.copy(alpha = 0.18f),
+                    Color.White.copy(alpha = 0.06f)
+                )
+            ),
+            shape = RoundedCornerShape(0.dp)
         )
     )
+}
+
+// ─── Glass bottom dock ────────────────────────────────────────────────────────
+
+@Composable
+private fun GlassBottomDock(
+    orbState: OrbState,
+    isRecording: Boolean,
+    isThinking: Boolean,
+    onMicPressed: () -> Unit
+) {
+    val dockShape = RoundedCornerShape(32.dp)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 14.dp, vertical = 10.dp)
+            .shadow(
+                elevation = 24.dp,
+                shape = dockShape,
+                ambientColor = AccentViolet.copy(alpha = 0.20f),
+                spotColor = Color.Black.copy(alpha = 0.35f)
+            )
+            .clip(dockShape)
+            .background(Color.White.copy(alpha = 0.10f))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
+                    endY = 120f
+                )
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.50f),
+                        Color.White.copy(alpha = 0.18f),
+                        Color.White.copy(alpha = 0.04f),
+                        Color.Transparent
+                    )
+                ),
+                shape = dockShape
+            )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, top = 24.dp, bottom = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            OrbComponent(state = orbState, size = 128.dp)
+
+            Spacer(Modifier.height(20.dp))
+
+            MicButton(
+                isRecording = isRecording,
+                isThinking = isThinking,
+                onClick = onMicPressed
+            )
+        }
+    }
 }
 
 // ─── Mic button ───────────────────────────────────────────────────────────────
@@ -249,27 +315,60 @@ private fun MicButton(
         label = "mic_scale"
     )
 
-    val bgColor = when {
+    val baseColor = when {
         isRecording -> RecordingRed
-        isThinking -> ThinkingPurple.copy(alpha = 0.6f)
-        else -> Color(0xFF7C3AED)
+        isThinking  -> ThinkingPurple.copy(alpha = 0.6f)
+        else        -> AccentViolet
     }
 
-    IconButton(
-        onClick = onClick,
-        enabled = !isThinking,
+    Box(
         modifier = Modifier
             .scale(scale)
-            .size(60.dp)
-            .clip(CircleShape)
-            .background(bgColor)
+            .size(64.dp),
+        contentAlignment = Alignment.Center
     ) {
-        Icon(
-            imageVector = if (isRecording) Icons.Default.MicOff else Icons.Default.Mic,
-            contentDescription = if (isRecording) "Stop recording" else "Start recording",
-            tint = Color.White,
-            modifier = Modifier.size(28.dp)
+        // Glow ring
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(baseColor.copy(alpha = 0.30f), Color.Transparent)
+                    )
+                )
+                .blur(12.dp)
         )
+        // Button body
+        IconButton(
+            onClick = onClick,
+            enabled = !isThinking,
+            modifier = Modifier
+                .size(60.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.linearGradient(colors = listOf(baseColor, baseColor.copy(alpha = 0.75f)))
+                )
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+                        endY = 60f
+                    )
+                )
+                .border(
+                    0.75.dp,
+                    Brush.linearGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.45f), Color.Transparent)
+                    ),
+                    CircleShape
+                )
+        ) {
+            Icon(
+                imageVector = if (isRecording) Icons.Default.MicOff else Icons.Default.Mic,
+                contentDescription = if (isRecording) "Stop" else "Record",
+                tint = Color.White,
+                modifier = Modifier.size(26.dp)
+            )
+        }
     }
 }
 
@@ -295,30 +394,6 @@ private fun PulsingDot(color: Color) {
     )
 }
 
-// ─── Bottom status bar ────────────────────────────────────────────────────────
-
-@Composable
-private fun BottomStatusBar(
-    isRecording: Boolean,
-    isThinking: Boolean
-) {
-    AnimatedVisibility(
-        visible = isRecording || isThinking,
-        enter = expandVertically(expandFrom = Alignment.Bottom),
-        exit = shrinkVertically(shrinkTowards = Alignment.Bottom)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(4.dp)
-                .background(
-                    if (isRecording) RecordingRed
-                    else ThinkingPurple
-                )
-        )
-    }
-}
-
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
 @Composable
@@ -326,28 +401,21 @@ private fun EmptyTranscriptPlaceholder() {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 40.dp),
+            .padding(top = 50.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = "Hi! I'm Max.",
-            fontSize = 20.sp,
+            fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF1A1A2E)
+            color = Color.White
         )
         Spacer(Modifier.height(8.dp))
         Text(
             text = "Tap the mic to start a conversation.",
             fontSize = 15.sp,
-            color = Color(0xFF9CA3AF),
+            color = Color.White.copy(alpha = 0.45f),
             textAlign = TextAlign.Center
         )
     }
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-private fun formatTime(): String {
-    val sdf = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
-    return sdf.format(Date())
 }

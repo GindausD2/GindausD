@@ -2,44 +2,54 @@ package com.max.ai.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// ─── Brand colors ─────────────────────────────────────────────────────────────
+// ─── Brand palette ─────────────────────────────────────────────────────────────
 
-val Purple950 = Color(0xFF2D1B69)
-val Purple700 = Color(0xFF4F46E5)
-val Purple600 = Color(0xFF7C3AED)
-val Purple400 = Color(0xFFC084FC)
-val Purple200 = Color(0xFFE9D5FF)
+val Purple950  = Color(0xFF07041A)
+val Purple900  = Color(0xFF160A38)
+val Purple800  = Color(0xFF2D1B69)
+val Purple700  = Color(0xFF4F46E5)
+val Purple600  = Color(0xFF7C3AED)
+val Purple400  = Color(0xFFA78BFA)
+val Purple200  = Color(0xFFE9D5FF)
 
-val GlassWhite = Color(0x2EFFFFFF)       // 18% white
-val GlassBorder = Color(0x40FFFFFF)      // 25% white
-val GlassSurface = Color(0x1AFFFFFF)     // 10% white
+// Deep-space home background stops
+val HomeBgTop    = Color(0xFF06030F)
+val HomeBgMid    = Color(0xFF0E0620)
+val HomeBgBottom = Color(0xFF100825)
 
-val UserBubble = Color(0xFFE8E8EA)
-val AiBubble = Color(0xFFFFFFFF)
+// Glass surface tokens
+val GlassWhite   = Color(0x24FFFFFF)   // ~14% white
+val GlassBorder  = Color(0x80FFFFFF)   // ~50% white (for gradient start)
+val GlassSurface = Color(0x1AFFFFFF)   // ~10% white
 
-val RecordingRed = Color(0xFFEF4444)
+// Chat bubble colors
+val UserBubbleStart = Color(0xFF8B21F0)
+val UserBubbleEnd   = Color(0xFF4F1FDE)
+
+// Status colors
+val RecordingRed   = Color(0xFFEF4444)
 val ThinkingPurple = Color(0xFF7C3AED)
-val SpeakingBlue = Color(0xFF3B82F6)
+val SpeakingBlue   = Color(0xFF3B82F6)
 
-// ─── Gradient stops ───────────────────────────────────────────────────────────
+// ─── Welcome screen gradient ───────────────────────────────────────────────────
 
 val WelcomeGradientColors = listOf(
+    Color(0xFF07041A),
+    Color(0xFF160A38),
     Color(0xFF2D1B69),
     Color(0xFF4F46E5),
-    Color(0xFF7C3AED),
-    Color(0xFFC084FC)
+    Color(0xFF7C3AED)
 )
 
-// ─── Orb gradient color sets by state ────────────────────────────────────────
+// ─── Orb gradient sets by state ───────────────────────────────────────────────
 
 val OrbIdleColors = listOf(
-    Color(0xFF7C3AED),
-    Color(0xFF4F46E5),
-    Color(0xFF6D28D9)
+    Color(0xFF8B21F0),
+    Color(0xFF6D28D9),
+    Color(0xFF4F46E5)
 )
 val OrbListeningColors = listOf(
     Color(0xFFEF4444),
@@ -57,31 +67,31 @@ val OrbSpeakingColors = listOf(
     Color(0xFF8B5CF6)
 )
 
-// ─── Light color scheme (home screen uses white bg) ──────────────────────────
+// ─── Dark color scheme ────────────────────────────────────────────────────────
 
-private val MaxLightColors = lightColorScheme(
-    primary = Purple600,
-    onPrimary = Color.White,
-    primaryContainer = Purple200,
-    onPrimaryContainer = Purple950,
-    secondary = Purple700,
-    onSecondary = Color.White,
-    background = Color.White,
-    onBackground = Color(0xFF1A1A2E),
-    surface = Color.White,
-    onSurface = Color(0xFF1A1A2E),
-    error = Color(0xFFB00020),
-    onError = Color.White
+private val MaxDarkColors = darkColorScheme(
+    primary              = Purple400,
+    onPrimary            = Color.White,
+    primaryContainer     = Purple800,
+    onPrimaryContainer   = Purple200,
+    secondary            = Purple700,
+    onSecondary          = Color.White,
+    background           = HomeBgTop,
+    onBackground         = Color.White,
+    surface              = HomeBgMid,
+    onSurface            = Color.White,
+    surfaceVariant       = Color(0xFF1C1030),
+    onSurfaceVariant     = Color.White.copy(alpha = 0.70f),
+    error                = Color(0xFFCF6679),
+    onError              = Color.White
 )
 
 // ─── Theme composable ─────────────────────────────────────────────────────────
 
 @Composable
-fun MaxAITheme(
-    content: @Composable () -> Unit
-) {
+fun MaxAITheme(content: @Composable () -> Unit) {
     MaterialTheme(
-        colorScheme = MaxLightColors,
+        colorScheme = MaxDarkColors,
         content = content
     )
 }

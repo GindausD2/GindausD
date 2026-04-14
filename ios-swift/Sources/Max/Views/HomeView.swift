@@ -10,12 +10,41 @@ struct HomeView: View {
     @State private var showSettings: Bool = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            transcriptArea
-            bottomBar
+        ZStack {
+            // ── Deep-space background ──────────────────────────────────────────
+            LinearGradient(
+                stops: [
+                    .init(color: Color(hex: "#06030F"), location: 0.0),
+                    .init(color: Color(hex: "#0E0620"), location: 0.5),
+                    .init(color: Color(hex: "#100825"), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+
+            // Ambient purple glow blobs
+            Circle()
+                .fill(Color(hex: "#7C3AED").opacity(0.12))
+                .frame(width: 380, height: 380)
+                .blur(radius: 100)
+                .offset(x: 80, y: 340)
+                .allowsHitTesting(false)
+
+            Circle()
+                .fill(Color(hex: "#4F46E5").opacity(0.08))
+                .frame(width: 260, height: 260)
+                .blur(radius: 80)
+                .offset(x: -100, y: 60)
+                .allowsHitTesting(false)
+
+            VStack(spacing: 0) {
+                topBar
+                transcriptArea
+                bottomDock
+            }
         }
-        .background(Color(.systemBackground))
+        .environment(\.colorScheme, .dark)
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
@@ -25,7 +54,7 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Top Bar
+    // MARK: - Top Bar (glass blur)
 
     private var topBar: some View {
         HStack {
@@ -34,15 +63,13 @@ struct HomeView: View {
             } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(.white.opacity(0.75))
                     .frame(width: 40, height: 40)
             }
 
             Spacer()
 
-            Text("Max")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.primary)
+            MaxLogoView(color: .white, width: 52)
 
             Spacer()
 
@@ -50,16 +77,23 @@ struct HomeView: View {
                 showSettings = true
             } label: {
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Color.primary)
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
                     .frame(width: 40, height: 40)
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(.systemBackground))
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial)
         .overlay(
-            Divider(),
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.18), .white.opacity(0.04)],
+                        startPoint: .leading, endPoint: .trailing
+                    )
+                )
+                .frame(height: 0.5),
             alignment: .bottom
         )
     }
@@ -71,15 +105,11 @@ struct HomeView: View {
             ScrollView {
                 LazyVStack(spacing: 4) {
                     if viewModel.messages.isEmpty {
-                        emptyState
-                            .id("empty")
+                        emptyState.id("empty")
                     } else {
                         ForEach(viewModel.messages) { message in
-                            TranscriptBubble(
-                                message: message,
-                                isStreaming: message.isStreaming
-                            )
-                            .id(message.id)
+                            TranscriptBubble(message: message, isStreaming: message.isStreaming)
+                                .id(message.id)
                         }
                     }
                 }
@@ -105,10 +135,10 @@ struct HomeView: View {
             OrbView(state: .idle, size: 72)
             Text("Hi! I'm Max")
                 .font(.title2.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(.white)
             Text("Tap the mic to start talking,\nor type a message")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.white.opacity(0.5))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -116,153 +146,227 @@ struct HomeView: View {
         .padding(.horizontal, 40)
     }
 
-    // MARK: - Bottom Bar
+    // MARK: - Bottom Dock (floating glass panel)
 
-    private var bottomBar: some View {
+    private var bottomDock: some View {
         VStack(spacing: 0) {
-            // Status indicator bar
-            statusBar
+            statusIndicator
 
-            VStack(spacing: 16) {
-                // Clock
-                ClockView()
-
-                // Orb
+            VStack(spacing: 18) {
                 OrbView(state: viewModel.orbState, size: 128)
-                    .onTapGesture {
-                        viewModel.handleOrbTap()
-                    }
-
-                // Mic button + text input
+                    .onTapGesture { viewModel.handleOrbTap() }
                 inputRow
             }
             .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 24)
+            .padding(.top, 18)
+            .padding(.bottom, 28)
         }
-        .background(Color(.systemBackground))
-        .overlay(
-            Divider(),
-            alignment: .top
+        .background(
+            ZStack {
+                // Frosted glass
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .fill(.regularMaterial)
+                // White tint
+                RoundedRectangle(cornerRadius: 32, style: .continuous)
+                    .fill(Color.white.opacity(0.05))
+                // Specular top streak
+                VStack(spacing: 0) {
+                    RoundedRectangle(cornerRadius: 32, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.18), .clear],
+                                startPoint: .top,
+                                endPoint: UnitPoint(x: 0.5, y: 0.4)
+                            )
+                        )
+                        .frame(height: 56)
+                    Spacer()
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 32, style: .continuous))
+            }
         )
+        .overlay(
+            RoundedRectangle(cornerRadius: 32, style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white.opacity(0.50), location: 0.0),
+                            .init(color: .white.opacity(0.18), location: 0.35),
+                            .init(color: .white.opacity(0.04), location: 0.75),
+                            .init(color: .clear,               location: 1.0)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1.0
+                )
+        )
+        .padding(.horizontal, 14)
+        .padding(.bottom, 10)
+        .shadow(color: .black.opacity(0.35), radius: 28, x: 0, y: -6)
+        .shadow(color: Color(hex: "#7C3AED").opacity(0.08), radius: 40, x: 0, y: -10)
     }
 
-    private var statusBar: some View {
+    // MARK: - Status Indicator
+
+    private var statusIndicator: some View {
         HStack(spacing: 8) {
             Circle()
                 .fill(statusColor)
-                .frame(width: 8, height: 8)
-                .shadow(color: statusColor.opacity(0.6), radius: 4)
+                .frame(width: 7, height: 7)
+                .shadow(color: statusColor.opacity(0.8), radius: 5)
             Text(statusText)
-                .font(.caption.weight(.medium))
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(statusColor)
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 6)
+        .padding(.vertical, 7)
         .frame(maxWidth: .infinity)
-        .background(statusColor.opacity(0.08))
+        .background(statusColor.opacity(0.10))
         .animation(.easeInOut(duration: 0.3), value: viewModel.conversationState)
+        .opacity(viewModel.conversationState == .idle ? 0 : 1)
     }
 
     private var statusColor: Color {
         switch viewModel.conversationState {
-        case .idle: return Color.secondary
-        case .listening: return Color.red
-        case .thinking: return Color(hex: "#7C3AED")
-        case .speaking: return Color(hex: "#4F46E5")
+        case .idle:      return .white.opacity(0.4)
+        case .listening: return Color(hex: "#EF4444")
+        case .thinking:  return Color(hex: "#7C3AED")
+        case .speaking:  return Color(hex: "#4F46E5")
         }
     }
 
     private var statusText: String {
         switch viewModel.conversationState {
-        case .idle: return "Idle"
+        case .idle:      return "Idle"
         case .listening: return "Listening..."
-        case .thinking: return "Thinking..."
-        case .speaking: return "Speaking..."
+        case .thinking:  return "Thinking..."
+        case .speaking:  return "Speaking..."
         }
     }
 
+    // MARK: - Input Row
+
     private var inputRow: some View {
         HStack(spacing: 12) {
-            // Text input field
-            HStack {
+            // Glass text input
+            HStack(spacing: 0) {
                 TextField("Message Max...", text: $viewModel.inputText, axis: .vertical)
                     .font(.body)
+                    .foregroundStyle(.white)
+                    .tint(Color(hex: "#A78BFA"))
                     .lineLimit(1...4)
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .onSubmit {
-                        viewModel.sendTextMessage()
-                    }
+                    .padding(.vertical, 11)
+                    .onSubmit { viewModel.sendTextMessage() }
 
                 if !viewModel.inputText.isEmpty {
                     Button {
                         viewModel.sendTextMessage()
                     } label: {
-                        Image(systemName: "arrow.up.circle.fill")
-                            .font(.system(size: 28))
-                            .foregroundStyle(Color(hex: "#7C3AED"))
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 30, height: 30)
+                            .overlay(
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(.white)
+                            )
                     }
                     .padding(.trailing, 8)
                     .transition(.scale.combined(with: .opacity))
                 }
             }
             .background(
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .fill(Color(.secondarySystemBackground))
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color.white.opacity(0.07))
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.14), .clear],
+                                startPoint: .top,
+                                endPoint: UnitPoint(x: 0.5, y: 0.5)
+                            )
+                        )
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [.white.opacity(0.35), .white.opacity(0.06)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 0.75
+                        )
+                }
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.inputText.isEmpty)
 
-            // Mic button
+            // Mic button with glow rings
             Button {
                 viewModel.handleMicTap()
             } label: {
                 ZStack {
+                    // Outer glow ring
                     Circle()
-                        .fill(micButtonColor)
+                        .fill(micColor.opacity(0.18))
+                        .frame(width: 62, height: 62)
+                        .blur(radius: 6)
+
+                    // Button body
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [micColor, micColor.opacity(0.75)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
                         .frame(width: 48, height: 48)
-                        .shadow(color: micButtonColor.opacity(0.4), radius: 8, y: 3)
+                        .overlay(
+                            Circle().fill(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.25), .clear],
+                                    startPoint: .top, endPoint: .center
+                                )
+                            )
+                        )
+                        .overlay(
+                            Circle().strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.45), .clear],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.75
+                            )
+                        )
+                        .shadow(color: micColor.opacity(0.55), radius: 10, x: 0, y: 4)
+                        .shadow(color: micColor.opacity(0.25), radius: 24, x: 0, y: 8)
 
                     Image(systemName: viewModel.conversationState == .listening ? "stop.fill" : "mic.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.white)
                 }
             }
-            .scaleEffect(viewModel.conversationState == .listening ? 1.1 : 1.0)
+            .scaleEffect(viewModel.conversationState == .listening ? 1.08 : 1.0)
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.conversationState)
         }
     }
 
-    private var micButtonColor: Color {
+    private var micColor: Color {
         switch viewModel.conversationState {
-        case .listening: return Color.red
-        case .thinking, .speaking: return Color.gray
-        default: return Color(hex: "#7C3AED")
+        case .listening:          return Color(hex: "#EF4444")
+        case .thinking, .speaking: return Color(hex: "#6B7280")
+        default:                  return Color(hex: "#7C3AED")
         }
-    }
-}
-
-// MARK: - Clock View
-
-private struct ClockView: View {
-    @State private var now = Date()
-
-    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
-    private var timeString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: now)
-    }
-
-    var body: some View {
-        Text(timeString)
-            .font(.system(size: 14, weight: .medium, design: .monospaced))
-            .foregroundStyle(Color.secondary)
-            .monospacedDigit()
-            .onReceive(timer) { date in
-                now = date
-            }
     }
 }
 
@@ -276,37 +380,28 @@ final class HomeViewModel: ObservableObject {
     @Published var streamingText: String = ""
 
     private let storage = StorageService.shared
-    private let claude = ClaudeService.shared
-    private let voice = VoiceService.shared
+    private let claude  = ClaudeService.shared
+    private let voice   = VoiceService.shared
 
     private var streamingMessageId: String? = nil
     private var cancellables = Set<AnyCancellable>()
 
     var orbState: OrbState {
         switch conversationState {
-        case .idle: return .idle
+        case .idle:      return .idle
         case .listening: return .listening
-        case .thinking: return .thinking
-        case .speaking: return .speaking
+        case .thinking:  return .thinking
+        case .speaking:  return .speaking
         }
     }
 
     // MARK: - Lifecycle
 
-    func loadMessages() {
-        messages = storage.loadMessages()
-    }
+    func loadMessages()  { messages = storage.loadMessages() }
+    func clearHistory()  { storage.clearMessages(); messages = [] }
+    func startNewChat()  { clearHistory() }
 
-    func clearHistory() {
-        storage.clearMessages()
-        messages = []
-    }
-
-    func startNewChat() {
-        clearHistory()
-    }
-
-    // MARK: - Input Handling
+    // MARK: - Input
 
     func sendTextMessage() {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -318,18 +413,13 @@ final class HomeViewModel: ObservableObject {
 
     func handleMicTap() {
         switch conversationState {
-        case .idle:
-            startListening()
-        case .listening:
-            stopListening()
-        case .thinking, .speaking:
-            stopSpeaking()
+        case .idle:              startListening()
+        case .listening:         stopListening()
+        case .thinking, .speaking: stopSpeaking()
         }
     }
 
-    func handleOrbTap() {
-        handleMicTap()
-    }
+    func handleOrbTap() { handleMicTap() }
 
     // MARK: - Voice
 
@@ -348,7 +438,6 @@ final class HomeViewModel: ObservableObject {
     private func stopListening() {
         guard conversationState == .listening else { return }
         conversationState = .thinking
-
         Task {
             let settings = storage.loadSettings()
             guard !settings.apiKey.isEmpty else {
@@ -356,13 +445,11 @@ final class HomeViewModel: ObservableObject {
                 addSystemError("Please add your API key in Settings to use voice.")
                 return
             }
-
             guard let transcription = await voice.stopAndTranscribe(apiKey: settings.apiKey),
                   !transcription.isEmpty else {
                 conversationState = .idle
                 return
             }
-
             addUserMessage(transcription)
             streamResponse(userText: transcription)
         }
@@ -394,14 +481,11 @@ final class HomeViewModel: ObservableObject {
             addSystemError("Please add your API key in Settings.")
             return
         }
-
         conversationState = .thinking
 
-        // Create placeholder streaming message
         let streamId = UUID().uuidString
         streamingMessageId = streamId
-        var streamingMsg = Message(id: streamId, role: "assistant", content: "", isStreaming: true)
-        messages.append(streamingMsg)
+        messages.append(Message(id: streamId, role: "assistant", content: "", isStreaming: true))
 
         var fullText = ""
 
@@ -411,7 +495,6 @@ final class HomeViewModel: ObservableObject {
         ) { [weak self] chunk in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
-
                 switch chunk {
                 case .text(let text):
                     fullText += text
@@ -420,19 +503,15 @@ final class HomeViewModel: ObservableObject {
                         self.messages[idx].content = fullText
                         self.messages[idx].isStreaming = true
                     }
-
                 case .toolStart(let name):
-                    // Optionally show tool name in UI
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
                         self.messages[idx].content = fullText + (fullText.isEmpty ? "" : "\n") + "_Using \(name)..._"
                         self.messages[idx].isStreaming = true
                     }
-
                 case .toolDone:
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
                         self.messages[idx].content = fullText
                     }
-
                 case .done:
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
                         self.messages[idx].content = fullText
@@ -441,11 +520,9 @@ final class HomeViewModel: ObservableObject {
                     self.streamingMessageId = nil
                     self.streamingText = ""
                     self.storage.saveMessages(self.messages)
-
                     if settings.voiceEnabled && !fullText.isEmpty {
                         self.conversationState = .speaking
                         self.voice.speak(fullText)
-                        // Wait for speech to finish
                         Task {
                             while self.voice.isSpeaking {
                                 try? await Task.sleep(nanoseconds: 200_000_000)
@@ -455,12 +532,9 @@ final class HomeViewModel: ObservableObject {
                     } else {
                         self.conversationState = .idle
                     }
-
                 case .error(let errText):
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        if fullText.isEmpty {
-                            self.messages[idx].content = "Error: \(errText)"
-                        }
+                        if fullText.isEmpty { self.messages[idx].content = "Error: \(errText)" }
                         self.messages[idx].isStreaming = false
                     }
                     self.streamingMessageId = nil
@@ -473,7 +547,15 @@ final class HomeViewModel: ObservableObject {
     }
 }
 
+// MARK: - ConversationState
+
+enum ConversationState: Equatable {
+    case idle
+    case listening
+    case thinking
+    case speaking
+}
+
 #Preview {
-    HomeView()
-        .environmentObject(AuthService.shared)
+    HomeView().environmentObject(AuthService.shared)
 }

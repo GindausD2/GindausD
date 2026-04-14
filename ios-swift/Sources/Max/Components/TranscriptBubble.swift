@@ -11,85 +11,136 @@ struct TranscriptBubble: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             if isUser {
-                Spacer(minLength: 48)
+                Spacer(minLength: 56)
                 userBubble
             } else {
                 aiBubble
-                Spacer(minLength: 48)
+                Spacer(minLength: 56)
             }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 2)
+        .padding(.vertical, 3)
     }
 
-    // MARK: - User Bubble
+    // MARK: - User Bubble — Violet liquid glass
 
     private var userBubble: some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        VStack(alignment: .trailing, spacing: 5) {
             Text(message.content)
                 .font(.body)
-                .foregroundStyle(Color(red: 0.1, green: 0.1, blue: 0.12))
+                .foregroundStyle(.white)
                 .textSelection(.enabled)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 11)
+                .padding(.vertical, 12)
                 .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color(red: 0.91, green: 0.91, blue: 0.914))
+                    ZStack {
+                        // Violet gradient base
+                        BubbleShape(isUser: true)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        Color(red: 0.58, green: 0.20, blue: 0.95),
+                                        Color(red: 0.31, green: 0.12, blue: 0.88)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        // Specular top highlight
+                        BubbleShape(isUser: true)
+                            .fill(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.30), .clear],
+                                    startPoint: .top,
+                                    endPoint: UnitPoint(x: 0.5, y: 0.5)
+                                )
+                            )
+                        // Gradient edge
+                        BubbleShape(isUser: true)
+                            .stroke(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.45), .white.opacity(0.05)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.75
+                            )
+                    }
                 )
-                .clipShape(
-                    BubbleShape(isUser: true)
+                .shadow(
+                    color: Color(red: 0.48, green: 0.16, blue: 0.88).opacity(0.50),
+                    radius: 12, x: 0, y: 5
                 )
-            timestampText
-                .padding(.trailing, 4)
+                .shadow(
+                    color: Color(red: 0.48, green: 0.16, blue: 0.88).opacity(0.20),
+                    radius: 30, x: 0, y: 10
+                )
+            timestampText.padding(.trailing, 4)
         }
     }
 
-    // MARK: - AI Bubble
+    // MARK: - AI Bubble — Frosted glass
 
     private var aiBubble: some View {
-        HStack(alignment: .bottom, spacing: 8) {
-            // AI avatar dot
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.6, green: 0.2, blue: 0.9),
-                            Color(red: 0.49, green: 0.23, blue: 0.93)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
+        HStack(alignment: .bottom, spacing: 10) {
+            // Avatar
+            MaxLogoView(color: .white, width: 16)
+                .frame(width: 28, height: 28)
+                .background(
+                    Circle().fill(
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.58, green: 0.20, blue: 0.95),
+                                Color(red: 0.31, green: 0.12, blue: 0.88)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
                     )
                 )
-                .frame(width: 26, height: 26)
                 .overlay(
-                    Text("M")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
+                    Circle().strokeBorder(.white.opacity(0.25), lineWidth: 0.75)
                 )
                 .offset(y: 2)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 5) {
                 ZStack(alignment: .bottomTrailing) {
                     Text(message.content.isEmpty && isStreaming ? " " : message.content)
                         .font(.body)
-                        .foregroundStyle(Color(red: 0.1, green: 0.1, blue: 0.12))
+                        .foregroundStyle(.white.opacity(0.92))
                         .textSelection(.enabled)
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
-                        .frame(minWidth: isStreaming && message.content.isEmpty ? 60 : 0, alignment: .leading)
+                        .padding(.vertical, 12)
+                        .frame(
+                            minWidth: isStreaming && message.content.isEmpty ? 64 : 0,
+                            alignment: .leading
+                        )
                         .background(
-                            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                .fill(Color.white)
-                                .shadow(
-                                    color: Color.black.opacity(0.08),
-                                    radius: 6,
-                                    x: 0,
-                                    y: 2
+                            ZStack {
+                                // Frosted material base
+                                BubbleShape(isUser: false).fill(.thinMaterial)
+                                // Tint
+                                BubbleShape(isUser: false).fill(Color.white.opacity(0.08))
+                                // Specular
+                                BubbleShape(isUser: false).fill(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.18), .clear],
+                                        startPoint: .top,
+                                        endPoint: UnitPoint(x: 0.5, y: 0.5)
+                                    )
                                 )
+                                // Gradient edge
+                                BubbleShape(isUser: false).stroke(
+                                    LinearGradient(
+                                        colors: [.white.opacity(0.35), .white.opacity(0.04)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ),
+                                    lineWidth: 0.75
+                                )
+                            }
                         )
-                        .clipShape(
-                            BubbleShape(isUser: false)
-                        )
+                        .shadow(color: .black.opacity(0.22), radius: 8, x: 0, y: 3)
 
                     if isStreaming {
                         TypingIndicator()
@@ -97,9 +148,7 @@ struct TranscriptBubble: View {
                             .padding(.bottom, 10)
                     }
                 }
-
-                timestampText
-                    .padding(.leading, 4)
+                timestampText.padding(.leading, 4)
             }
         }
     }
@@ -107,17 +156,17 @@ struct TranscriptBubble: View {
     private var timestampText: some View {
         Text(timeString(from: message.timestamp))
             .font(.caption2)
-            .foregroundStyle(Color.secondary.opacity(0.65))
+            .foregroundStyle(.white.opacity(0.32))
     }
 
     private func timeString(from date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "h:mm a"
-        return formatter.string(from: date)
+        let f = DateFormatter()
+        f.dateFormat = "h:mm a"
+        return f.string(from: date)
     }
 }
 
-// MARK: - Bubble Shape (tail)
+// MARK: - Bubble Shape (with tail)
 
 struct BubbleShape: Shape {
     let isUser: Bool
@@ -131,31 +180,40 @@ struct BubbleShape: Shape {
         let r = min(cornerRadius, h / 2)
 
         if isUser {
-            // User bubble: tail at bottom-right
             path.move(to: CGPoint(x: r, y: 0))
             path.addLine(to: CGPoint(x: w - r, y: 0))
-            path.addArc(center: CGPoint(x: w - r, y: r), radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+            path.addArc(center: CGPoint(x: w - r, y: r), radius: r,
+                        startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
             path.addLine(to: CGPoint(x: w, y: h - r - tailSize))
-            path.addArc(center: CGPoint(x: w - r, y: h - r - tailSize), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+            path.addArc(center: CGPoint(x: w - r, y: h - r - tailSize), radius: r,
+                        startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
             path.addLine(to: CGPoint(x: w - r + 2, y: h - tailSize))
-            path.addQuadCurve(to: CGPoint(x: w + 2, y: h + 2), control: CGPoint(x: w, y: h - tailSize + 2))
-            path.addQuadCurve(to: CGPoint(x: w - tailSize - 2, y: h), control: CGPoint(x: w - 2, y: h))
+            path.addQuadCurve(to: CGPoint(x: w + 2, y: h + 2),
+                               control: CGPoint(x: w, y: h - tailSize + 2))
+            path.addQuadCurve(to: CGPoint(x: w - tailSize - 2, y: h),
+                               control: CGPoint(x: w - 2, y: h))
             path.addLine(to: CGPoint(x: r, y: h))
-            path.addArc(center: CGPoint(x: r, y: h - r), radius: r, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+            path.addArc(center: CGPoint(x: r, y: h - r), radius: r,
+                        startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
             path.addLine(to: CGPoint(x: 0, y: r))
-            path.addArc(center: CGPoint(x: r, y: r), radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+            path.addArc(center: CGPoint(x: r, y: r), radius: r,
+                        startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
         } else {
-            // AI bubble: tail at bottom-left
             path.move(to: CGPoint(x: r, y: 0))
             path.addLine(to: CGPoint(x: w - r, y: 0))
-            path.addArc(center: CGPoint(x: w - r, y: r), radius: r, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+            path.addArc(center: CGPoint(x: w - r, y: r), radius: r,
+                        startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
             path.addLine(to: CGPoint(x: w, y: h - r))
-            path.addArc(center: CGPoint(x: w - r, y: h - r), radius: r, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+            path.addArc(center: CGPoint(x: w - r, y: h - r), radius: r,
+                        startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
             path.addLine(to: CGPoint(x: tailSize + 2, y: h))
-            path.addQuadCurve(to: CGPoint(x: -2, y: h + 2), control: CGPoint(x: 2, y: h))
-            path.addQuadCurve(to: CGPoint(x: r - 2, y: h - tailSize), control: CGPoint(x: 0, y: h - tailSize + 2))
+            path.addQuadCurve(to: CGPoint(x: -2, y: h + 2),
+                               control: CGPoint(x: 2, y: h))
+            path.addQuadCurve(to: CGPoint(x: r - 2, y: h - tailSize),
+                               control: CGPoint(x: 0, y: h - tailSize + 2))
             path.addLine(to: CGPoint(x: 0, y: r + tailSize))
-            path.addArc(center: CGPoint(x: r, y: r), radius: r, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+            path.addArc(center: CGPoint(x: r, y: r), radius: r,
+                        startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
         }
         path.closeSubpath()
         return path
@@ -171,7 +229,7 @@ struct TypingIndicator: View {
         HStack(spacing: 4) {
             ForEach(0..<3) { i in
                 Circle()
-                    .fill(Color.secondary.opacity(0.5))
+                    .fill(Color.white.opacity(0.55))
                     .frame(width: 5, height: 5)
                     .scaleEffect(phase == i ? 1.4 : 0.8)
                     .animation(
@@ -184,9 +242,7 @@ struct TypingIndicator: View {
         }
         .onAppear {
             phase = 0
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                phase = 2
-            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { phase = 2 }
         }
     }
 }
@@ -194,34 +250,40 @@ struct TypingIndicator: View {
 // MARK: - Preview
 
 #Preview {
-    ScrollView {
-        VStack(spacing: 8) {
-            TranscriptBubble(message: Message(
-                role: "user",
-                content: "Hey Max! What's the weather like today?",
-                timestamp: Date()
-            ))
+    ZStack {
+        LinearGradient(
+            colors: [
+                Color(red: 0.02, green: 0.01, blue: 0.06),
+                Color(red: 0.06, green: 0.03, blue: 0.13)
+            ],
+            startPoint: .top, endPoint: .bottom
+        )
+        .ignoresSafeArea()
 
-            TranscriptBubble(message: Message(
-                role: "assistant",
-                content: "I don't have access to live weather data, but I can check the date and time for you! Would you like me to set a reminder to check the forecast?",
-                timestamp: Date()
-            ))
-
-            TranscriptBubble(message: Message(
-                role: "user",
-                content: "Sure!",
-                timestamp: Date()
-            ))
-
-            TranscriptBubble(message: Message(
-                role: "assistant",
-                content: "",
-                timestamp: Date(),
-                isStreaming: true
-            ), isStreaming: true)
+        ScrollView {
+            VStack(spacing: 4) {
+                TranscriptBubble(message: Message(
+                    role: "user",
+                    content: "Hey Max, what's on my calendar today?",
+                    timestamp: Date()
+                ))
+                TranscriptBubble(message: Message(
+                    role: "assistant",
+                    content: "I don't have calendar access right now, but I can set a reminder for you! Would you like me to do that?",
+                    timestamp: Date()
+                ))
+                TranscriptBubble(message: Message(
+                    role: "user",
+                    content: "Yes please!",
+                    timestamp: Date()
+                ))
+                TranscriptBubble(
+                    message: Message(role: "assistant", content: "", timestamp: Date(), isStreaming: true),
+                    isStreaming: true
+                )
+            }
+            .padding(.vertical, 16)
         }
-        .padding(.vertical, 12)
     }
-    .background(Color(.systemBackground))
+    .environment(\.colorScheme, .dark)
 }

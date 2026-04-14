@@ -68,7 +68,7 @@ fun WelcomeScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(
-                Brush.verticalGradient(colors = WelcomeGradientColors)
+                Brush.linearGradient(colors = WelcomeGradientColors)
             )
     ) {
         // Page indicator dots at top
@@ -400,32 +400,53 @@ private fun SignUpPage(
             Spacer(Modifier.height(12.dp))
 
             // Email sign-up toggle button
-            OutlinedButton(
-                onClick = onToggleEmailExpand,
+            val emailToggleShape = RoundedCornerShape(16.dp)
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(14.dp),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color.White,
-                    containerColor = Color.White.copy(alpha = 0.10f)
-                ),
-                border = androidx.compose.foundation.BorderStroke(
-                    1.dp,
-                    Color.White.copy(alpha = 0.35f)
-                )
+                    .height(52.dp)
+                    .clip(emailToggleShape)
+                    .background(Color.White.copy(alpha = 0.10f))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.White.copy(alpha = 0.16f), Color.Transparent),
+                            endY = 60f
+                        )
+                    )
+                    .border(
+                        1.dp,
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color.White.copy(alpha = 0.45f),
+                                Color.White.copy(alpha = 0.08f)
+                            )
+                        ),
+                        emailToggleShape
+                    ),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Email,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = if (uiState.isEmailSignUpExpanded) "Use email ▲" else "Continue with Email ▼",
-                    fontWeight = FontWeight.Medium
-                )
+                OutlinedButton(
+                    onClick = onToggleEmailExpand,
+                    modifier = Modifier.fillMaxSize(),
+                    shape = emailToggleShape,
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = Color.White,
+                        containerColor = Color.Transparent
+                    ),
+                    border = null
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Email,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = if (uiState.isEmailSignUpExpanded) "Use email ▲" else "Continue with Email ▼",
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
 
             // Inline email form
