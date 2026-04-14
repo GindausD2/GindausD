@@ -28,6 +28,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
+import com.max.ai.R
 import com.google.accompanist.pager.*
 import com.max.ai.OrbState
 import com.max.ai.ui.components.*
@@ -268,13 +271,14 @@ private fun WelcomeCenterPage(
             modifier = Modifier.fillMaxWidth(),
             alpha = 0.15f
         ) {
-            Text(
-                text = "Max",
-                color = Color.White,
-                fontSize = 42.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
+            Image(
+                painter = painterResource(id = R.drawable.ic_max_logo),
+                contentDescription = "Max AI logo",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(80.dp)
+                    .padding(bottom = 6.dp),
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White)
             )
             Text(
                 text = "Your AI Personal Assistant",

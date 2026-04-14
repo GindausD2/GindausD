@@ -271,9 +271,8 @@ private struct WelcomePage: View {
             // Title Card
             GlassCard(cornerRadius: 24, padding: EdgeInsets(top: 20, leading: 28, bottom: 20, trailing: 28)) {
                 VStack(spacing: 10) {
-                    Text("Max")
-                        .font(.system(size: 48, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
+                    MaxLogoView(color: .white, width: 180)
+                        .padding(.bottom, 4)
                     Text("Your AI personal assistant")
                         .font(.subheadline)
                         .foregroundStyle(.white.opacity(0.8))
