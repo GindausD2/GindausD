@@ -5,6 +5,10 @@ import UserNotifications
 struct MaxApp: App {
     @StateObject private var authService = AuthService.shared
 
+    /// Stored in UserDefaults so SettingsView can mutate it with @AppStorage
+    /// and MaxApp reacts immediately — no manual save/load needed.
+    @AppStorage("max.appearance") private var appearance: String = "system"
+
     init() {
         configureAppearance()
         requestNotificationPermission()
@@ -14,27 +18,30 @@ struct MaxApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(authService)
+                .preferredColorScheme(resolvedScheme)
         }
     }
 
-    // MARK: - Setup
+    // MARK: - Helpers
+
+    private var resolvedScheme: ColorScheme? {
+        switch appearance {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return nil   // follows system
+        }
+    }
 
     private func configureAppearance() {
-        // Navigation bar appearance
         let navAppearance = UINavigationBarAppearance()
-        navAppearance.configureWithOpaqueBackground()
-        navAppearance.backgroundColor = UIColor.systemBackground
+        navAppearance.configureWithTransparentBackground()
         navAppearance.shadowColor = .clear
-        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().standardAppearance  = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
     }
 
     private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error = error {
-                print("[MaxApp] Notification permission error: \(error.localizedDescription)")
-            }
-        }
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 }
 
@@ -50,14 +57,14 @@ struct RootView: View {
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
-                        removal: .opacity.animation(.easeOut(duration: 0.25))
+                        removal:   .opacity.animation(.easeOut(duration: 0.25))
                     ))
             } else {
                 WelcomeView()
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
-                        removal: .opacity.animation(.easeOut(duration: 0.25))
+                        removal:   .opacity.animation(.easeOut(duration: 0.25))
                     ))
             }
         }

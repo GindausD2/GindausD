@@ -107,7 +107,7 @@ struct TranscriptBubble: View {
                 ZStack(alignment: .bottomTrailing) {
                     Text(message.content.isEmpty && isStreaming ? " " : message.content)
                         .font(.body)
-                        .foregroundStyle(.white.opacity(0.92))
+                        .foregroundStyle(Color.primary)
                         .textSelection(.enabled)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 12)
@@ -156,7 +156,7 @@ struct TranscriptBubble: View {
     private var timestampText: some View {
         Text(timeString(from: message.timestamp))
             .font(.caption2)
-            .foregroundStyle(.white.opacity(0.32))
+            .foregroundStyle(Color.secondary.opacity(0.7))
     }
 
     private func timeString(from date: Date) -> String {

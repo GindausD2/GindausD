@@ -20,7 +20,8 @@ data class AppSettings(
     val apiKey: String = "",
     val assistantName: String = "Max",
     val voiceEnabled: Boolean = false,
-    val userName: String = ""
+    val userName: String = "",
+    val colorScheme: String = "system"   // "system" | "light" | "dark"
 )
 
 // ─── Notes ────────────────────────────────────────────────────────────────────
