@@ -2,7 +2,9 @@ package com.max.ai.ui.theme
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 // ─── Brand palette ─────────────────────────────────────────────────────────────
@@ -19,11 +21,6 @@ val Purple200  = Color(0xFFE9D5FF)
 val HomeBgTop    = Color(0xFF06030F)
 val HomeBgMid    = Color(0xFF0E0620)
 val HomeBgBottom = Color(0xFF100825)
-
-// Glass surface tokens
-val GlassWhite   = Color(0x24FFFFFF)   // ~14% white
-val GlassBorder  = Color(0x80FFFFFF)   // ~50% white (for gradient start)
-val GlassSurface = Color(0x1AFFFFFF)   // ~10% white
 
 // Chat bubble colors
 val UserBubbleStart = Color(0xFF8B21F0)
@@ -81,17 +78,43 @@ private val MaxDarkColors = darkColorScheme(
     surface              = HomeBgMid,
     onSurface            = Color.White,
     surfaceVariant       = Color(0xFF1C1030),
-    onSurfaceVariant     = Color.White.copy(alpha = 0.70f),
+    onSurfaceVariant     = Color.White.copy(alpha = 0.85f),
     error                = Color(0xFFCF6679),
     onError              = Color.White
 )
 
+// ─── Light color scheme ───────────────────────────────────────────────────────
+
+private val MaxLightColors = lightColorScheme(
+    primary              = Purple600,
+    onPrimary            = Color.White,
+    primaryContainer     = Purple200,
+    onPrimaryContainer   = Purple800,
+    secondary            = Purple700,
+    onSecondary          = Color.White,
+    background           = Color(0xFFF5F0FF),
+    onBackground         = Color(0xFF1A1A2E),
+    surface              = Color.White,
+    onSurface            = Color(0xFF1A1A2E),
+    surfaceVariant       = Color(0xFFEDE9FF),
+    onSurfaceVariant     = Color(0xFF3D3066),
+    error                = Color(0xFFB00020),
+    onError              = Color.White
+)
+
+// ─── CompositionLocal for dark-theme flag ─────────────────────────────────────
+
+val LocalDarkTheme = compositionLocalOf { true }
+
 // ─── Theme composable ─────────────────────────────────────────────────────────
 
 @Composable
-fun MaxAITheme(content: @Composable () -> Unit) {
+fun MaxAITheme(
+    useDarkTheme: Boolean = true,
+    content: @Composable () -> Unit
+) {
     MaterialTheme(
-        colorScheme = MaxDarkColors,
+        colorScheme = if (useDarkTheme) MaxDarkColors else MaxLightColors,
         content = content
     )
 }

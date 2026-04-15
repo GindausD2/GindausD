@@ -16,7 +16,9 @@ data class SettingsUiState(
     val apiKey: String = "",
     val apiKeyVisible: Boolean = false,
     val profileName: String = "",
+    val profileEmail: String = "",
     val voiceEnabled: Boolean = false,
+    val colorScheme: String = "system",   // "system" | "light" | "dark"
     val isSaved: Boolean = false,
     val isSignedOut: Boolean = false,
     val error: String? = null
@@ -41,19 +43,22 @@ class SettingsViewModel(
         val user = authRepository.getUser()
         _uiState.update {
             it.copy(
-                apiKey = settings.apiKey,
-                profileName = settings.userName.ifBlank { user?.name ?: "" },
-                voiceEnabled = settings.voiceEnabled
+                apiKey       = settings.apiKey,
+                profileName  = settings.userName.ifBlank { user?.name ?: "" },
+                profileEmail = user?.email ?: "",
+                voiceEnabled = settings.voiceEnabled,
+                colorScheme  = settings.colorScheme
             )
         }
     }
 
     // ─── Field updates ────────────────────────────────────────────────────────
 
-    fun onApiKeyChanged(value: String) = _uiState.update { it.copy(apiKey = value, isSaved = false, error = null) }
+    fun onApiKeyChanged(value: String)     = _uiState.update { it.copy(apiKey = value, isSaved = false, error = null) }
     fun onProfileNameChanged(value: String) = _uiState.update { it.copy(profileName = value, isSaved = false) }
-    fun onVoiceToggled(enabled: Boolean) = _uiState.update { it.copy(voiceEnabled = enabled, isSaved = false) }
-    fun toggleApiKeyVisibility() = _uiState.update { it.copy(apiKeyVisible = !it.apiKeyVisible) }
+    fun onVoiceToggled(enabled: Boolean)   = _uiState.update { it.copy(voiceEnabled = enabled, isSaved = false) }
+    fun onColorSchemeChanged(scheme: String) = _uiState.update { it.copy(colorScheme = scheme, isSaved = false) }
+    fun toggleApiKeyVisibility()           = _uiState.update { it.copy(apiKeyVisible = !it.apiKeyVisible) }
 
     // ─── Save ─────────────────────────────────────────────────────────────────
 
@@ -65,10 +70,11 @@ class SettingsViewModel(
         }
         viewModelScope.launch {
             val settings = AppSettings(
-                apiKey = state.apiKey.trim(),
+                apiKey       = state.apiKey.trim(),
                 assistantName = "Max",
                 voiceEnabled = state.voiceEnabled,
-                userName = state.profileName.trim()
+                userName     = state.profileName.trim(),
+                colorScheme  = state.colorScheme
             )
             storageRepository.saveSettings(settings)
             _uiState.update { it.copy(isSaved = true, error = null) }

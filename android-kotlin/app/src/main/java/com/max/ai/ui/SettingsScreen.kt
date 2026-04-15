@@ -3,6 +3,7 @@ package com.max.ai.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -17,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.LocalTextStyle
@@ -33,56 +35,46 @@ import com.max.ai.viewmodels.SettingsViewModel
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     onBack: () -> Unit,
-    onSignedOut: () -> Unit
+    onSignedOut: () -> Unit,
+    onThemeChanged: (String) -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
     LaunchedEffect(uiState.isSignedOut) {
         if (uiState.isSignedOut) onSignedOut()
     }
+    LaunchedEffect(uiState.colorScheme) {
+        onThemeChanged(uiState.colorScheme)
+    }
 
-    // Saved feedback
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(uiState.isSaved) {
-        if (uiState.isSaved) {
-            snackbarHostState.showSnackbar("Settings saved", duration = SnackbarDuration.Short)
-        }
+        if (uiState.isSaved) snackbarHostState.showSnackbar("Settings saved", duration = SnackbarDuration.Short)
     }
     LaunchedEffect(uiState.error) {
-        if (uiState.error != null) {
-            snackbarHostState.showSnackbar(uiState.error!!, duration = SnackbarDuration.Short)
-        }
+        if (uiState.error != null) snackbarHostState.showSnackbar(uiState.error!!, duration = SnackbarDuration.Short)
     }
 
-    // Confirm dialogs state
     var showClearHistoryDialog by remember { mutableStateOf(false) }
-    var showSignOutDialog by remember { mutableStateOf(false) }
+    var showSignOutDialog       by remember { mutableStateOf(false) }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = {
-                    Text(
-                        text = "Settings",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 20.sp
-                    )
-                },
+                title = { Text("Settings", fontWeight = FontWeight.SemiBold, fontSize = 20.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back"
-                        )
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White
+                    containerColor    = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface
                 )
             )
         },
-        containerColor = Color(0xFFF5F5F7)
+        containerColor = MaterialTheme.colorScheme.background
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -92,10 +84,34 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ── API Section ──────────────────────────────────────────────────
+            // ── Profile card ──────────────────────────────────────────────────
+            ProfileCard(
+                name  = uiState.profileName,
+                email = uiState.profileEmail
+            )
+
+            // ── Appearance ────────────────────────────────────────────────────
+            SettingsSection(title = "Appearance") {
+                Text(
+                    text = "Theme",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+                ThemePicker(
+                    selected = uiState.colorScheme,
+                    onSelected = { scheme ->
+                        viewModel.onColorSchemeChanged(scheme)
+                        viewModel.saveSettings()
+                    }
+                )
+            }
+
+            // ── AI Configuration ──────────────────────────────────────────────
             SettingsSection(title = "AI Configuration") {
                 SettingsTextField(
-                    label = "Claude API Key",
+                    label = "Anthropic API Key",
                     value = uiState.apiKey,
                     onValueChange = viewModel::onApiKeyChanged,
                     placeholder = "sk-ant-...",
@@ -105,15 +121,21 @@ fun SettingsScreen(
                         TextButton(onClick = viewModel::toggleApiKeyVisibility) {
                             Text(
                                 text = if (uiState.apiKeyVisible) "Hide" else "Show",
-                                color = Color(0xFF7C3AED),
+                                color = MaterialTheme.colorScheme.primary,
                                 fontSize = 13.sp
                             )
                         }
                     }
                 )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = "Stored locally · only sent to Anthropic's API",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
-            // ── Profile Section ───────────────────────────────────────────────
+            // ── Profile ───────────────────────────────────────────────────────
             SettingsSection(title = "Profile") {
                 SettingsTextField(
                     label = "Your Name",
@@ -124,7 +146,7 @@ fun SettingsScreen(
                 )
             }
 
-            // ── Preferences Section ───────────────────────────────────────────
+            // ── Preferences ───────────────────────────────────────────────────
             SettingsSection(title = "Preferences") {
                 Row(
                     modifier = Modifier
@@ -138,12 +160,12 @@ fun SettingsScreen(
                             text = "Voice Responses",
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
-                            color = Color(0xFF1A1A2E)
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Max will speak responses aloud",
+                            text = "Max speaks responses aloud",
                             fontSize = 13.sp,
-                            color = Color(0xFF9CA3AF)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     Switch(
@@ -151,7 +173,7 @@ fun SettingsScreen(
                         onCheckedChange = viewModel::onVoiceToggled,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
-                            checkedTrackColor = Color(0xFF7C3AED)
+                            checkedTrackColor = MaterialTheme.colorScheme.primary
                         )
                     )
                 }
@@ -160,88 +182,174 @@ fun SettingsScreen(
             // ── Save button ───────────────────────────────────────────────────
             Button(
                 onClick = viewModel::saveSettings,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp),
                 shape = RoundedCornerShape(14.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF7C3AED),
-                    contentColor = Color.White
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor   = MaterialTheme.colorScheme.onPrimary
                 )
             ) {
                 Text("Save Settings", fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
             }
 
-            Spacer(Modifier.height(8.dp))
-
-            // ── Danger Zone ───────────────────────────────────────────────────
+            // ── Data / Danger zone ────────────────────────────────────────────
             SettingsSection(title = "Data") {
                 SettingsActionRow(
-                    icon = Icons.Default.Delete,
-                    title = "Clear Chat History",
+                    icon     = Icons.Default.Delete,
+                    title    = "Clear Chat History",
                     subtitle = "Remove all conversation messages",
                     iconTint = Color(0xFFEF4444),
-                    onClick = { showClearHistoryDialog = true }
+                    onClick  = { showClearHistoryDialog = true }
                 )
-                Divider(
-                    color = Color(0xFFE5E7EB),
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
                     modifier = Modifier.padding(vertical = 4.dp)
                 )
                 SettingsActionRow(
-                    icon = Icons.Default.ExitToApp,
-                    title = "Sign Out",
+                    icon     = Icons.Default.ExitToApp,
+                    title    = "Sign Out",
                     subtitle = "Return to the welcome screen",
                     iconTint = Color(0xFFEF4444),
-                    onClick = { showSignOutDialog = true }
+                    onClick  = { showSignOutDialog = true }
                 )
             }
+
+            // ── About ─────────────────────────────────────────────────────────
+            SettingsSection(title = "About") {
+                SettingsInfoRow(label = "Version",  value = "1.0.0")
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                SettingsInfoRow(label = "Model",    value = "Claude Sonnet 4.6")
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                SettingsInfoRow(label = "Platform", value = "Android")
+            }
+
+            Spacer(Modifier.height(16.dp))
         }
     }
 
-    // ── Clear history confirmation dialog ──────────────────────────────────────
+    // ── Dialogs ───────────────────────────────────────────────────────────────
+
     if (showClearHistoryDialog) {
         AlertDialog(
             onDismissRequest = { showClearHistoryDialog = false },
-            title = { Text("Clear Chat History") },
-            text = { Text("This will permanently delete all conversation messages. This cannot be undone.") },
+            title   = { Text("Clear Chat History") },
+            text    = { Text("This will permanently delete all conversation messages. This cannot be undone.") },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.clearHistory()
-                        showClearHistoryDialog = false
-                    }
-                ) {
+                TextButton(onClick = { viewModel.clearHistory(); showClearHistoryDialog = false }) {
                     Text("Clear", color = Color(0xFFEF4444))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showClearHistoryDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showClearHistoryDialog = false }) { Text("Cancel") }
             }
         )
     }
 
-    // ── Sign out confirmation dialog ───────────────────────────────────────────
     if (showSignOutDialog) {
         AlertDialog(
             onDismissRequest = { showSignOutDialog = false },
-            title = { Text("Sign Out") },
-            text = { Text("Are you sure you want to sign out?") },
+            title   = { Text("Sign Out") },
+            text    = { Text("Are you sure you want to sign out?") },
             confirmButton = {
-                TextButton(onClick = {
-                    viewModel.signOut()
-                    showSignOutDialog = false
-                }) {
+                TextButton(onClick = { viewModel.signOut(); showSignOutDialog = false }) {
                     Text("Sign Out", color = Color(0xFFEF4444))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showSignOutDialog = false }) {
-                    Text("Cancel")
-                }
+                TextButton(onClick = { showSignOutDialog = false }) { Text("Cancel") }
             }
         )
+    }
+}
+
+// ─── Profile card ─────────────────────────────────────────────────────────────
+
+@Composable
+private fun ProfileCard(name: String, email: String) {
+    val initials = buildInitials(name.ifBlank { email })
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // Avatar circle
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(Color(0xFF8B21F0), Color(0xFF4F1FDE))
+                        )
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = initials,
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Column(modifier = Modifier.weight(1f)) {
+                if (name.isNotBlank()) {
+                    Text(
+                        text = name,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                if (email.isNotBlank()) {
+                    Text(
+                        text = email,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun buildInitials(displayName: String): String {
+    val parts = displayName.trim().split(" ").filter { it.isNotBlank() }
+    return when {
+        parts.size >= 2 -> "${parts[0].first()}${parts[1].first()}".uppercase()
+        parts.size == 1 -> parts[0].take(2).uppercase()
+        else            -> "M"
+    }
+}
+
+// ─── Theme picker (System / Light / Dark segmented) ──────────────────────────
+
+@Composable
+private fun ThemePicker(
+    selected: String,
+    onSelected: (String) -> Unit
+) {
+    val options = listOf("system" to "System", "light" to "Light", "dark" to "Dark")
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, (value, label) ->
+            SegmentedButton(
+                selected = selected == value,
+                onClick  = { onSelected(value) },
+                shape    = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                colors   = SegmentedButtonDefaults.colors(
+                    activeContainerColor  = MaterialTheme.colorScheme.primary,
+                    activeContentColor    = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+        }
     }
 }
 
@@ -257,18 +365,18 @@ private fun SettingsSection(
             text = title.uppercase(),
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF9CA3AF),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             letterSpacing = 0.8.sp,
             modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
         )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(Color.White)
-                .padding(16.dp),
-            content = content
-        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp), content = content)
+        }
     }
 }
 
@@ -289,7 +397,7 @@ private fun SettingsTextField(
             text = label,
             fontSize = 13.sp,
             fontWeight = FontWeight.Medium,
-            color = Color(0xFF6B7280),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 6.dp)
         )
         OutlinedTextField(
@@ -297,32 +405,20 @@ private fun SettingsTextField(
             onValueChange = onValueChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
-                Text(
-                    text = placeholder,
-                    color = Color(0xFFD1D5DB),
-                    fontSize = 14.sp
-                )
+                Text(text = placeholder, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f), fontSize = 14.sp)
             },
             leadingIcon = {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = Color(0xFF9CA3AF),
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
             },
             trailingIcon = trailingAction,
             visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = if (isPassword)
-                KeyboardOptions(keyboardType = KeyboardType.Password)
-            else
-                KeyboardOptions.Default,
+            keyboardOptions = if (isPassword) KeyboardOptions(keyboardType = KeyboardType.Password) else KeyboardOptions.Default,
             singleLine = true,
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color(0xFF7C3AED),
-                unfocusedBorderColor = Color(0xFFE5E7EB),
-                cursorColor = Color(0xFF7C3AED)
+                focusedBorderColor   = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.20f),
+                cursorColor          = MaterialTheme.colorScheme.primary
             ),
             textStyle = LocalTextStyle.current.copy(fontSize = 14.sp)
         )
@@ -336,7 +432,7 @@ private fun SettingsActionRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
-    iconTint: Color = Color(0xFF1A1A2E),
+    iconTint: Color = MaterialTheme.colorScheme.onSurface,
     onClick: () -> Unit
 ) {
     Surface(
@@ -354,30 +450,37 @@ private fun SettingsActionRow(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(iconTint.copy(alpha = 0.1f)),
+                    .background(iconTint.copy(alpha = 0.10f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = iconTint,
-                    modifier = Modifier.size(18.dp)
-                )
+                Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(18.dp))
             }
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = iconTint
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 12.sp,
-                    color = Color(0xFF9CA3AF)
-                )
+                Text(text = title,    fontSize = 15.sp, fontWeight = FontWeight.Medium, color = iconTint)
+                Text(text = subtitle, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                modifier = Modifier.size(16.dp)
+            )
         }
+    }
+}
+
+// ─── Info row ─────────────────────────────────────────────────────────────────
+
+@Composable
+private fun SettingsInfoRow(label: String, value: String) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurface)
+        Text(text = value, fontSize = 15.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }

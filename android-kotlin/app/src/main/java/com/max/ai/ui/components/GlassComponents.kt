@@ -1,7 +1,7 @@
 package com.max.ai.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -26,53 +26,22 @@ import androidx.compose.ui.unit.sp
 private val VioletStart = Color(0xFF8B21F0)
 private val VioletEnd   = Color(0xFF4F1FDE)
 
-// ─── Liquid-glass Modifier ────────────────────────────────────────────────────
+// ─── Card Modifier (clean Material surface) ───────────────────────────────────
 
 /**
- * Multi-layer glass treatment:
- *   1. Base semi-transparent fill
- *   2. Specular top-gradient (simulates light hitting the top face)
- *   3. Gradient border (bright top-left → transparent bottom-right)
+ * Clean Material surface card — no glass effects.
+ * Parameters kept for call-site compatibility.
  */
 fun Modifier.glassCard(
     cornerRadius: Dp = 24.dp,
-    alpha: Float = 0.14f,
-    borderAlpha: Float = 0.50f
+    alpha: Float = 0.14f,       // unused, kept for compat
+    borderAlpha: Float = 0.50f  // unused, kept for compat
 ): Modifier = this
-    .shadow(
-        elevation = 16.dp,
-        shape = RoundedCornerShape(cornerRadius),
-        ambientColor = Color.Black.copy(alpha = 0.40f),
-        spotColor = Color.Black.copy(alpha = 0.30f)
-    )
+    .shadow(elevation = 4.dp, shape = RoundedCornerShape(cornerRadius), clip = false)
     .clip(RoundedCornerShape(cornerRadius))
-    .background(Color.White.copy(alpha = alpha))
-    .background(
-        // Specular top highlight
-        Brush.verticalGradient(
-            colors = listOf(
-                Color.White.copy(alpha = 0.22f),
-                Color.White.copy(alpha = 0.08f),
-                Color.Transparent
-            ),
-            startY = 0f,
-            endY = Float.MAX_VALUE
-        )
-    )
-    .border(
-        width = 1.dp,
-        brush = Brush.linearGradient(
-            colors = listOf(
-                Color.White.copy(alpha = borderAlpha),
-                Color.White.copy(alpha = 0.20f),
-                Color.White.copy(alpha = 0.04f),
-                Color.Transparent
-            )
-        ),
-        shape = RoundedCornerShape(cornerRadius)
-    )
+    .background(Color(0xFF1C1030))
 
-// ─── GlassCard composable ─────────────────────────────────────────────────────
+// ─── Card composable ──────────────────────────────────────────────────────────
 
 @Composable
 fun GlassCard(
@@ -82,16 +51,25 @@ fun GlassCard(
     borderAlpha: Float = 0.50f,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Column(
-        modifier = modifier
-            .glassCard(cornerRadius = cornerRadius, alpha = alpha, borderAlpha = borderAlpha)
-            .padding(20.dp),
-        content = content
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(cornerRadius),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF1C1030)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        content = {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                content = content
+            )
+        }
     )
 }
 
-// ─── Liquid-glass text field ──────────────────────────────────────────────────
+// ─── Text field ───────────────────────────────────────────────────────────────
 
+/**
+ * OutlinedTextField styled for dark/violet backgrounds (welcome screen).
+ */
 @Composable
 fun GlassTextField(
     value: String,
@@ -105,23 +83,10 @@ fun GlassTextField(
     leadingIcon: @Composable (() -> Unit)? = null,
     trailingIcon: @Composable (() -> Unit)? = null
 ) {
-    val shape = RoundedCornerShape(14.dp)
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(Color.White.copy(alpha = 0.09f))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.14f),
-                        Color.Transparent
-                    ),
-                    endY = 80f
-                )
-            ),
+        modifier = modifier.fillMaxWidth(),
         placeholder = {
             Text(text = placeholder, color = Color.White.copy(alpha = 0.45f), fontSize = 15.sp)
         },
@@ -133,17 +98,17 @@ fun GlassTextField(
         leadingIcon = leadingIcon,
         trailingIcon = trailingIcon,
         colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor    = Color.White.copy(alpha = 0.55f),
-            unfocusedBorderColor  = Color.White.copy(alpha = 0.22f),
-            cursorColor           = Color(0xFFA78BFA),
-            focusedContainerColor = Color.Transparent,
-            unfocusedContainerColor = Color.Transparent
+            focusedBorderColor      = Color(0xFFA78BFA),
+            unfocusedBorderColor    = Color.White.copy(alpha = 0.30f),
+            cursorColor             = Color(0xFFA78BFA),
+            focusedContainerColor   = Color(0x14FFFFFF),
+            unfocusedContainerColor = Color(0x0DFFFFFF)
         ),
-        shape = shape
+        shape = RoundedCornerShape(14.dp)
     )
 }
 
-// ─── Liquid-glass primary button ──────────────────────────────────────────────
+// ─── Primary button (violet brand, no glass) ──────────────────────────────────
 
 @Composable
 fun GlassButton(
@@ -154,69 +119,34 @@ fun GlassButton(
     isLoading: Boolean = false,
     fillWidth: Boolean = true
 ) {
-    val shape = RoundedCornerShape(16.dp)
-    Box(
+    Button(
+        onClick = onClick,
         modifier = modifier
             .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
-            .height(52.dp)
-            .shadow(
-                elevation = 12.dp,
-                shape = shape,
-                ambientColor = VioletStart.copy(alpha = 0.40f),
-                spotColor = VioletStart.copy(alpha = 0.30f)
-            )
-            .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(VioletStart, VioletEnd)
-                )
-            )
-            // Specular
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
-                    endY = 80f
-                )
-            )
-            .border(
-                1.dp,
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.45f),
-                        Color.White.copy(alpha = 0.06f)
-                    )
-                ),
-                shape
-            ),
-        contentAlignment = Alignment.Center
+            .height(52.dp),
+        enabled = enabled && !isLoading,
+        shape = RoundedCornerShape(16.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor         = Color(0xFF7C3AED),
+            contentColor           = Color.White,
+            disabledContainerColor = Color(0xFF7C3AED).copy(alpha = 0.40f),
+            disabledContentColor   = Color.White.copy(alpha = 0.50f)
+        ),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp, pressedElevation = 4.dp)
     ) {
-        Button(
-            onClick = onClick,
-            modifier = Modifier.fillMaxSize(),
-            enabled = enabled && !isLoading,
-            shape = shape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor       = Color.Transparent,
-                contentColor         = Color.White,
-                disabledContainerColor = Color.Transparent,
-                disabledContentColor = Color.White.copy(alpha = 0.45f)
-            ),
-            elevation = ButtonDefaults.buttonElevation(0.dp, 0.dp, 0.dp)
-        ) {
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(20.dp),
-                    color = Color.White,
-                    strokeWidth = 2.dp
-                )
-            } else {
-                Text(text = text, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-            }
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                color = Color.White,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text(text = text, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
         }
     }
 }
 
-// ─── Liquid-glass pill (outline) button ───────────────────────────────────────
+// ─── Pill / outline button ────────────────────────────────────────────────────
 
 @Composable
 fun GlassPillButton(
@@ -225,44 +155,19 @@ fun GlassPillButton(
     modifier: Modifier = Modifier,
     enabled: Boolean = true
 ) {
-    val shape = RoundedCornerShape(26.dp)
-    Box(
-        modifier = modifier
-            .height(46.dp)
-            .clip(shape)
-            .background(Color.White.copy(alpha = 0.10f))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
-                    endY = 60f
-                )
-            )
-            .border(
-                1.dp,
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.50f),
-                        Color.White.copy(alpha = 0.08f)
-                    )
-                ),
-                shape
-            ),
-        contentAlignment = Alignment.Center
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(46.dp),
+        enabled = enabled,
+        shape = RoundedCornerShape(26.dp),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor         = Color.White,
+            containerColor       = Color(0x1AFFFFFF),
+            disabledContentColor = Color.White.copy(alpha = 0.40f)
+        ),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.40f))
     ) {
-        OutlinedButton(
-            onClick = onClick,
-            modifier = Modifier.fillMaxSize(),
-            enabled = enabled,
-            shape = shape,
-            colors = ButtonDefaults.outlinedButtonColors(
-                contentColor        = Color.White,
-                containerColor      = Color.Transparent,
-                disabledContentColor = Color.White.copy(alpha = 0.4f)
-            ),
-            border = null
-        ) {
-            Text(text = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
-        }
+        Text(text = text, fontWeight = FontWeight.Medium, fontSize = 14.sp)
     }
 }
 
@@ -276,96 +181,45 @@ fun MessageBubble(
     modifier: Modifier = Modifier
 ) {
     val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
-
     Box(
         modifier = modifier.fillMaxWidth(),
         contentAlignment = alignment
     ) {
         val bubbleShape = RoundedCornerShape(
-            topStart    = if (isUser) 20.dp else 5.dp,
-            topEnd      = if (isUser) 5.dp else 20.dp,
+            topStart    = if (isUser) 20.dp else 6.dp,
+            topEnd      = if (isUser) 6.dp else 20.dp,
             bottomStart = 20.dp,
             bottomEnd   = 20.dp
         )
+        val displayText = if (isStreaming && content.isEmpty()) "..." else content
 
         if (isUser) {
-            // Violet glass bubble
+            // Violet brand gradient — solid, no glass layers
             Box(
                 modifier = Modifier
                     .widthIn(max = 300.dp)
-                    .shadow(
-                        elevation = 10.dp,
-                        shape = bubbleShape,
-                        ambientColor = VioletStart.copy(alpha = 0.40f),
-                        spotColor = VioletStart.copy(alpha = 0.25f)
-                    )
                     .clip(bubbleShape)
                     .background(
-                        Brush.linearGradient(
-                            colors = listOf(VioletStart, VioletEnd)
-                        )
-                    )
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
-                            endY = 80f
-                        )
-                    )
-                    .border(
-                        0.75.dp,
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.40f),
-                                Color.White.copy(alpha = 0.04f)
-                            )
-                        ),
-                        bubbleShape
+                        Brush.linearGradient(colors = listOf(VioletStart, VioletEnd))
                     )
                     .padding(horizontal = 16.dp, vertical = 11.dp)
             ) {
-                Text(
-                    text = if (isStreaming && content.isEmpty()) "..." else content,
-                    color = Color.White,
-                    fontSize = 15.sp,
-                    lineHeight = 22.sp
-                )
+                Text(text = displayText, color = Color.White, fontSize = 15.sp, lineHeight = 22.sp)
             }
         } else {
-            // Frosted glass AI bubble
-            Box(
-                modifier = Modifier
-                    .widthIn(max = 300.dp)
-                    .shadow(
-                        elevation = 6.dp,
-                        shape = bubbleShape,
-                        ambientColor = Color.Black.copy(alpha = 0.30f),
-                        spotColor = Color.Black.copy(alpha = 0.20f)
-                    )
-                    .clip(bubbleShape)
-                    .background(Color.White.copy(alpha = 0.13f))
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.White.copy(alpha = 0.16f), Color.Transparent),
-                            endY = 80f
-                        )
-                    )
-                    .border(
-                        0.75.dp,
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = 0.35f),
-                                Color.White.copy(alpha = 0.04f)
-                            )
-                        ),
-                        bubbleShape
-                    )
-                    .padding(horizontal = 16.dp, vertical = 11.dp)
+            // AI bubble: Material surface variant
+            Surface(
+                modifier = Modifier.widthIn(max = 300.dp),
+                shape = bubbleShape,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                tonalElevation = 2.dp
             ) {
                 Text(
-                    text = if (isStreaming && content.isEmpty()) "..." else content,
-                    color = Color.White.copy(alpha = 0.92f),
+                    text = displayText,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 15.sp,
-                    lineHeight = 22.sp
+                    lineHeight = 22.sp,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)
                 )
             }
         }

@@ -3,7 +3,6 @@ package com.max.ai.ui
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,31 +18,28 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.max.ai.OrbState
 import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.res.painterResource
+import com.max.ai.OrbState
 import com.max.ai.R
 import com.max.ai.ui.components.MessageBubble
 import com.max.ai.ui.components.OrbComponent
+import com.max.ai.ui.theme.HomeBgBottom
+import com.max.ai.ui.theme.HomeBgMid
+import com.max.ai.ui.theme.HomeBgTop
 import com.max.ai.ui.theme.RecordingRed
 import com.max.ai.ui.theme.ThinkingPurple
 import com.max.ai.viewmodels.HomeViewModel
 
-// Deep-space background colors
-private val BgTop    = Color(0xFF06030F)
-private val BgMid    = Color(0xFF0E0620)
-private val BgBottom = Color(0xFF100825)
 private val AccentViolet = Color(0xFF7C3AED)
 private val AccentIndigo = Color(0xFF4F46E5)
 
@@ -56,7 +52,6 @@ fun HomeScreen(
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
 
-    // Auto-scroll when messages arrive
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
             listState.animateScrollToItem(uiState.messages.lastIndex)
@@ -73,42 +68,16 @@ fun HomeScreen(
         }
     }
 
-    // Root: deep-space gradient + ambient blobs
+    // ── Deep-space gradient background ────────────────────────────────────────
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(colors = listOf(BgTop, BgMid, BgBottom))
-            )
+            .background(Brush.verticalGradient(colors = listOf(HomeBgTop, HomeBgMid, HomeBgBottom)))
     ) {
-        // Ambient purple glow blobs
-        Box(
-            modifier = Modifier
-                .size(380.dp)
-                .offset(x = 60.dp, y = 380.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(AccentViolet.copy(alpha = 0.12f), Color.Transparent)
-                    )
-                )
-                .blur(80.dp)
-        )
-        Box(
-            modifier = Modifier
-                .size(260.dp)
-                .offset(x = (-80).dp, y = 40.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(AccentIndigo.copy(alpha = 0.09f), Color.Transparent)
-                    )
-                )
-                .blur(60.dp)
-        )
-
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                GlassTopBar(
+                MaxTopBar(
                     onRefresh = viewModel::refreshHistory,
                     onSettings = onNavigateToSettings
                 )
@@ -173,8 +142,8 @@ fun HomeScreen(
                     }
                 }
 
-                // ── Bottom glass dock ─────────────────────────────────────────
-                GlassBottomDock(
+                // ── Bottom dock ───────────────────────────────────────────────
+                BottomDock(
                     orbState = uiState.orbState,
                     isRecording = uiState.isRecording,
                     isThinking = uiState.isThinking,
@@ -185,11 +154,11 @@ fun HomeScreen(
     }
 }
 
-// ─── Glass top bar ────────────────────────────────────────────────────────────
+// ─── Top bar ─────────────────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GlassTopBar(
+private fun MaxTopBar(
     onRefresh: () -> Unit,
     onSettings: () -> Unit
 ) {
@@ -199,9 +168,7 @@ private fun GlassTopBar(
                 Image(
                     painter = painterResource(id = R.drawable.ic_max_logo),
                     contentDescription = "Max",
-                    modifier = Modifier
-                        .height(28.dp)
-                        .width(64.dp),
+                    modifier = Modifier.height(28.dp).width(64.dp),
                     colorFilter = ColorFilter.tint(Color.White)
                 )
             }
@@ -225,62 +192,29 @@ private fun GlassTopBar(
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = Color.White.copy(alpha = 0.07f),
-            titleContentColor = Color.White
-        ),
-        modifier = Modifier.border(
-            width = 0.5.dp,
-            brush = Brush.horizontalGradient(
-                colors = listOf(
-                    Color.White.copy(alpha = 0.18f),
-                    Color.White.copy(alpha = 0.06f)
-                )
-            ),
-            shape = RoundedCornerShape(0.dp)
+            containerColor      = Color(0xFF0E0620),
+            titleContentColor   = Color.White
         )
     )
 }
 
-// ─── Glass bottom dock ────────────────────────────────────────────────────────
+// ─── Bottom dock (clean Material surface) ─────────────────────────────────────
 
 @Composable
-private fun GlassBottomDock(
+private fun BottomDock(
     orbState: OrbState,
     isRecording: Boolean,
     isThinking: Boolean,
     onMicPressed: () -> Unit
 ) {
-    val dockShape = RoundedCornerShape(32.dp)
-    Box(
+    Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-            .shadow(
-                elevation = 24.dp,
-                shape = dockShape,
-                ambientColor = AccentViolet.copy(alpha = 0.20f),
-                spotColor = Color.Black.copy(alpha = 0.35f)
-            )
-            .clip(dockShape)
-            .background(Color.White.copy(alpha = 0.10f))
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(Color.White.copy(alpha = 0.18f), Color.Transparent),
-                    endY = 120f
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        Color.White.copy(alpha = 0.50f),
-                        Color.White.copy(alpha = 0.18f),
-                        Color.White.copy(alpha = 0.04f),
-                        Color.Transparent
-                    )
-                ),
-                shape = dockShape
-            )
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        shape = RoundedCornerShape(32.dp),
+        color = Color(0xFF1A0D35),
+        tonalElevation = 8.dp,
+        shadowElevation = 12.dp
     ) {
         Column(
             modifier = Modifier
@@ -289,9 +223,7 @@ private fun GlassBottomDock(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             OrbComponent(state = orbState, size = 128.dp)
-
             Spacer(Modifier.height(20.dp))
-
             MicButton(
                 isRecording = isRecording,
                 isThinking = isThinking,
@@ -321,54 +253,21 @@ private fun MicButton(
         else        -> AccentViolet
     }
 
-    Box(
+    IconButton(
+        onClick = onClick,
+        enabled = !isThinking,
         modifier = Modifier
             .scale(scale)
-            .size(64.dp),
-        contentAlignment = Alignment.Center
+            .size(60.dp)
+            .clip(CircleShape)
+            .background(baseColor)
     ) {
-        // Glow ring
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(baseColor.copy(alpha = 0.30f), Color.Transparent)
-                    )
-                )
-                .blur(12.dp)
+        Icon(
+            imageVector = if (isRecording) Icons.Default.MicOff else Icons.Default.Mic,
+            contentDescription = if (isRecording) "Stop" else "Record",
+            tint = Color.White,
+            modifier = Modifier.size(26.dp)
         )
-        // Button body
-        IconButton(
-            onClick = onClick,
-            enabled = !isThinking,
-            modifier = Modifier
-                .size(60.dp)
-                .clip(CircleShape)
-                .background(
-                    Brush.linearGradient(colors = listOf(baseColor, baseColor.copy(alpha = 0.75f)))
-                )
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
-                        endY = 60f
-                    )
-                )
-                .border(
-                    0.75.dp,
-                    Brush.linearGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.45f), Color.Transparent)
-                    ),
-                    CircleShape
-                )
-        ) {
-            Icon(
-                imageVector = if (isRecording) Icons.Default.MicOff else Icons.Default.Mic,
-                contentDescription = if (isRecording) "Stop" else "Record",
-                tint = Color.White,
-                modifier = Modifier.size(26.dp)
-            )
-        }
     }
 }
 

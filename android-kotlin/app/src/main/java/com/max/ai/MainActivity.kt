@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
@@ -26,8 +27,6 @@ class MainActivity : ComponentActivity() {
 
     private val app: MaxApplication by lazy { application as MaxApplication }
 
-    // ─── Permission launcher ──────────────────────────────────────────────────
-
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { /* Results handled gracefully inside features */ }
@@ -39,23 +38,18 @@ class MainActivity : ComponentActivity() {
         requestAppPermissions()
 
         setContent {
-            MaxAITheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
-                    AppRoot(
-                        authRepository    = app.authRepository,
-                        storageRepository = app.storageRepository,
-                        claudeService     = app.claudeService,
-                        voiceService      = app.voiceService,
-                        toolsService      = app.toolsService,
-                    )
-                }
-            }
+            AppRoot(
+                authRepository    = app.authRepository,
+                storageRepository = app.storageRepository,
+                claudeService     = app.claudeService,
+                voiceService      = app.voiceService,
+                toolsService      = app.toolsService,
+            )
         }
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // VoiceService lifecycle managed by Application; release on real destroy
     }
 
     private fun requestAppPermissions() {
@@ -67,7 +61,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ─── Root navigation (Crossfade, no NavController needed for simple 3-screen app) ──
+// ─── Root navigation ──────────────────────────────────────────────────────────
 
 enum class Screen { LOADING, WELCOME, HOME, SETTINGS }
 
@@ -81,49 +75,66 @@ fun AppRoot(
 ) {
     var currentScreen by remember { mutableStateOf(Screen.LOADING) }
 
-    // Determine initial screen based on stored auth state
-    LaunchedEffect(Unit) {
-        currentScreen = if (authRepository.getUser() != null) Screen.HOME else Screen.WELCOME
+    // Read persisted color scheme preference
+    val storedScheme = remember { storageRepository.getSettings().colorScheme }
+    val systemIsDark = isSystemInDarkTheme()
+    var themeString by remember {
+        mutableStateOf(storedScheme)
     }
 
-    Crossfade(targetState = currentScreen, label = "nav") { screen ->
-        when (screen) {
-            Screen.LOADING -> {
-                // Resolves in milliseconds; splash screen covers this
-                Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF2D1B69)) {}
+    val useDarkTheme = when (themeString) {
+        "light"  -> false
+        "dark"   -> true
+        else     -> systemIsDark  // "system"
+    }
+
+    MaxAITheme(useDarkTheme = useDarkTheme) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.Transparent) {
+
+            LaunchedEffect(Unit) {
+                currentScreen = if (authRepository.getUser() != null) Screen.HOME else Screen.WELCOME
             }
 
-            Screen.WELCOME -> {
-                val vm = remember { WelcomeViewModel(authRepository) }
-                WelcomeScreen(
-                    viewModel = vm,
-                    onAuthenticated = { currentScreen = Screen.HOME },
-                )
-            }
+            Crossfade(targetState = currentScreen, label = "nav") { screen ->
+                when (screen) {
+                    Screen.LOADING -> {
+                        Surface(modifier = Modifier.fillMaxSize(), color = Color(0xFF2D1B69)) {}
+                    }
 
-            Screen.HOME -> {
-                val vm = remember {
-                    HomeViewModel(
-                        authRepository    = authRepository,
-                        storageRepository = storageRepository,
-                        claudeService     = claudeService,
-                        voiceService      = voiceService,
-                        toolsService      = toolsService,
-                    )
+                    Screen.WELCOME -> {
+                        val vm = remember { WelcomeViewModel(authRepository) }
+                        WelcomeScreen(
+                            viewModel       = vm,
+                            onAuthenticated = { currentScreen = Screen.HOME },
+                        )
+                    }
+
+                    Screen.HOME -> {
+                        val vm = remember {
+                            HomeViewModel(
+                                authRepository    = authRepository,
+                                storageRepository = storageRepository,
+                                claudeService     = claudeService,
+                                voiceService      = voiceService,
+                                toolsService      = toolsService,
+                            )
+                        }
+                        HomeScreen(
+                            viewModel            = vm,
+                            onNavigateToSettings = { currentScreen = Screen.SETTINGS },
+                        )
+                    }
+
+                    Screen.SETTINGS -> {
+                        val vm = remember { SettingsViewModel(storageRepository, authRepository) }
+                        SettingsScreen(
+                            viewModel        = vm,
+                            onBack           = { currentScreen = Screen.HOME },
+                            onSignedOut      = { currentScreen = Screen.WELCOME },
+                            onThemeChanged   = { themeString = it }
+                        )
+                    }
                 }
-                HomeScreen(
-                    viewModel          = vm,
-                    onNavigateToSettings = { currentScreen = Screen.SETTINGS },
-                )
-            }
-
-            Screen.SETTINGS -> {
-                val vm = remember { SettingsViewModel(storageRepository, authRepository) }
-                SettingsScreen(
-                    viewModel   = vm,
-                    onBack      = { currentScreen = Screen.HOME },
-                    onSignedOut = { currentScreen = Screen.WELCOME },
-                )
             }
         }
     }

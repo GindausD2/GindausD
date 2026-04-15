@@ -5,38 +5,18 @@ import Combine
 
 struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.colorScheme) private var colorScheme
 
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
 
+    private let liveActivity = LiveActivityService.shared
+
     var body: some View {
         ZStack {
-            // ── Deep-space background ──────────────────────────────────────────
-            LinearGradient(
-                stops: [
-                    .init(color: Color(hex: "#06030F"), location: 0.0),
-                    .init(color: Color(hex: "#0E0620"), location: 0.5),
-                    .init(color: Color(hex: "#100825"), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-
-            // Ambient purple glow blobs
-            Circle()
-                .fill(Color(hex: "#7C3AED").opacity(0.12))
-                .frame(width: 380, height: 380)
-                .blur(radius: 100)
-                .offset(x: 80, y: 340)
-                .allowsHitTesting(false)
-
-            Circle()
-                .fill(Color(hex: "#4F46E5").opacity(0.08))
-                .frame(width: 260, height: 260)
-                .blur(radius: 80)
-                .offset(x: -100, y: 60)
-                .allowsHitTesting(false)
+            // ── Adaptive background ────────────────────────────────────────────
+            backgroundGradient.ignoresSafeArea()
+            ambientBlobs
 
             VStack(spacing: 0) {
                 topBar
@@ -44,13 +24,76 @@ struct HomeView: View {
                 bottomDock
             }
         }
-        .environment(\.colorScheme, .dark)
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
         }
         .onAppear {
             viewModel.loadMessages()
+        }
+        // ── Dynamic Island integration ─────────────────────────────────────
+        .onChange(of: viewModel.conversationState) { _, newState in
+            switch newState {
+            case .idle:
+                liveActivity.end()
+            case .listening:
+                liveActivity.start()
+                liveActivity.update(phase: .listening)
+            case .thinking:
+                liveActivity.update(phase: .thinking)
+            case .speaking:
+                liveActivity.update(phase: .speaking)
+            }
+        }
+        .onChange(of: viewModel.streamingText) { _, text in
+            guard viewModel.conversationState == .thinking || viewModel.conversationState == .speaking else { return }
+            liveActivity.update(
+                phase: viewModel.conversationState == .thinking ? .thinking : .speaking,
+                snippet: text
+            )
+        }
+    }
+
+    // MARK: - Adaptive Background
+
+    private var backgroundGradient: some View {
+        Group {
+            if colorScheme == .dark {
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(hex: "#06030F"), location: 0.0),
+                        .init(color: Color(hex: "#0E0620"), location: 0.5),
+                        .init(color: Color(hex: "#100825"), location: 1.0)
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            } else {
+                LinearGradient(
+                    stops: [
+                        .init(color: Color(red: 0.97, green: 0.96, blue: 1.00), location: 0.0),
+                        .init(color: Color(red: 0.93, green: 0.91, blue: 0.99), location: 0.5),
+                        .init(color: Color(red: 0.96, green: 0.93, blue: 1.00), location: 1.0)
+                    ],
+                    startPoint: .top, endPoint: .bottom
+                )
+            }
+        }
+    }
+
+    private var ambientBlobs: some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: "#7C3AED").opacity(colorScheme == .dark ? 0.12 : 0.06))
+                .frame(width: 380, height: 380)
+                .blur(radius: 100)
+                .offset(x: 80, y: 340)
+                .allowsHitTesting(false)
+            Circle()
+                .fill(Color(hex: "#4F46E5").opacity(colorScheme == .dark ? 0.08 : 0.05))
+                .frame(width: 260, height: 260)
+                .blur(radius: 80)
+                .offset(x: -100, y: 60)
+                .allowsHitTesting(false)
         }
     }
 
@@ -63,7 +106,7 @@ struct HomeView: View {
             } label: {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Color.primary.opacity(0.75))
                     .frame(width: 40, height: 40)
             }
 
@@ -78,7 +121,7 @@ struct HomeView: View {
             } label: {
                 Image(systemName: "gearshape.fill")
                     .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.75))
+                    .foregroundStyle(Color.primary.opacity(0.75))
                     .frame(width: 40, height: 40)
             }
         }
@@ -135,10 +178,10 @@ struct HomeView: View {
             OrbView(state: .idle, size: 72)
             Text("Hi! I'm Max")
                 .font(.title2.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.primary)
             Text("Tap the mic to start talking,\nor type a message")
                 .font(.subheadline)
-                .foregroundStyle(.white.opacity(0.5))
+                .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
