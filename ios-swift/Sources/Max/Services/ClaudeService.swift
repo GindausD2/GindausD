@@ -41,15 +41,39 @@ private struct ClaudeRequestMessage: Encodable {
 
 private enum ClaudeRequestContent: Encodable {
     case string(String)
+    case parts([ClaudeContentPart])   // multi-modal (text + image)
     case blocks([ClaudeRequestBlock])
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()
         switch self {
-        case .string(let s):
-            try container.encode(s)
-        case .blocks(let b):
-            try container.encode(b)
+        case .string(let s):  try container.encode(s)
+        case .parts(let p):   try container.encode(p)
+        case .blocks(let b):  try container.encode(b)
+        }
+    }
+}
+
+// Encodes either a text or base-64 image part for vision messages
+private enum ClaudeContentPart: Encodable {
+    case text(String)
+    case image(base64: String, mediaType: String)
+
+    private enum CK: String, CodingKey { case type, text, source }
+    private enum SK: String, CodingKey { case type, mediaType = "media_type", data }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CK.self)
+        switch self {
+        case .text(let t):
+            try c.encode("text",  forKey: .type)
+            try c.encode(t,       forKey: .text)
+        case .image(let b64, let mime):
+            try c.encode("image", forKey: .type)
+            var s = c.nestedContainer(keyedBy: SK.self, forKey: .source)
+            try s.encode("base64", forKey: .type)
+            try s.encode(mime,     forKey: .mediaType)
+            try s.encode(b64,      forKey: .data)
         }
     }
 }
@@ -179,6 +203,7 @@ final class ClaudeService {
     func streamMessage(
         apiKey: String,
         messages: [Message],
+        imageData: Data? = nil,     // JPEG/PNG data to send alongside the last user message
         onChunk: @escaping @Sendable (StreamChunk) -> Void
     ) {
         Task {
@@ -186,6 +211,7 @@ final class ClaudeService {
                 try await streamMessageInternal(
                     apiKey: apiKey,
                     messages: messages,
+                    imageData: imageData,
                     conversationHistory: [],
                     onChunk: onChunk
                 )
@@ -199,6 +225,7 @@ final class ClaudeService {
     private func streamMessageInternal(
         apiKey: String,
         messages: [Message],
+        imageData: Data? = nil,
         conversationHistory: [[String: Any]],
         onChunk: @escaping @Sendable (StreamChunk) -> Void
     ) async throws {
@@ -206,16 +233,22 @@ final class ClaudeService {
         // Build messages array for API
         var apiMessages: [ClaudeRequestMessage] = []
 
-        // Add conversation history (for tool-use loop)
-        // conversationHistory items are already ClaudeRequestMessage-like
-        // We pass them directly as serialized — handled separately below
-
         // Convert app messages to API format
-        for msg in messages {
-            apiMessages.append(ClaudeRequestMessage(
-                role: msg.role,
-                content: .string(msg.content)
-            ))
+        for (index, msg) in messages.enumerated() {
+            // Attach image to the last user message if provided
+            let isLastUserMsg = msg.role == "user" && index == messages.indices.last(where: { messages[$0].role == "user" })
+            if isLastUserMsg, let data = imageData {
+                let b64 = data.base64EncodedString()
+                // Detect JPEG vs PNG by magic bytes
+                let mime = data.prefix(4).elementsEqual([0x89, 0x50, 0x4E, 0x47]) ? "image/png" : "image/jpeg"
+                var parts: [ClaudeContentPart] = [.image(base64: b64, mediaType: mime)]
+                if !msg.content.isEmpty {
+                    parts.append(.text(msg.content))
+                }
+                apiMessages.append(ClaudeRequestMessage(role: msg.role, content: .parts(parts)))
+            } else {
+                apiMessages.append(ClaudeRequestMessage(role: msg.role, content: .string(msg.content)))
+            }
         }
 
         let request = ClaudeRequest(
@@ -447,10 +480,11 @@ final class ClaudeService {
         )
         continuationMessages.append(toolResultMessage)
 
-        // Continue streaming with updated context
+        // Continue streaming with updated context (image not re-sent on continuation)
         try await streamMessageInternal(
             apiKey: apiKey,
             messages: continuationMessages,
+            imageData: nil,
             conversationHistory: [],
             onChunk: onChunk
         )
