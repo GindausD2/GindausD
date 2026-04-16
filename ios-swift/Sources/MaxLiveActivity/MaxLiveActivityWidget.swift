@@ -47,7 +47,7 @@ struct MaxLiveActivityWidget: Widget {
             DynamicIsland {
                 // ── Expanded (long-press on the pill) ─────────────────────────
                 DynamicIslandExpandedRegion(.leading) {
-                    MaxAvatarView(size: 40)
+                    MaxLogoView(color: .white, width: 56)
                         .padding(.leading, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -76,13 +76,15 @@ struct MaxLiveActivityWidget: Widget {
                     }
                 }
             } compactLeading: {
-                // ── Compact: small violet moon logo ───────────────────────────
-                MaxAvatarView(size: 22)
+                // ── Compact: triple moon logo ─────────────────────────────────
+                MaxLogoView(color: .white, width: 32)
+                    .padding(.leading, 2)
             } compactTrailing: {
                 // ── Compact: animated phase icon ──────────────────────────────
                 PhaseIconView(phase: context.state.phase, size: 13)
             } minimal: {
-                MaxAvatarView(size: 20)
+                // ── Minimal: just the center ring of the logo at tiny size ────
+                MaxLogoView(color: .white, width: 24)
             }
             .keylineTint(violet)
         }
@@ -104,9 +106,10 @@ private struct MaxLockScreenCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            // ── Row 1: avatar + app name + elapsed ────────────────────────────
+            // ── Row 1: triple moon logo + app name + source ───────────────────
             HStack(spacing: 10) {
-                MaxAvatarView(size: 38)
+                // Triple moon logo — same width as the "StarCy" avatar in the reference
+                MaxLogoView(color: .white, width: 52)
 
                 Text("Max")
                     .font(.system(size: 16, weight: .bold))
@@ -114,7 +117,6 @@ private struct MaxLockScreenCard: View {
 
                 Spacer()
 
-                // Subtle elapsed / "AI" label on the right
                 Text("Claude")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.white.opacity(0.45))
@@ -160,26 +162,61 @@ private struct MaxLockScreenCard: View {
     }
 }
 
-// MARK: - Avatar View (violet gradient circle with moon icon)
+// MARK: - Max Logo View (triple moon — mirrored from MaxLogoView in main target)
+//
+// Widget extensions cannot import views from the main app target,
+// so the canvas drawing is duplicated here.
+
+private struct MaxLogoView: View {
+    var color: Color = .white
+    var width: CGFloat
+
+    private var height: CGFloat { width * 44 / 100 }
+
+    var body: some View {
+        Canvas(opaque: false, colorMode: .linear) { context, size in
+            let u = size.width / 100.0
+
+            func ellipse(cx: CGFloat, cy: CGFloat, r: CGFloat) -> Path {
+                Path(ellipseIn: CGRect(
+                    x: (cx - r) * u, y: (cy - r) * u,
+                    width: 2 * r * u, height: 2 * r * u
+                ))
+            }
+
+            // Left crescent
+            context.drawLayer { ctx in
+                ctx.fill(ellipse(cx: 15, cy: 22, r: 21), with: .color(color))
+                ctx.blendMode = .destinationOut
+                ctx.fill(ellipse(cx: 24, cy: 22, r: 16), with: .color(.black))
+            }
+            // Center ring
+            context.drawLayer { ctx in
+                ctx.fill(ellipse(cx: 50, cy: 22, r: 14), with: .color(color))
+                ctx.blendMode = .destinationOut
+                ctx.fill(ellipse(cx: 50, cy: 22, r:  9), with: .color(.black))
+            }
+            // Right crescent
+            context.drawLayer { ctx in
+                ctx.fill(ellipse(cx: 85, cy: 22, r: 21), with: .color(color))
+                ctx.blendMode = .destinationOut
+                ctx.fill(ellipse(cx: 76, cy: 22, r: 16), with: .color(.black))
+            }
+        }
+        .frame(width: width, height: height)
+    }
+}
+
+// MARK: - Avatar View (violet pill containing the triple moon logo)
 
 private struct MaxAvatarView: View {
     let size: CGFloat
 
+    // Logo width is ~2.4× the avatar height so the three moons fit legibly
+    private var logoWidth: CGFloat { size * 2.2 }
+
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [violet, violetDeep],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-            Image(systemName: "moon.stars.fill")
-                .font(.system(size: size * 0.42, weight: .semibold))
-                .foregroundStyle(.white)
-        }
+        MaxLogoView(color: .white, width: logoWidth)
     }
 }
 
