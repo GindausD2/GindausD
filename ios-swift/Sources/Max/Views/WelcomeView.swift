@@ -364,6 +364,8 @@ private struct WelcomePage: View {
     var onSignUp: () -> Void
     @EnvironmentObject private var authService: AuthService
 
+    @State private var showDemoOnboarding: Bool = false
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -410,20 +412,23 @@ private struct WelcomePage: View {
             }
             .padding(.bottom, 18)
 
+            // Try Demo — opens the sliding onboarding flow
             Button {
-                Task { await authService.startDemo() }
+                showDemoOnboarding = true
             } label: {
-                Group {
-                    if authService.isLoading {
-                        ProgressView().tint(.white.opacity(0.7)).padding(.vertical, 4)
-                    } else {
-                        Text("Try Demo")
-                            .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.55))
-                    }
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 13))
+                    Text("Try Demo")
+                        .font(.subheadline.weight(.medium))
                 }
+                .foregroundStyle(.white.opacity(0.60))
             }
             .disabled(authService.isLoading)
+            .fullScreenCover(isPresented: $showDemoOnboarding) {
+                DemoOnboardingView()
+                    .environmentObject(authService)
+            }
 
             Spacer()
         }

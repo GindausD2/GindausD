@@ -52,11 +52,19 @@ final class AuthService: ObservableObject {
         isLoading = false
     }
 
-    func startDemo() async {
+    func startDemo(name: String = "", voice: String = "female") async {
         isLoading = true
         try? await Task.sleep(nanoseconds: 400_000_000)
-        let user = AuthUser(name: "Demo User", email: nil, isDemo: true)
+        let displayName = name.isEmpty ? "Demo User" : name
+        let user = AuthUser(name: displayName, email: nil, isDemo: true)
         saveUser(user)
+
+        // Persist the voice preference so HomeView and VoiceService can use it
+        var settings = StorageService.shared.loadSettings()
+        settings.preferredVoice = voice
+        if settings.userName.isEmpty { settings.userName = displayName }
+        StorageService.shared.saveSettings(settings)
+
         isLoading = false
     }
 

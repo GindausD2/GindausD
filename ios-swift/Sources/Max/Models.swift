@@ -33,7 +33,8 @@ struct AppSettings: Codable {
     var assistantName: String = "Max"
     var voiceEnabled: Bool = false
     var userName: String = ""
-    var colorScheme: String = "system"  // "system" | "light" | "dark"
+    var colorScheme: String = "system"      // "system" | "light" | "dark"
+    var preferredVoice: String = "female"   // "female" | "male"
 }
 
 // MARK: - Note
