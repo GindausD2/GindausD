@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import UIKit
 
 // MARK: - HomeView
 
@@ -9,6 +10,8 @@ struct HomeView: View {
 
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
+    @State private var showImagePicker: Bool = false
+    @State private var pendingImage: UIImage? = nil
 
     private let liveActivity = LiveActivityService.shared
 
@@ -27,6 +30,10 @@ struct HomeView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
+        }
+        .fullScreenCover(isPresented: $showImagePicker) {
+            ImageSourcePicker(selectedImage: $pendingImage, isPresented: $showImagePicker)
+                .ignoresSafeArea()
         }
         .onAppear {
             viewModel.loadMessages()
@@ -198,6 +205,9 @@ struct HomeView: View {
             VStack(spacing: 18) {
                 OrbView(state: viewModel.orbState, size: 128)
                     .onTapGesture { viewModel.handleOrbTap() }
+                if let img = pendingImage {
+                    imageThumbnailRow(img)
+                }
                 inputRow
             }
             .padding(.horizontal, 24)
@@ -288,6 +298,45 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Image Thumbnail Row
+
+    private func imageThumbnailRow(_ image: UIImage) -> some View {
+        HStack(spacing: 10) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 60, height: 60)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.25), lineWidth: 0.75)
+                )
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Photo attached")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                Text("Ask Max anything about it")
+                    .font(.caption2)
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+
+            Spacer()
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    pendingImage = nil
+                }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(Color.white.opacity(0.55))
+            }
+        }
+        .padding(.horizontal, 4)
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
     // MARK: - Input Row
 
     private var inputRow: some View {
@@ -301,11 +350,15 @@ struct HomeView: View {
                     .lineLimit(1...4)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 11)
-                    .onSubmit { viewModel.sendTextMessage() }
+                    .onSubmit {
+                        viewModel.sendTextMessage(image: pendingImage)
+                        pendingImage = nil
+                    }
 
                 if !viewModel.inputText.isEmpty {
                     Button {
-                        viewModel.sendTextMessage()
+                        viewModel.sendTextMessage(image: pendingImage)
+                        pendingImage = nil
                     } label: {
                         Circle()
                             .fill(
@@ -352,6 +405,35 @@ struct HomeView: View {
                 }
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.inputText.isEmpty)
+
+            // Camera button — left of the mic circle
+            Button {
+                showImagePicker = true
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.10))
+                        .frame(width: 48, height: 48)
+                        .overlay(
+                            Circle().strokeBorder(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.35), .white.opacity(0.08)],
+                                    startPoint: .topLeading, endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.75
+                            )
+                        )
+
+                    Image(systemName: pendingImage == nil ? "camera" : "camera.fill")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(
+                            pendingImage == nil
+                                ? Color.white.opacity(0.80)
+                                : Color(hex: "#A78BFA")
+                        )
+                }
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage == nil)
 
             // Mic button with glow rings
             Button {
@@ -446,12 +528,14 @@ final class HomeViewModel: ObservableObject {
 
     // MARK: - Input
 
-    func sendTextMessage() {
+    func sendTextMessage(image: UIImage? = nil) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, conversationState == .idle else { return }
+        guard !text.isEmpty || image != nil, conversationState == .idle else { return }
         inputText = ""
-        addUserMessage(text)
-        streamResponse(userText: text)
+        let displayText = text.isEmpty ? "What do you see in this image?" : text
+        addUserMessage(displayText)
+        let imageData = image.flatMap { $0.jpegData(compressionQuality: 0.8) }
+        streamResponse(userText: displayText, imageData: imageData)
     }
 
     func handleMicTap() {
@@ -494,7 +578,7 @@ final class HomeViewModel: ObservableObject {
                 return
             }
             addUserMessage(transcription)
-            streamResponse(userText: transcription)
+            streamResponse(userText: transcription, imageData: nil)
         }
     }
 
@@ -517,7 +601,7 @@ final class HomeViewModel: ObservableObject {
         storage.saveMessages(messages)
     }
 
-    private func streamResponse(userText: String) {
+    private func streamResponse(userText: String, imageData: Data? = nil) {
         let settings = storage.loadSettings()
         guard !settings.apiKey.isEmpty else {
             conversationState = .idle
@@ -534,7 +618,8 @@ final class HomeViewModel: ObservableObject {
 
         claude.streamMessage(
             apiKey: settings.apiKey,
-            messages: messages.filter { $0.id != streamId }
+            messages: messages.filter { $0.id != streamId },
+            imageData: imageData
         ) { [weak self] chunk in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
