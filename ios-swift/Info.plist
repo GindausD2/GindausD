@@ -69,11 +69,24 @@
         </dict>
     </dict>
 
+    <!-- Live Activities -->
+    <key>NSSupportsLiveActivities</key>
+    <true/>
+    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
+    <true/>
+
+    <!-- Background Tasks -->
+    <key>BGTaskSchedulerPermittedIdentifiers</key>
+    <array>
+        <string>com.max.ai.liveactivity.refresh</string>
+    </array>
+
     <!-- Background Modes -->
     <key>UIBackgroundModes</key>
     <array>
         <string>audio</string>
         <string>fetch</string>
+        <string>processing</string>
     </array>
 
     <!-- UI Requirements -->
