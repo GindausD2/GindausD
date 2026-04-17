@@ -3,21 +3,21 @@ import SwiftUI
 /// Triple moon / triple goddess symbol — the Max AI logo.
 /// Rendered purely with SwiftUI Canvas; no image assets needed.
 ///
-/// Layout (100 × 44 virtual units):
-///   Left crescent  — large circle cx=15 r=21, inner circle cx=24 r=16 (offset right → opens right)
-///   Center ring    — outer circle cx=50 r=14, inner circle cx=50 r=9
-///   Right crescent — large circle cx=85 r=21, inner circle cx=76 r=16 (offset left → opens left)
+/// Virtual canvas: 100 × 50 units
+///   Left crescent  — outer cx=18 r=24, cutout cx=29 r=19  (opens right, tips kiss center ring)
+///   Center ring    — outer cx=50 r=17, inner  cx=50 r=10  (thick ring)
+///   Right crescent — outer cx=82 r=24, cutout cx=71 r=19  (opens left,  tips kiss center ring)
 struct MaxLogoView: View {
     var color: Color = .white
     var width: CGFloat = 180
 
-    var height: CGFloat { width * 44 / 100 }
+    var height: CGFloat { width * 50 / 100 }
 
     var body: some View {
         Canvas(opaque: false, colorMode: .linear) { context, size in
             let u = size.width / 100.0
 
-            func ellipse(cx: CGFloat, cy: CGFloat, r: CGFloat) -> Path {
+            func circle(cx: CGFloat, cy: CGFloat, r: CGFloat) -> Path {
                 Path(ellipseIn: CGRect(
                     x: (cx - r) * u,
                     y: (cy - r) * u,
@@ -26,25 +26,25 @@ struct MaxLogoView: View {
                 ))
             }
 
-            // ── Left crescent ─────────────────────────────────────────────────
+            // ── Left crescent (opens right) ───────────────────────────────────
             context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 15, cy: 22, r: 21), with: .color(color))
+                ctx.fill(circle(cx: 18, cy: 25, r: 24), with: .color(color))
                 ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 24, cy: 22, r: 16), with: .color(.black))
+                ctx.fill(circle(cx: 29, cy: 25, r: 19), with: .color(.black))
             }
 
             // ── Center ring ───────────────────────────────────────────────────
             context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 50, cy: 22, r: 14), with: .color(color))
+                ctx.fill(circle(cx: 50, cy: 25, r: 17), with: .color(color))
                 ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 50, cy: 22, r:  9), with: .color(.black))
+                ctx.fill(circle(cx: 50, cy: 25, r: 10), with: .color(.black))
             }
 
-            // ── Right crescent ────────────────────────────────────────────────
+            // ── Right crescent (opens left) ───────────────────────────────────
             context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 85, cy: 22, r: 21), with: .color(color))
+                ctx.fill(circle(cx: 82, cy: 25, r: 24), with: .color(color))
                 ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 76, cy: 22, r: 16), with: .color(.black))
+                ctx.fill(circle(cx: 71, cy: 25, r: 19), with: .color(.black))
             }
         }
         .frame(width: width, height: height)
@@ -54,7 +54,11 @@ struct MaxLogoView: View {
 #Preview {
     ZStack {
         Color(red: 0.18, green: 0.11, blue: 0.41)
-        MaxLogoView(color: .white, width: 240)
+        VStack(spacing: 32) {
+            MaxLogoView(color: .white, width: 240)
+            MaxLogoView(color: .white, width: 120)
+            MaxLogoView(color: .white, width: 60)
+        }
     }
     .ignoresSafeArea()
 }

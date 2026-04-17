@@ -171,7 +171,7 @@ private struct MaxLogoView: View {
     var color: Color = .white
     var width: CGFloat
 
-    private var height: CGFloat { width * 44 / 100 }
+    private var height: CGFloat { width * 50 / 100 }
 
     var body: some View {
         Canvas(opaque: false, colorMode: .linear) { context, size in
@@ -184,23 +184,23 @@ private struct MaxLogoView: View {
                 ))
             }
 
-            // Left crescent
+            // Left crescent (opens right, tips kiss center ring)
             context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 15, cy: 22, r: 21), with: .color(color))
+                ctx.fill(ellipse(cx: 18, cy: 25, r: 24), with: .color(color))
                 ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 24, cy: 22, r: 16), with: .color(.black))
+                ctx.fill(ellipse(cx: 29, cy: 25, r: 19), with: .color(.black))
             }
             // Center ring
             context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 50, cy: 22, r: 14), with: .color(color))
+                ctx.fill(ellipse(cx: 50, cy: 25, r: 17), with: .color(color))
                 ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 50, cy: 22, r:  9), with: .color(.black))
+                ctx.fill(ellipse(cx: 50, cy: 25, r: 10), with: .color(.black))
             }
-            // Right crescent
+            // Right crescent (opens left, tips kiss center ring)
             context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 85, cy: 22, r: 21), with: .color(color))
+                ctx.fill(ellipse(cx: 82, cy: 25, r: 24), with: .color(color))
                 ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 76, cy: 22, r: 16), with: .color(.black))
+                ctx.fill(ellipse(cx: 71, cy: 25, r: 19), with: .color(.black))
             }
         }
         .frame(width: width, height: height)
