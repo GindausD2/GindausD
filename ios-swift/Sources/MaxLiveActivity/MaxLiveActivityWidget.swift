@@ -251,7 +251,7 @@ extension MaxActivityAttributes.ContentState.Phase {
     /// Text shown in the card body when snippet is empty
     var emptyLabel: String {
         switch self {
-        case .idle:      return "Ready to assist you."
+        case .idle:      return "Tap to talk with Max."
         case .listening: return "Listening to you…"
         case .thinking:  return "Thinking through your request…"
         case .speaking:  return "Preparing a response…"

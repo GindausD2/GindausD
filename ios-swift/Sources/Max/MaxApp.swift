@@ -1,13 +1,29 @@
+import BackgroundTasks
 import SwiftUI
 import UserNotifications
+
+// ── Required Info.plist keys (add these in Xcode → target → Info) ─────────────
+//
+//  NSSupportsLiveActivities              → YES
+//  NSSupportsLiveActivitiesFrequentUpdates → YES
+//
+//  BGTaskSchedulerPermittedIdentifiers   → Array
+//      Item 0 → com.max.ai.liveactivity.refresh
+//
+//  UIBackgroundModes                     → Array
+//      Item 0 → fetch
+//      Item 1 → processing
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+private let kLiveActivityRefreshID = "com.max.ai.liveactivity.refresh"
+private let kRefreshInterval: TimeInterval = 4 * 3600 // 4 hours
 
 @main
 struct MaxApp: App {
     @StateObject private var authService = AuthService.shared
-
-    /// Stored in UserDefaults so SettingsView can mutate it with @AppStorage
-    /// and MaxApp reacts immediately — no manual save/load needed.
     @AppStorage("max.appearance") private var appearance: String = "system"
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         configureAppearance()
@@ -19,6 +35,30 @@ struct MaxApp: App {
             RootView()
                 .environmentObject(authService)
                 .preferredColorScheme(resolvedScheme)
+                // Start / stop the persistent Dynamic Island session when auth changes
+                .onChange(of: authService.currentUser) { _, user in
+                    if user != nil {
+                        LiveActivityService.shared.startPersistentSession()
+                        scheduleBackgroundRefresh()
+                    } else {
+                        LiveActivityService.shared.stopPersistentSession()
+                    }
+                }
+                // Re-schedule background refresh whenever the app moves to background
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .background && authService.currentUser != nil {
+                        scheduleBackgroundRefresh()
+                    }
+                    // When app becomes active, ensure the session is alive
+                    if phase == .active && authService.currentUser != nil {
+                        LiveActivityService.shared.startPersistentSession()
+                    }
+                }
+        }
+        // ── Background task: refresh every ~4 hours to extend the 24-hr staleDate
+        .backgroundTask(.appRefresh(kLiveActivityRefreshID)) {
+            await LiveActivityService.shared.refreshStaleDate()
+            scheduleBackgroundRefresh()
         }
     }
 
@@ -28,7 +68,7 @@ struct MaxApp: App {
         switch appearance {
         case "light": return .light
         case "dark":  return .dark
-        default:      return nil   // follows system
+        default:      return nil
         }
     }
 
@@ -36,13 +76,23 @@ struct MaxApp: App {
         let navAppearance = UINavigationBarAppearance()
         navAppearance.configureWithTransparentBackground()
         navAppearance.shadowColor = .clear
-        UINavigationBar.appearance().standardAppearance  = navAppearance
+        UINavigationBar.appearance().standardAppearance   = navAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
     }
 
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
+}
+
+// MARK: - Background refresh scheduling
+
+/// Schedules the next BGAppRefreshTask ~4 hours from now.
+/// Must be called each time to keep the chain going.
+func scheduleBackgroundRefresh() {
+    let request = BGAppRefreshTaskRequest(identifier: kLiveActivityRefreshID)
+    request.earliestBeginDate = Date(timeIntervalSinceNow: kRefreshInterval)
+    try? BGTaskScheduler.shared.submit(request)
 }
 
 // MARK: - Root View (Auth Gate)

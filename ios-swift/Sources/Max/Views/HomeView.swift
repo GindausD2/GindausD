@@ -38,12 +38,15 @@ struct HomeView: View {
             ImageSourcePicker(selectedImage: $pendingImage, isPresented: $showImagePicker)
                 .ignoresSafeArea()
         }
-        .onAppear { viewModel.loadMessages() }
+        .onAppear {
+            viewModel.loadMessages()
+            liveActivity.startPersistentSession() // ensure island is alive
+        }
         // ── Dynamic Island ─────────────────────────────────────────────────────
         .onChange(of: viewModel.conversationState) { _, newState in
             switch newState {
-            case .idle:      liveActivity.end()
-            case .listening: liveActivity.start(); liveActivity.update(phase: .listening)
+            case .idle:      liveActivity.keepAlive()           // stay visible, back to standby
+            case .listening: liveActivity.start()               // start / transition → listening
             case .thinking:  liveActivity.update(phase: .thinking)
             case .speaking:  liveActivity.update(phase: .speaking)
             }
