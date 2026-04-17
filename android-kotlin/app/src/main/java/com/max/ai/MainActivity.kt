@@ -102,7 +102,7 @@ fun AppRoot(
                     }
 
                     Screen.WELCOME -> {
-                        val vm = remember { WelcomeViewModel(authRepository) }
+                        val vm = remember { WelcomeViewModel(authRepository, storageRepository) }
                         WelcomeScreen(
                             viewModel       = vm,
                             onAuthenticated = { currentScreen = Screen.HOME },

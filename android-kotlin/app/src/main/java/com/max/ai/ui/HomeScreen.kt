@@ -1,7 +1,12 @@
 package com.max.ai.ui
 
+import android.graphics.Bitmap
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,10 +14,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,12 +33,16 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Image
 import com.max.ai.OrbState
 import com.max.ai.R
 import com.max.ai.ui.components.MessageBubble
@@ -39,6 +53,7 @@ import com.max.ai.ui.theme.HomeBgTop
 import com.max.ai.ui.theme.RecordingRed
 import com.max.ai.ui.theme.ThinkingPurple
 import com.max.ai.viewmodels.HomeViewModel
+import java.io.ByteArrayOutputStream
 
 private val AccentViolet = Color(0xFF7C3AED)
 private val AccentIndigo = Color(0xFF4F46E5)
@@ -51,6 +66,53 @@ fun HomeScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+    var showImageSourceDialog by remember { mutableStateOf(false) }
+
+    // Camera — returns a Bitmap thumbnail
+    val cameraLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        bitmap?.let {
+            val out = ByteArrayOutputStream()
+            it.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            viewModel.onImageSelected(out.toByteArray())
+        }
+    }
+
+    // Gallery — returns a URI
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            context.contentResolver.openInputStream(it)?.use { stream ->
+                viewModel.onImageSelected(stream.readBytes())
+            }
+        }
+    }
+
+    if (showImageSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showImageSourceDialog = false },
+            title = { Text("Add a photo") },
+            text = {
+                Column {
+                    TextButton(
+                        onClick = { showImageSourceDialog = false; cameraLauncher.launch(null) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Take Photo") }
+                    TextButton(
+                        onClick = { showImageSourceDialog = false; galleryLauncher.launch("image/*") },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Choose from Gallery") }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showImageSourceDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
 
     LaunchedEffect(uiState.messages.size) {
         if (uiState.messages.isNotEmpty()) {
@@ -147,6 +209,12 @@ fun HomeScreen(
                     orbState = uiState.orbState,
                     isRecording = uiState.isRecording,
                     isThinking = uiState.isThinking,
+                    inputText = uiState.inputText,
+                    pendingImageBytes = uiState.pendingImageBytes,
+                    onInputTextChanged = viewModel::onInputTextChanged,
+                    onSendMessage = viewModel::sendTextMessage,
+                    onCameraClick = { showImageSourceDialog = true },
+                    onClearImage = viewModel::clearPendingImage,
                     onMicPressed = viewModel::onMicPressed
                 )
             }
@@ -205,8 +273,16 @@ private fun BottomDock(
     orbState: OrbState,
     isRecording: Boolean,
     isThinking: Boolean,
+    inputText: String,
+    pendingImageBytes: ByteArray?,
+    onInputTextChanged: (String) -> Unit,
+    onSendMessage: () -> Unit,
+    onCameraClick: () -> Unit,
+    onClearImage: () -> Unit,
     onMicPressed: () -> Unit
 ) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -224,11 +300,100 @@ private fun BottomDock(
         ) {
             OrbComponent(state = orbState, size = 128.dp)
             Spacer(Modifier.height(20.dp))
-            MicButton(
-                isRecording = isRecording,
-                isThinking = isThinking,
-                onClick = onMicPressed
-            )
+
+            // ── Image thumbnail ───────────────────────────────────────────────
+            AnimatedVisibility(
+                visible = pendingImageBytes != null,
+                enter = expandVertically() + fadeIn(),
+                exit  = shrinkVertically() + fadeOut()
+            ) {
+                pendingImageBytes?.let { bytes ->
+                    val bitmap = remember(bytes) {
+                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    }
+                    if (bitmap != null) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = "Attached photo",
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(10.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            Spacer(Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Photo attached", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                Text("Ask Max anything about it", color = Color.White.copy(alpha = 0.55f), fontSize = 11.sp)
+                            }
+                            IconButton(onClick = onClearImage) {
+                                Icon(Icons.Default.Close, contentDescription = "Remove photo", tint = Color.White.copy(alpha = 0.55f))
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Input row: [TextField] [Camera] [Mic] ────────────────────────
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                // Text field
+                OutlinedTextField(
+                    value = inputText,
+                    onValueChange = onInputTextChanged,
+                    placeholder = { Text("Message Max…", color = Color.White.copy(alpha = 0.40f)) },
+                    modifier = Modifier.weight(1f),
+                    maxLines = 4,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor       = Color.White,
+                        unfocusedTextColor     = Color.White,
+                        focusedBorderColor     = Color(0xFF7C3AED),
+                        unfocusedBorderColor   = Color.White.copy(alpha = 0.20f),
+                        cursorColor            = Color(0xFFA78BFA),
+                        focusedContainerColor  = Color.White.copy(alpha = 0.05f),
+                        unfocusedContainerColor= Color.White.copy(alpha = 0.05f)
+                    ),
+                    shape = RoundedCornerShape(20.dp),
+                    trailingIcon = {
+                        AnimatedVisibility(visible = inputText.isNotEmpty() || pendingImageBytes != null) {
+                            IconButton(onClick = { onSendMessage(); keyboardController?.hide() }) {
+                                Icon(Icons.Default.Send, contentDescription = "Send", tint = Color(0xFF7C3AED))
+                            }
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { onSendMessage(); keyboardController?.hide() })
+                )
+
+                // Camera button
+                IconButton(
+                    onClick = onCameraClick,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (pendingImageBytes != null) Color(0xFF7C3AED).copy(alpha = 0.30f)
+                            else Color.White.copy(alpha = 0.10f)
+                        )
+                ) {
+                    Icon(
+                        Icons.Default.CameraAlt,
+                        contentDescription = "Camera",
+                        tint = if (pendingImageBytes != null) Color(0xFFA78BFA) else Color.White.copy(alpha = 0.75f)
+                    )
+                }
+
+                // Mic button
+                MicButton(isRecording = isRecording, isThinking = isThinking, onClick = onMicPressed)
+            }
         }
     }
 }

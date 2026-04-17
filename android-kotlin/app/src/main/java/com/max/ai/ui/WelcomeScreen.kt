@@ -35,6 +35,7 @@ import com.max.ai.OrbState
 import com.max.ai.R
 import com.max.ai.ui.components.*
 import com.max.ai.ui.theme.WelcomeGradientColors
+import com.max.ai.viewmodels.WelcomeUiState
 import com.max.ai.viewmodels.WelcomeViewModel
 import kotlinx.coroutines.launch
 
@@ -112,7 +113,7 @@ fun WelcomeScreen(
                     onGetStarted = {
                         scope.launch { pagerState.animateScrollToPage(2) }
                     },
-                    onTryDemo = viewModel::startDemo
+                    onTryDemo = viewModel::startDemoOnboarding
                 )
                 2 -> SignUpPage(
                     uiState = uiState,
@@ -127,6 +128,18 @@ fun WelcomeScreen(
                     }
                 )
             }
+        }
+
+        // Demo onboarding overlay
+        if (uiState.showDemoOnboarding) {
+            DemoOnboardingScreen(
+                uiState = uiState,
+                onNameChanged = viewModel::onDemoNameChanged,
+                onGenderChanged = viewModel::onDemoGenderChanged,
+                onVoiceChanged = viewModel::onDemoVoiceChanged,
+                onFinish = viewModel::finishDemo,
+                onDismiss = viewModel::dismissDemoOnboarding
+            )
         }
 
         // Global error snackbar

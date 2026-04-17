@@ -21,7 +21,8 @@ data class AppSettings(
     val assistantName: String = "Max",
     val voiceEnabled: Boolean = false,
     val userName: String = "",
-    val colorScheme: String = "system"   // "system" | "light" | "dark"
+    val colorScheme: String = "system",   // "system" | "light" | "dark"
+    val preferredVoice: String = "female" // "female" | "male"
 )
 
 // ─── Notes ────────────────────────────────────────────────────────────────────

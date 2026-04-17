@@ -31,7 +31,9 @@ data class HomeUiState(
     val apiKey: String = "",
     val voiceEnabled: Boolean = false,
     val error: String? = null,
-    val statusMessage: String? = null
+    val statusMessage: String? = null,
+    val inputText: String = "",
+    val pendingImageBytes: ByteArray? = null
 )
 
 class HomeViewModel(
@@ -126,11 +128,45 @@ class HomeViewModel(
                 return@launch
             }
 
-            sendMessage(transcription)
+            sendMessage(transcription) // voice path — no image
         }
     }
 
+    // ─── Text input ───────────────────────────────────────────────────────────
+
+    fun onInputTextChanged(text: String) = _uiState.update { it.copy(inputText = text) }
+
+    fun onImageSelected(bytes: ByteArray) = _uiState.update { it.copy(pendingImageBytes = bytes) }
+
+    fun clearPendingImage() = _uiState.update { it.copy(pendingImageBytes = null) }
+
     // ─── Send text message ────────────────────────────────────────────────────
+
+    fun sendTextMessage() {
+        val state = _uiState.value
+        val text = state.inputText.trim()
+        val imageBytes = state.pendingImageBytes
+        if (text.isBlank() && imageBytes == null) return
+
+        val apiKey = state.apiKey
+        if (apiKey.isBlank()) {
+            _uiState.update { it.copy(error = "Please set your API key in Settings") }
+            return
+        }
+
+        val displayText = if (text.isBlank()) "What do you see in this image?" else text
+        val userMsg = Message(
+            id = UUID.randomUUID().toString(),
+            role = "user",
+            content = displayText,
+            timestamp = System.currentTimeMillis()
+        )
+        val updatedMessages = state.messages + userMsg
+        _uiState.update { it.copy(messages = updatedMessages, inputText = "", pendingImageBytes = null, error = null) }
+        storageRepository.saveMessages(updatedMessages)
+
+        streamResponse(apiKey, imageBytes)
+    }
 
     fun sendMessage(text: String) {
         if (text.isBlank()) return
@@ -139,8 +175,6 @@ class HomeViewModel(
             _uiState.update { it.copy(error = "Please set your API key in Settings") }
             return
         }
-
-        // Add user message
         val userMsg = Message(
             id = UUID.randomUUID().toString(),
             role = "user",
@@ -150,14 +184,12 @@ class HomeViewModel(
         val updatedMessages = _uiState.value.messages + userMsg
         _uiState.update { it.copy(messages = updatedMessages, error = null) }
         storageRepository.saveMessages(updatedMessages)
-
-        // Start streaming
         streamResponse(apiKey)
     }
 
     // ─── Claude streaming ─────────────────────────────────────────────────────
 
-    private fun streamResponse(apiKey: String) {
+    private fun streamResponse(apiKey: String, imageBytes: ByteArray? = null) {
         streamingJob?.cancel()
 
         val assistantMsgId = UUID.randomUUID().toString()
@@ -190,6 +222,7 @@ class HomeViewModel(
             claudeService.streamResponse(
                 apiKey = apiKey,
                 messages = claudeMessages,
+                imageBytes = imageBytes,
                 onToolCall = { name, toolUseId, inputMap ->
                     _uiState.update { it.copy(statusMessage = "Using tool: $name...") }
                     toolsService.execute(name, inputMap)

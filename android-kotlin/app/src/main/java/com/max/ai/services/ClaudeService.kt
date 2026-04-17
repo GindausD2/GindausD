@@ -100,6 +100,58 @@ class ClaudeService {
                 ),
                 required = listOf("title", "trigger_at_millis")
             )
+        ),
+        ToolDefinition(
+            name = "get_reminders",
+            description = "Get all upcoming scheduled reminders",
+            input_schema = ToolInputSchema(properties = emptyMap(), required = emptyList())
+        ),
+        ToolDefinition(
+            name = "book_flight",
+            description = "Search and book a flight by opening Kayak with pre-filled search",
+            input_schema = ToolInputSchema(
+                properties = mapOf(
+                    "origin" to ToolProperty("string", "Departure city or airport code (e.g. 'New York' or 'JFK')"),
+                    "destination" to ToolProperty("string", "Arrival city or airport code (e.g. 'Los Angeles' or 'LAX')"),
+                    "date" to ToolProperty("string", "Travel date in YYYY-MM-DD format"),
+                    "passengers" to ToolProperty("string", "Number of passengers (default: 1)")
+                ),
+                required = listOf("origin", "destination", "date")
+            )
+        ),
+        ToolDefinition(
+            name = "book_uber",
+            description = "Book an Uber ride by opening the Uber app with pickup and dropoff pre-filled",
+            input_schema = ToolInputSchema(
+                properties = mapOf(
+                    "pickup" to ToolProperty("string", "Pickup address or location name"),
+                    "dropoff" to ToolProperty("string", "Drop-off address or destination name")
+                ),
+                required = listOf("pickup", "dropoff")
+            )
+        ),
+        ToolDefinition(
+            name = "compose_email",
+            description = "Open the email app to compose and send an email",
+            input_schema = ToolInputSchema(
+                properties = mapOf(
+                    "to" to ToolProperty("string", "Recipient email address"),
+                    "subject" to ToolProperty("string", "Email subject line"),
+                    "body" to ToolProperty("string", "Email body text")
+                ),
+                required = listOf("to", "subject", "body")
+            )
+        ),
+        ToolDefinition(
+            name = "make_call",
+            description = "Make a phone call by opening the dialer with the number pre-filled",
+            input_schema = ToolInputSchema(
+                properties = mapOf(
+                    "phoneNumber" to ToolProperty("string", "Phone number to call (digits only, e.g. '14155552671')"),
+                    "contactName" to ToolProperty("string", "Name of the person being called")
+                ),
+                required = listOf("phoneNumber")
+            )
         )
     )
 
@@ -117,15 +169,22 @@ class ClaudeService {
         apiKey: String,
         messages: List<ClaudeMessage>,
         systemPrompt: String = DEFAULT_SYSTEM_PROMPT,
+        imageBytes: ByteArray? = null,
         onToolCall: suspend (name: String, toolUseId: String, input: Map<String, JsonElement>) -> String
     ): Flow<StreamChunk> = callbackFlow {
         var conversationMessages = messages.toMutableList()
         var continueLoop = true
+        var isFirstCall = true
 
         while (continueLoop) {
             continueLoop = false
 
-            val requestBody = buildRequestBody(conversationMessages, systemPrompt)
+            val requestBody = buildRequestBody(
+                conversationMessages,
+                systemPrompt,
+                if (isFirstCall) imageBytes else null
+            )
+            isFirstCall = false
             val request = Request.Builder()
                 .url(CLAUDE_API_URL)
                 .post(requestBody.toRequestBody(JSON_MEDIA_TYPE))
@@ -322,7 +381,7 @@ class ClaudeService {
 
     // ─── Request body builder ─────────────────────────────────────────────────
 
-    private fun buildRequestBody(messages: List<ClaudeMessage>, systemPrompt: String): String {
+    private fun buildRequestBody(messages: List<ClaudeMessage>, systemPrompt: String, imageBytes: ByteArray? = null): String {
         val toolsJson = availableTools.map { tool ->
             buildJsonObject {
                 put("name", tool.name)
@@ -344,15 +403,36 @@ class ClaudeService {
             }
         }
 
-        val messagesJson = messages.map { msg ->
+        val lastUserIdx = if (imageBytes != null) messages.indexOfLast { it.role == "user" } else -1
+
+        val messagesJson = messages.mapIndexed { index, msg ->
             buildJsonObject {
                 put("role", msg.role)
-                // content may be a plain string or a JSON array (for tool results)
-                val isJsonArray = msg.content.trimStart().startsWith("[")
-                if (isJsonArray) {
-                    put("content", Json.parseToJsonElement(msg.content))
+                if (index == lastUserIdx && imageBytes != null) {
+                    val b64 = android.util.Base64.encodeToString(imageBytes, android.util.Base64.NO_WRAP)
+                    put("content", buildJsonArray {
+                        add(buildJsonObject {
+                            put("type", "image")
+                            put("source", buildJsonObject {
+                                put("type", "base64")
+                                put("media_type", "image/jpeg")
+                                put("data", b64)
+                            })
+                        })
+                        if (msg.content.isNotEmpty()) {
+                            add(buildJsonObject {
+                                put("type", "text")
+                                put("text", msg.content)
+                            })
+                        }
+                    })
                 } else {
-                    put("content", msg.content)
+                    val isJsonArray = msg.content.trimStart().startsWith("[")
+                    if (isJsonArray) {
+                        put("content", Json.parseToJsonElement(msg.content))
+                    } else {
+                        put("content", msg.content)
+                    }
                 }
             }
         }
@@ -407,9 +487,27 @@ class ClaudeService {
         private const val MODEL = "claude-sonnet-4-6"
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
-        const val DEFAULT_SYSTEM_PROMPT = """You are Max, an advanced AI personal assistant.
-You are helpful, concise, and friendly. You can save notes, remember facts about the user,
-schedule reminders, and answer questions. When using tools, do so proactively to help the user.
-Always respond in a natural, conversational tone."""
+        const val DEFAULT_SYSTEM_PROMPT = """You are Max, a brilliant and warm AI personal assistant living inside the user's phone. You have access to tools that let you take real actions: saving notes, remembering facts, scheduling reminders, booking flights, calling an Uber, composing emails, making phone calls, and analysing photos.
+
+Your personality:
+- Warm, encouraging, and genuinely interested in helping
+- Concise but thorough — get to the point without being curt
+- Proactive: if you notice something worth remembering or scheduling, suggest it
+
+Your capabilities:
+- save_note / get_notes / delete_note: manage notes
+- remember_fact / recall_facts: store and retrieve facts about the user
+- get_datetime: get the current date and time
+- schedule_reminder / get_reminders: set and list local reminders
+- book_flight: open Kayak with flight search pre-filled
+- book_uber: open the Uber app with pickup and dropoff pre-filled
+- compose_email: open the email app with recipient, subject, and body pre-filled
+- make_call: open the phone dialer with a number pre-filled
+
+Guidelines:
+- Use get_datetime before scheduling or booking with a relative date ("tomorrow")
+- Confirm details before booking flights or rides if anything is ambiguous
+- Write polished email bodies unless the user gives exact wording
+- Respond conversationally — you live in their pocket, not in a report"""
     }
 }

@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -38,6 +39,11 @@ class ToolsService(
                 "remember_fact" -> rememberFact(input)
                 "recall_facts" -> recallFacts()
                 "schedule_reminder" -> scheduleReminder(input)
+                "get_reminders" -> getReminders()
+                "book_flight" -> bookFlight(input)
+                "book_uber" -> bookUber(input)
+                "compose_email" -> composeEmail(input)
+                "make_call" -> makeCall(input)
                 else -> """{"error": "Unknown tool: $name"}"""
             }
         } catch (e: Exception) {
@@ -138,6 +144,75 @@ class ToolsService(
         } else {
             alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMillis, pendingIntent)
         }
+    }
+
+    private fun getReminders(): String {
+        val reminders = storageRepository.getReminders()
+        val now = System.currentTimeMillis()
+        val upcoming = reminders.filter { it.triggerAtMillis > now }
+        if (upcoming.isEmpty()) return """{"reminders": [], "count": 0}"""
+        val remindersJson = upcoming.joinToString(",\n") { rem ->
+            """{"id": "${rem.id}", "title": "${rem.title.escapeJson()}", "triggerAt": ${rem.triggerAtMillis}}"""
+        }
+        return """{"reminders": [$remindersJson], "count": ${upcoming.size}}"""
+    }
+
+    private fun bookFlight(input: Map<String, JsonElement>): String {
+        val origin = input["origin"]?.jsonPrimitive?.content ?: return """{"error": "Missing origin"}"""
+        val destination = input["destination"]?.jsonPrimitive?.content ?: return """{"error": "Missing destination"}"""
+        val date = input["date"]?.jsonPrimitive?.content ?: return """{"error": "Missing date"}"""
+        val passengers = input["passengers"]?.jsonPrimitive?.content ?: "1"
+        val url = "https://www.kayak.com/flights/${Uri.encode(origin)}-${Uri.encode(destination)}/$date/${passengers}adults"
+        openUrl(url)
+        return """{"success": true, "message": "Opening flight search for $origin → $destination on $date for $passengers passenger(s)."}"""
+    }
+
+    private fun bookUber(input: Map<String, JsonElement>): String {
+        val pickup = input["pickup"]?.jsonPrimitive?.content ?: return """{"error": "Missing pickup"}"""
+        val dropoff = input["dropoff"]?.jsonPrimitive?.content ?: return """{"error": "Missing dropoff"}"""
+        val uberUri = Uri.parse("uber://?action=setPickup&pickup[nickname]=${Uri.encode(pickup)}&dropoff[nickname]=${Uri.encode(dropoff)}")
+        val webUri  = Uri.parse("https://m.uber.com/ul/?action=setPickup&pickup[nickname]=${Uri.encode(pickup)}&dropoff[nickname]=${Uri.encode(dropoff)}")
+        if (!tryOpenUri(uberUri)) openUrl(webUri.toString())
+        return """{"success": true, "message": "Opening Uber from $pickup to $dropoff."}"""
+    }
+
+    private fun composeEmail(input: Map<String, JsonElement>): String {
+        val to      = input["to"]?.jsonPrimitive?.content      ?: return """{"error": "Missing to"}"""
+        val subject = input["subject"]?.jsonPrimitive?.content ?: ""
+        val body    = input["body"]?.jsonPrimitive?.content    ?: ""
+        val intent = Intent(Intent.ACTION_SENDTO).apply {
+            data = Uri.parse("mailto:")
+            putExtra(Intent.EXTRA_EMAIL, arrayOf(to))
+            putExtra(Intent.EXTRA_SUBJECT, subject)
+            putExtra(Intent.EXTRA_TEXT, body)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(intent) }
+        return """{"success": true, "message": "Opening email to $to with subject '${subject.escapeJson()}'."}"""
+    }
+
+    private fun makeCall(input: Map<String, JsonElement>): String {
+        val phoneNumber = input["phoneNumber"]?.jsonPrimitive?.content ?: return """{"error": "Missing phoneNumber"}"""
+        val contactName = input["contactName"]?.jsonPrimitive?.content ?: phoneNumber
+        val digits = phoneNumber.filter { it.isDigit() }
+        if (digits.isEmpty()) return """{"error": "Invalid phone number"}"""
+        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$digits")).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(intent) }
+        return """{"success": true, "message": "Opening dialer to call $contactName."}"""
+    }
+
+    private fun openUrl(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        runCatching { context.startActivity(intent) }
+    }
+
+    private fun tryOpenUri(uri: Uri): Boolean {
+        val intent = Intent(Intent.ACTION_VIEW, uri).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+        return runCatching { context.startActivity(intent); true }.getOrElse { false }
     }
 
     private fun String.escapeJson(): String =

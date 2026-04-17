@@ -3,7 +3,9 @@ package com.max.ai.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.max.ai.AppSettings
 import com.max.ai.services.AuthRepository
+import com.max.ai.services.StorageRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,11 +22,17 @@ data class WelcomeUiState(
     val isEmailSignUpExpanded: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
-    val isAuthenticated: Boolean = false
+    val isAuthenticated: Boolean = false,
+    // Demo onboarding
+    val showDemoOnboarding: Boolean = false,
+    val demoName: String = "",
+    val demoGender: String = "prefer_not_to_say", // "male" | "female" | "prefer_not_to_say"
+    val demoVoice: String = "female"              // "female" | "male"
 )
 
 class WelcomeViewModel(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val storageRepository: StorageRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(WelcomeUiState())
@@ -105,22 +113,35 @@ class WelcomeViewModel(
         }
     }
 
-    // ─── Demo ─────────────────────────────────────────────────────────────────
+    // ─── Demo onboarding ──────────────────────────────────────────────────────
 
-    fun startDemo() {
+    fun startDemoOnboarding() = _uiState.update { it.copy(showDemoOnboarding = true) }
+    fun dismissDemoOnboarding() = _uiState.update { it.copy(showDemoOnboarding = false) }
+    fun onDemoNameChanged(v: String) = _uiState.update { it.copy(demoName = v) }
+    fun onDemoGenderChanged(v: String) = _uiState.update { it.copy(demoGender = v) }
+    fun onDemoVoiceChanged(v: String) = _uiState.update { it.copy(demoVoice = v) }
+
+    fun finishDemo() {
         viewModelScope.launch {
-            authRepository.startDemo()
-            _uiState.update { it.copy(isAuthenticated = true) }
+            val state = _uiState.value
+            val name = state.demoName.ifBlank { "Guest" }
+            authRepository.startDemo(name)
+            val settings = storageRepository.getSettings()
+            storageRepository.saveSettings(settings.copy(userName = name, preferredVoice = state.demoVoice))
+            _uiState.update { it.copy(isAuthenticated = true, showDemoOnboarding = false) }
         }
     }
 
     // ─── Factory ──────────────────────────────────────────────────────────────
 
-    class Factory(private val authRepository: AuthRepository) : ViewModelProvider.Factory {
+    class Factory(
+        private val authRepository: AuthRepository,
+        private val storageRepository: StorageRepository
+    ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
             if (modelClass.isAssignableFrom(WelcomeViewModel::class.java)) {
-                return WelcomeViewModel(authRepository) as T
+                return WelcomeViewModel(authRepository, storageRepository) as T
             }
             throw IllegalArgumentException("Unknown ViewModel: ${modelClass.name}")
         }

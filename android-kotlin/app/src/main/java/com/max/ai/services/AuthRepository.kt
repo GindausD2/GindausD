@@ -31,8 +31,8 @@ class AuthRepository(context: Context) {
         persist(user)
     }
 
-    fun startDemo() {
-        val user = AuthUser(name = "Demo User", isDemo = true)
+    fun startDemo(name: String = "Demo User") {
+        val user = AuthUser(name = name.ifBlank { "Demo User" }, isDemo = true)
         persist(user)
     }
 
