@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import UserNotifications
 
 final class ToolsService {
@@ -26,6 +27,14 @@ final class ToolsService {
             return await scheduleReminder(input: input)
         case "get_reminders":
             return getReminders()
+        case "book_flight":
+            return await bookFlight(input: input)
+        case "book_uber":
+            return await bookUber(input: input)
+        case "compose_email":
+            return await composeEmail(input: input)
+        case "make_call":
+            return await makeCall(input: input)
         default:
             return encodeResult(["error": "Unknown tool: \(name)"])
         }
@@ -173,6 +182,95 @@ final class ToolsService {
             ]
         }
         return encodeResult(["reminders": mapped, "count": upcoming.count])
+    }
+
+    private func bookFlight(input: [String: Any]) async -> String {
+        guard let origin = input["origin"] as? String,
+              let destination = input["destination"] as? String,
+              let date = input["date"] as? String else {
+            return encodeResult(["error": "Missing origin, destination, or date"])
+        }
+        let passengers = input["passengers"] as? String ?? "1"
+
+        // Build a Kayak search URL; fall back to Google Flights
+        let originEnc = origin.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? origin
+        let destEnc = destination.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? destination
+        // Kayak URL format: /flights/ORG-DST/YYYY-MM-DD/Npax
+        let kayakURLStr = "https://www.kayak.com/flights/\(originEnc)-\(destEnc)/\(date)/\(passengers)adults"
+
+        await openURL(kayakURLStr)
+        return encodeResult([
+            "success": true,
+            "message": "Opening flight search for \(origin) → \(destination) on \(date) for \(passengers) passenger(s).",
+            "url": kayakURLStr
+        ])
+    }
+
+    private func bookUber(input: [String: Any]) async -> String {
+        guard let pickup = input["pickup"] as? String,
+              let dropoff = input["dropoff"] as? String else {
+            return encodeResult(["error": "Missing pickup or dropoff"])
+        }
+
+        let pickupEnc = pickup.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pickup
+        let dropoffEnc = dropoff.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? dropoff
+
+        // Try native Uber deep link first; fall back to mobile web
+        let uberDeepLink = "uber://?action=setPickup&pickup[nickname]=\(pickupEnc)&dropoff[nickname]=\(dropoffEnc)"
+        let uberWebURL   = "https://m.uber.com/ul/?action=setPickup&pickup[nickname]=\(pickupEnc)&dropoff[nickname]=\(dropoffEnc)"
+
+        let opened = await openURL(uberDeepLink)
+        if !opened { await openURL(uberWebURL) }
+
+        return encodeResult([
+            "success": true,
+            "message": "Opening Uber to book a ride from \(pickup) to \(dropoff)."
+        ])
+    }
+
+    private func composeEmail(input: [String: Any]) async -> String {
+        guard let to = input["to"] as? String,
+              let subject = input["subject"] as? String,
+              let body = input["body"] as? String else {
+            return encodeResult(["error": "Missing to, subject, or body"])
+        }
+
+        let toEnc      = to.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? to
+        let subjectEnc = subject.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? subject
+        let bodyEnc    = body.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? body
+        let mailtoURL  = "mailto:\(toEnc)?subject=\(subjectEnc)&body=\(bodyEnc)"
+
+        await openURL(mailtoURL)
+        return encodeResult([
+            "success": true,
+            "message": "Opening email compose to \(to) with subject '\(subject)'."
+        ])
+    }
+
+    private func makeCall(input: [String: Any]) async -> String {
+        guard let phoneNumber = input["phoneNumber"] as? String else {
+            return encodeResult(["error": "Missing phoneNumber"])
+        }
+        let contactName = input["contactName"] as? String ?? phoneNumber
+        // Strip non-digit characters for the tel: URL
+        let digits = phoneNumber.filter(\.isNumber)
+        guard !digits.isEmpty else {
+            return encodeResult(["error": "Invalid phone number"])
+        }
+
+        await openURL("tel://\(digits)")
+        return encodeResult([
+            "success": true,
+            "message": "Calling \(contactName)…"
+        ])
+    }
+
+    @discardableResult
+    private func openURL(_ urlString: String) async -> Bool {
+        guard let url = URL(string: urlString) else { return false }
+        return await MainActor.run {
+            UIApplication.shared.canOpenURL(url) ? (UIApplication.shared.open(url), true).1 : false
+        }
     }
 
     // MARK: - Encoding Helper

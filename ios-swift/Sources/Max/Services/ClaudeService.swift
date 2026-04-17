@@ -194,6 +194,57 @@ final class ClaudeService {
                 name: "get_reminders",
                 description: "Get all scheduled reminders.",
                 inputSchema: InputSchema(type: "object", properties: [:], required: [])
+            ),
+            ToolDefinition(
+                name: "book_flight",
+                description: "Search for and book a flight by opening the booking app/website.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "origin": PropertyDefinition(type: "string", description: "Departure city or airport code (e.g. 'New York' or 'JFK')"),
+                        "destination": PropertyDefinition(type: "string", description: "Arrival city or airport code (e.g. 'Los Angeles' or 'LAX')"),
+                        "date": PropertyDefinition(type: "string", description: "Travel date in YYYY-MM-DD format"),
+                        "passengers": PropertyDefinition(type: "string", description: "Number of passengers (default: 1)")
+                    ],
+                    required: ["origin", "destination", "date"]
+                )
+            ),
+            ToolDefinition(
+                name: "book_uber",
+                description: "Book an Uber ride by opening the Uber app.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "pickup": PropertyDefinition(type: "string", description: "Pickup address or location name"),
+                        "dropoff": PropertyDefinition(type: "string", description: "Drop-off address or destination name")
+                    ],
+                    required: ["pickup", "dropoff"]
+                )
+            ),
+            ToolDefinition(
+                name: "compose_email",
+                description: "Open the email app to compose and send an email.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "to": PropertyDefinition(type: "string", description: "Recipient email address"),
+                        "subject": PropertyDefinition(type: "string", description: "Email subject line"),
+                        "body": PropertyDefinition(type: "string", description: "Email body text")
+                    ],
+                    required: ["to", "subject", "body"]
+                )
+            ),
+            ToolDefinition(
+                name: "make_call",
+                description: "Make a phone call to a contact or phone number.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "phoneNumber": PropertyDefinition(type: "string", description: "Phone number to call (digits only, e.g. '14155552671')"),
+                        "contactName": PropertyDefinition(type: "string", description: "Name of the person being called")
+                    ],
+                    required: ["phoneNumber"]
+                )
             )
         ]
     }
