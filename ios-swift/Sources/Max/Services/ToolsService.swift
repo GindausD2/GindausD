@@ -1,3 +1,4 @@
+import EventKit
 import Foundation
 import UIKit
 import UserNotifications
@@ -35,6 +36,12 @@ final class ToolsService {
             return await composeEmail(input: input)
         case "make_call":
             return await makeCall(input: input)
+        case "read_news":
+            return await readNews(input: input)
+        case "create_calendar_event":
+            return await createCalendarEvent(input: input)
+        case "get_directions":
+            return await getDirections(input: input)
         default:
             return encodeResult(["error": "Unknown tool: \(name)"])
         }
@@ -133,8 +140,6 @@ final class ToolsService {
         let minutes = Double(minutesStr) ?? 0
 
         let center = UNUserNotificationCenter.current()
-
-        // Request permission if needed
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         guard granted else {
             return encodeResult(["error": "Notification permission denied"])
@@ -158,6 +163,16 @@ final class ToolsService {
             try await center.add(request)
             let reminder = Reminder(id: id, title: title, body: body, fireDate: fireDate)
             StorageService.shared.saveReminder(reminder)
+
+            await MainActor.run {
+                LiveActivityService.shared.showToolCard(ToolCard(
+                    kind: .reminder,
+                    line1: title,
+                    line2: "Reminder in \(Int(minutes)) min",
+                    iconName: "bell.fill"
+                ))
+            }
+
             return encodeResult([
                 "success": true,
                 "id": id,
@@ -192,13 +207,21 @@ final class ToolsService {
         }
         let passengers = input["passengers"] as? String ?? "1"
 
-        // Build a Kayak search URL; fall back to Google Flights
         let originEnc = origin.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? origin
         let destEnc = destination.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? destination
-        // Kayak URL format: /flights/ORG-DST/YYYY-MM-DD/Npax
         let kayakURLStr = "https://www.kayak.com/flights/\(originEnc)-\(destEnc)/\(date)/\(passengers)adults"
 
         await openURL(kayakURLStr)
+
+        await MainActor.run {
+            LiveActivityService.shared.showToolCard(ToolCard(
+                kind: .flight,
+                line1: "\(origin) → \(destination)",
+                line2: "\(date) · \(passengers) pax",
+                iconName: "airplane"
+            ))
+        }
+
         return encodeResult([
             "success": true,
             "message": "Opening flight search for \(origin) → \(destination) on \(date) for \(passengers) passenger(s).",
@@ -215,12 +238,20 @@ final class ToolsService {
         let pickupEnc = pickup.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? pickup
         let dropoffEnc = dropoff.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? dropoff
 
-        // Try native Uber deep link first; fall back to mobile web
         let uberDeepLink = "uber://?action=setPickup&pickup[nickname]=\(pickupEnc)&dropoff[nickname]=\(dropoffEnc)"
         let uberWebURL   = "https://m.uber.com/ul/?action=setPickup&pickup[nickname]=\(pickupEnc)&dropoff[nickname]=\(dropoffEnc)"
 
         let opened = await openURL(uberDeepLink)
         if !opened { await openURL(uberWebURL) }
+
+        await MainActor.run {
+            LiveActivityService.shared.showToolCard(ToolCard(
+                kind: .uber,
+                line1: "\(pickup) → \(dropoff)",
+                line2: "Opening Uber…",
+                iconName: "car.fill"
+            ))
+        }
 
         return encodeResult([
             "success": true,
@@ -241,6 +272,16 @@ final class ToolsService {
         let mailtoURL  = "mailto:\(toEnc)?subject=\(subjectEnc)&body=\(bodyEnc)"
 
         await openURL(mailtoURL)
+
+        await MainActor.run {
+            LiveActivityService.shared.showToolCard(ToolCard(
+                kind: .email,
+                line1: "To: \(to)",
+                line2: subject,
+                iconName: "envelope.fill"
+            ))
+        }
+
         return encodeResult([
             "success": true,
             "message": "Opening email compose to \(to) with subject '\(subject)'."
@@ -252,18 +293,160 @@ final class ToolsService {
             return encodeResult(["error": "Missing phoneNumber"])
         }
         let contactName = input["contactName"] as? String ?? phoneNumber
-        // Strip non-digit characters for the tel: URL
         let digits = phoneNumber.filter(\.isNumber)
         guard !digits.isEmpty else {
             return encodeResult(["error": "Invalid phone number"])
         }
 
         await openURL("tel://\(digits)")
+
+        await MainActor.run {
+            LiveActivityService.shared.showToolCard(ToolCard(
+                kind: .call,
+                line1: contactName,
+                line2: "Calling…",
+                iconName: "phone.fill"
+            ))
+        }
+
         return encodeResult([
             "success": true,
             "message": "Calling \(contactName)…"
         ])
     }
+
+    // MARK: - New Tools
+
+    private func readNews(input: [String: Any]) async -> String {
+        let topic = input["topic"] as? String ?? ""
+        let feedURL = URL(string: "https://feeds.bbci.co.uk/news/rss.xml")!
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: feedURL)
+            let headlines = parseRSSHeadlines(data: data, limit: 5)
+
+            if let first = headlines.first {
+                await MainActor.run {
+                    LiveActivityService.shared.showToolCard(ToolCard(
+                        kind: .news,
+                        line1: first,
+                        line2: "BBC News",
+                        iconName: "newspaper.fill"
+                    ))
+                }
+            }
+
+            return encodeResult([
+                "success": true,
+                "headlines": headlines,
+                "source": "BBC News",
+                "topic": topic.isEmpty ? "Top Stories" : topic
+            ])
+        } catch {
+            return encodeResult(["error": "Could not fetch news: \(error.localizedDescription)"])
+        }
+    }
+
+    private func createCalendarEvent(input: [String: Any]) async -> String {
+        guard let title = input["title"] as? String,
+              let startISO = input["startISO"] as? String else {
+            return encodeResult(["error": "Missing title or startISO"])
+        }
+
+        let durationStr = input["durationMinutes"] as? String ?? "60"
+        let duration = (Double(durationStr) ?? 60) * 60
+        let notes = input["notes"] as? String
+
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let isoFormatter2 = ISO8601DateFormatter()
+        isoFormatter2.formatOptions = [.withInternetDateTime]
+
+        guard let startDate = isoFormatter.date(from: startISO) ?? isoFormatter2.date(from: startISO) else {
+            return encodeResult(["error": "Invalid startISO date format. Use ISO 8601 (e.g. 2026-04-20T15:00:00Z)"])
+        }
+
+        let store = EKEventStore()
+        let granted: Bool
+
+        if #available(iOS 17.0, *) {
+            granted = (try? await store.requestWriteOnlyAccessToEvents()) ?? false
+        } else {
+            granted = await withCheckedContinuation { continuation in
+                store.requestAccess(to: .event) { ok, _ in continuation.resume(returning: ok) }
+            }
+        }
+
+        guard granted else {
+            return encodeResult(["error": "Calendar access denied"])
+        }
+
+        let event = EKEvent(eventStore: store)
+        event.title = title
+        event.startDate = startDate
+        event.endDate = startDate.addingTimeInterval(duration)
+        event.notes = notes
+        event.calendar = store.defaultCalendarForNewEvents
+
+        do {
+            try store.save(event, span: .thisEvent)
+
+            let displayFormatter = DateFormatter()
+            displayFormatter.dateStyle = .medium
+            displayFormatter.timeStyle = .short
+
+            await MainActor.run {
+                LiveActivityService.shared.showToolCard(ToolCard(
+                    kind: .calendar,
+                    line1: title,
+                    line2: displayFormatter.string(from: startDate),
+                    iconName: "calendar.badge.plus"
+                ))
+            }
+
+            return encodeResult([
+                "success": true,
+                "message": "Calendar event '\(title)' created for \(displayFormatter.string(from: startDate))."
+            ])
+        } catch {
+            return encodeResult(["error": "Failed to save event: \(error.localizedDescription)"])
+        }
+    }
+
+    private func getDirections(input: [String: Any]) async -> String {
+        guard let destination = input["destination"] as? String else {
+            return encodeResult(["error": "Missing destination"])
+        }
+
+        let encoded = destination.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? destination
+        await openURL("maps://?q=\(encoded)")
+
+        await MainActor.run {
+            LiveActivityService.shared.showToolCard(ToolCard(
+                kind: .directions,
+                line1: destination,
+                line2: "Opening Maps…",
+                iconName: "map.fill"
+            ))
+        }
+
+        return encodeResult([
+            "success": true,
+            "message": "Opening Maps with directions to \(destination)."
+        ])
+    }
+
+    // MARK: - RSS Parser
+
+    private func parseRSSHeadlines(data: Data, limit: Int) -> [String] {
+        let parser = RSSParser()
+        let xmlParser = XMLParser(data: data)
+        xmlParser.delegate = parser
+        xmlParser.parse()
+        return Array(parser.headlines.prefix(limit))
+    }
+
+    // MARK: - URL Helper
 
     @discardableResult
     private func openURL(_ urlString: String) async -> Bool {
@@ -281,5 +464,44 @@ final class ToolsService {
             return "{\"error\": \"Encoding failed\"}"
         }
         return string
+    }
+}
+
+// MARK: - RSS Parser Helper
+
+private final class RSSParser: NSObject, XMLParserDelegate {
+    var headlines: [String] = []
+
+    private var currentElement = ""
+    private var currentText = ""
+    private var insideItem = false
+    private var channelTitleSkipped = false
+
+    func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
+                qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
+        currentElement = elementName
+        currentText = ""
+        if elementName == "item" { insideItem = true }
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        currentText += string
+    }
+
+    func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?,
+                qualifiedName qName: String?) {
+        if elementName == "title" {
+            let text = currentText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !text.isEmpty {
+                if !channelTitleSkipped && !insideItem {
+                    // Skip the feed-level channel title
+                    channelTitleSkipped = true
+                } else if insideItem {
+                    headlines.append(text)
+                }
+            }
+        }
+        if elementName == "item" { insideItem = false }
+        currentText = ""
     }
 }

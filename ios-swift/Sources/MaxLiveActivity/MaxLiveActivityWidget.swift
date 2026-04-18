@@ -51,21 +51,26 @@ struct MaxLiveActivityWidget: Widget {
                         .padding(.leading, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    PhaseIconView(phase: context.state.phase, size: 18)
-                        .padding(.trailing, 6)
+                    if context.state.toolCard == nil {
+                        PhaseIconView(phase: context.state.phase, size: 18)
+                            .padding(.trailing, 6)
+                    }
                 }
                 DynamicIslandExpandedRegion(.center) {
                     VStack(alignment: .center, spacing: 0) {
                         Text("Max")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(.white)
-                        Text(context.state.phase.label)
+                        Text(context.state.toolCard != nil ? "Done" : context.state.phase.label)
                             .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(phaseAccent(context.state.phase))
+                            .foregroundStyle(context.state.toolCard != nil ? violetLight : phaseAccent(context.state.phase))
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if !context.state.snippet.isEmpty {
+                    if let card = context.state.toolCard {
+                        ToolCardView(card: card)
+                            .padding(.bottom, 10)
+                    } else if !context.state.snippet.isEmpty {
                         Text(context.state.snippet)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
@@ -80,8 +85,14 @@ struct MaxLiveActivityWidget: Widget {
                 MaxLogoView(color: .white, width: 32)
                     .padding(.leading, 2)
             } compactTrailing: {
-                // ── Compact: animated phase icon ──────────────────────────────
-                PhaseIconView(phase: context.state.phase, size: 13)
+                // ── Compact: tool card icon when active, else phase icon ───────
+                if let card = context.state.toolCard {
+                    Image(systemName: card.iconName)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(toolCardAccent(card.kind))
+                } else {
+                    PhaseIconView(phase: context.state.phase, size: 13)
+                }
             } minimal: {
                 // ── Minimal: just the center ring of the logo at tiny size ────
                 MaxLogoView(color: .white, width: 24)
@@ -97,7 +108,7 @@ struct MaxLiveActivityWidget: Widget {
 //   [avatar]  Max                          [time elapsed]
 //   [phase label — accent color]            Claude
 //
-//   Bold headline transcript text
+//   Bold headline transcript text OR tool action card
 //
 
 private struct MaxLockScreenCard: View {
@@ -108,7 +119,6 @@ private struct MaxLockScreenCard: View {
 
             // ── Row 1: triple moon logo + app name + source ───────────────────
             HStack(spacing: 10) {
-                // Triple moon logo — same width as the "StarCy" avatar in the reference
                 MaxLogoView(color: .white, width: 52)
 
                 Text("Max")
@@ -125,23 +135,22 @@ private struct MaxLockScreenCard: View {
 
             // ── Row 2: phase label (accent) + source tag ──────────────────────
             HStack(alignment: .center, spacing: 0) {
-                // Phase label — violet / red / blue depending on state
-                Text(context.state.phase.label)
+                Text(context.state.toolCard != nil ? "Action Complete" : context.state.phase.label)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(phaseAccent(context.state.phase))
+                    .foregroundStyle(context.state.toolCard != nil ? violetLight : phaseAccent(context.state.phase))
 
                 Spacer()
 
-                // "AI Assistant" source tag — mirrors "The Verge" in screenshot
                 Text("AI Assistant")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(Color.white.opacity(0.40))
             }
             .padding(.bottom, 8)
 
-            // ── Body: bold headline content ───────────────────────────────────
-            if context.state.snippet.isEmpty {
-                // Placeholder when no transcript yet
+            // ── Body: tool card OR bold headline content ──────────────────────
+            if let card = context.state.toolCard {
+                ToolCardView(card: card)
+            } else if context.state.snippet.isEmpty {
                 Text(context.state.phase.emptyLabel)
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
@@ -159,6 +168,38 @@ private struct MaxLockScreenCard: View {
         .background(cardBg)
         .activityBackgroundTint(cardBg)
         .activitySystemActionForegroundColor(.white)
+    }
+}
+
+// MARK: - Tool Card View
+
+private struct ToolCardView: View {
+    let card: MaxAttr.ContentState.ToolCard
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: card.iconName)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(toolCardAccent(card.kind))
+                .frame(width: 32, height: 32)
+                .background(toolCardAccent(card.kind).opacity(0.15), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(card.line1)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(card.line2)
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
     }
 }
 
@@ -212,7 +253,6 @@ private struct MaxLogoView: View {
 private struct MaxAvatarView: View {
     let size: CGFloat
 
-    // Logo width is ~2.4× the avatar height so the three moons fit legibly
     private var logoWidth: CGFloat { size * 2.2 }
 
     var body: some View {
@@ -242,6 +282,19 @@ private func phaseAccent(_ phase: MaxAttr.ContentState.Phase) -> Color {
     case .listening: return red
     case .thinking:  return violet
     case .speaking:  return blue
+    }
+}
+
+private func toolCardAccent(_ kind: MaxAttr.ContentState.ToolCard.Kind) -> Color {
+    switch kind {
+    case .uber:       return Color(red: 0.0, green: 0.72, blue: 0.45)   // Uber green
+    case .flight:     return Color(red: 0.23, green: 0.51, blue: 0.96)  // Blue
+    case .email:      return Color(red: 0.94, green: 0.55, blue: 0.12)  // Orange
+    case .call:       return Color(red: 0.20, green: 0.78, blue: 0.35)  // Green
+    case .calendar:   return Color(red: 0.94, green: 0.27, blue: 0.27)  // Red
+    case .directions: return Color(red: 0.23, green: 0.51, blue: 0.96)  // Blue
+    case .news:       return violetLight
+    case .reminder:   return Color(red: 0.94, green: 0.55, blue: 0.12)  // Orange
     }
 }
 
@@ -279,12 +332,36 @@ extension MaxActivityAttributes.ContentState.Phase {
     MaxAttr.ContentState(phase: .speaking, snippet: "It's currently sunny and 72°F outside right now. Perfect day for a walk!")
 }
 
+#Preview("Lock Screen — Uber Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
+    MaxLiveActivityWidget()
+} contentStates: {
+    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .uber, line1: "Heathrow → Paddington", line2: "Opening Uber…", iconName: "car.fill"))
+}
+
+#Preview("Lock Screen — Flight Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
+    MaxLiveActivityWidget()
+} contentStates: {
+    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .flight, line1: "JFK → LAX", line2: "May 10 · 2 pax", iconName: "airplane"))
+}
+
+#Preview("Lock Screen — News Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
+    MaxLiveActivityWidget()
+} contentStates: {
+    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .news, line1: "UK economy grows faster than expected", line2: "BBC News", iconName: "newspaper.fill"))
+}
+
+#Preview("Lock Screen — Directions Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
+    MaxLiveActivityWidget()
+} contentStates: {
+    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .directions, line1: "nearest café", line2: "Opening Maps…", iconName: "map.fill"))
+}
+
 #Preview("Dynamic Island — Compact", as: .dynamicIsland(.compact), using: MaxAttr(sessionLabel: "Max AI")) {
     MaxLiveActivityWidget()
 } contentStates: {
     MaxAttr.ContentState(phase: .listening, snippet: "")
     MaxAttr.ContentState(phase: .thinking, snippet: "What's the weather like today?")
-    MaxAttr.ContentState(phase: .speaking, snippet: "It's sunny and 72°F outside.")
+    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .uber, line1: "Heathrow → Paddington", line2: "Opening Uber…", iconName: "car.fill"))
 }
 
 #Preview("Dynamic Island — Expanded", as: .dynamicIsland(.expanded), using: MaxAttr(sessionLabel: "Max AI")) {
@@ -292,5 +369,5 @@ extension MaxActivityAttributes.ContentState.Phase {
 } contentStates: {
     MaxAttr.ContentState(phase: .listening, snippet: "")
     MaxAttr.ContentState(phase: .thinking, snippet: "What's on my calendar today?")
-    MaxAttr.ContentState(phase: .speaking, snippet: "You have a meeting at 3pm and dinner at 7.")
+    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .calendar, line1: "Dentist Appointment", line2: "Apr 20 at 3:00 PM", iconName: "calendar.badge.plus"))
 }

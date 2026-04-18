@@ -29,6 +29,10 @@
     <string>Max uses speech recognition to convert your voice into text for the assistant.</string>
     <key>NSUserNotificationsUsageDescription</key>
     <string>Max can send you reminders you ask it to schedule.</string>
+    <key>NSCalendarsUsageDescription</key>
+    <string>Max can create calendar events you ask it to schedule.</string>
+    <key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+    <string>Max can add events to your calendar when you ask it to schedule something.</string>
 
     <!-- Main Interface -->
     <key>UIMainStoryboardFile</key>
@@ -58,6 +62,15 @@
         <key>NSExceptionDomains</key>
         <dict>
             <key>api.anthropic.com</key>
+            <dict>
+                <key>NSIncludesSubdomains</key>
+                <true/>
+                <key>NSExceptionAllowsInsecureHTTPLoads</key>
+                <false/>
+                <key>NSExceptionRequiresForwardSecrecy</key>
+                <true/>
+            </dict>
+            <key>feeds.bbci.co.uk</key>
             <dict>
                 <key>NSIncludesSubdomains</key>
                 <true/>

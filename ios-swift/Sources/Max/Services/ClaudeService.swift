@@ -245,6 +245,42 @@ final class ClaudeService {
                     ],
                     required: ["phoneNumber"]
                 )
+            ),
+            ToolDefinition(
+                name: "read_news",
+                description: "Fetch the latest top news headlines from BBC News.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "topic": PropertyDefinition(type: "string", description: "Optional topic filter (e.g. 'technology', 'sports'). Leave empty for top stories.")
+                    ],
+                    required: []
+                )
+            ),
+            ToolDefinition(
+                name: "create_calendar_event",
+                description: "Create a calendar event in the user's default iOS calendar.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "title": PropertyDefinition(type: "string", description: "Event title"),
+                        "startISO": PropertyDefinition(type: "string", description: "Start date/time in ISO 8601 format (e.g. '2026-04-20T15:00:00Z'). Use get_datetime first to resolve relative times."),
+                        "durationMinutes": PropertyDefinition(type: "string", description: "Event duration in minutes (default: 60)"),
+                        "notes": PropertyDefinition(type: "string", description: "Optional event notes or description")
+                    ],
+                    required: ["title", "startISO"]
+                )
+            ),
+            ToolDefinition(
+                name: "get_directions",
+                description: "Open Apple Maps with directions to a destination or nearby place.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "destination": PropertyDefinition(type: "string", description: "Destination address, place name, or search query (e.g. 'nearest café', 'Heathrow Airport', '10 Downing Street')")
+                    ],
+                    required: ["destination"]
+                )
             )
         ]
     }

@@ -6,12 +6,16 @@ import Foundation
 // Manages Max's persistent Dynamic Island presence.
 //
 // Session lifecycle:
-//   startPersistentSession()  ← call once on sign-in / app launch
-//   start()                   ← call when a conversation begins (transitions idle → listening)
-//   update(phase:snippet:)    ← call as the conversation phase changes
-//   keepAlive()               ← call when a conversation ends (transitions back to idle, stays visible)
-//   refreshStaleDate()        ← call from background task every ~4 hours to extend the 24-hr window
-//   stopPersistentSession()   ← call only on sign-out / user explicitly closes the island
+//   startPersistentSession()         ← call once on sign-in / app launch
+//   start()                          ← call when a conversation begins (transitions idle → listening)
+//   update(phase:snippet:)           ← call as the conversation phase changes
+//   showToolCard(_:)                 ← call after a tool executes to show the action card
+//   clearToolCard()                  ← call to remove the card (e.g. on next listening phase)
+//   keepAlive()                      ← call when a conversation ends (transitions back to idle, stays visible)
+//   refreshStaleDate()               ← call from background task every ~4 hours to extend the 24-hr window
+//   stopPersistentSession()          ← call only on sign-out / user explicitly closes the island
+
+typealias ToolCard = MaxActivityAttributes.ContentState.ToolCard
 
 @MainActor
 final class LiveActivityService {
@@ -28,7 +32,6 @@ final class LiveActivityService {
     func startPersistentSession() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        // If we already have a live activity, just refresh it
         if let existing = Activity<MaxActivityAttributes>.activities.first {
             currentActivity = existing
             Task {
@@ -61,7 +64,6 @@ final class LiveActivityService {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
         if currentActivity == nil {
-            // No persistent session yet — create one
             startPersistentSession()
         }
 
@@ -71,19 +73,30 @@ final class LiveActivityService {
     // MARK: - Update
 
     /// Push a new phase + optional transcript snippet to the Dynamic Island.
+    /// Clears any active tool card (conversation taking priority).
     func update(phase: MaxActivityAttributes.ContentState.Phase, snippet: String = "") {
-        guard let activity = currentActivity else { return }
         let clipped = snippet.count > 80 ? String(snippet.suffix(80)) : snippet
-        let state = MaxActivityAttributes.ContentState(phase: phase, snippet: clipped)
-        Task {
-            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(86400)))
-        }
+        push(MaxActivityAttributes.ContentState(phase: phase, snippet: clipped, toolCard: nil))
+    }
+
+    // MARK: - Tool Cards
+
+    /// Show a contextual action card in the Dynamic Island after a tool executes.
+    func showToolCard(_ card: ToolCard) {
+        guard let activity = currentActivity else { return }
+        let s = activity.content.state
+        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet, toolCard: card))
+    }
+
+    /// Remove the tool card, reverting to the current phase display.
+    func clearToolCard() {
+        guard let activity = currentActivity else { return }
+        let s = activity.content.state
+        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet, toolCard: nil))
     }
 
     // MARK: - Conversation end → keep alive in standby
 
-    /// Called when a conversation finishes. Transitions the activity back to idle
-    /// standby WITHOUT ending it — Max stays visible in the Dynamic Island.
     func end() {
         keepAlive()
     }
@@ -94,15 +107,11 @@ final class LiveActivityService {
             return
         }
         let standbyState = MaxActivityAttributes.ContentState(phase: .idle, snippet: "")
-        Task {
-            await activity.update(.init(state: standbyState, staleDate: Date().addingTimeInterval(86400)))
-        }
+        push(standbyState)
     }
 
     // MARK: - Background refresh
 
-    /// Called from a BGAppRefreshTask every ~4 hours to reset the 24-hour staleDate
-    /// window so the activity never goes stale while the user is away.
     func refreshStaleDate() async {
         guard let activity = currentActivity else {
             startPersistentSession()
@@ -114,13 +123,18 @@ final class LiveActivityService {
 
     // MARK: - Stop (sign-out / explicit dismiss)
 
-    /// Permanently end the Live Activity. Only call this on sign-out or when the
-    /// user explicitly chooses to remove Max from the Dynamic Island.
     func stopPersistentSession() {
         Task { await endAll() }
     }
 
     // MARK: - Private
+
+    private func push(_ state: MaxActivityAttributes.ContentState) {
+        guard let activity = currentActivity else { return }
+        Task {
+            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(86400)))
+        }
+    }
 
     private func endAll() async {
         for activity in Activity<MaxActivityAttributes>.activities {
