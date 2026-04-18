@@ -51,7 +51,7 @@ struct MaxLiveActivityWidget: Widget {
                         .padding(.leading, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    if context.state.toolCard == nil {
+                    if context.state.toolCard == nil && context.state.emailAlert == nil {
                         PhaseIconView(phase: context.state.phase, size: 18)
                             .padding(.trailing, 6)
                     }
@@ -61,13 +61,22 @@ struct MaxLiveActivityWidget: Widget {
                         Text("Max")
                             .font(.system(size: 15, weight: .bold))
                             .foregroundStyle(.white)
-                        Text(context.state.toolCard != nil ? "Done" : context.state.phase.label)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(context.state.toolCard != nil ? violetLight : phaseAccent(context.state.phase))
+                        if context.state.emailAlert != nil {
+                            Text("New mail")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(blue)
+                        } else {
+                            Text(context.state.toolCard != nil ? "Done" : context.state.phase.label)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(context.state.toolCard != nil ? violetLight : phaseAccent(context.state.phase))
+                        }
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    if let card = context.state.toolCard {
+                    if let alert = context.state.emailAlert {
+                        EmailAlertCardView(alert: alert)
+                            .padding(.bottom, 10)
+                    } else if let card = context.state.toolCard {
                         ToolCardView(card: card)
                             .padding(.bottom, 10)
                     } else if !context.state.snippet.isEmpty {
@@ -85,8 +94,17 @@ struct MaxLiveActivityWidget: Widget {
                 MaxLogoView(color: .white, width: 32)
                     .padding(.leading, 2)
             } compactTrailing: {
-                // ── Compact: tool card icon when active, else phase icon ───────
-                if let card = context.state.toolCard {
+                // ── Compact: email badge → tool icon → phase icon (priority order)
+                if let alert = context.state.emailAlert {
+                    HStack(spacing: 3) {
+                        Image(systemName: "envelope.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(blue)
+                        Text("\(alert.count)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(blue)
+                    }
+                } else if let card = context.state.toolCard {
                     Image(systemName: card.iconName)
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(toolCardAccent(card.kind))
@@ -135,9 +153,13 @@ private struct MaxLockScreenCard: View {
 
             // ── Row 2: phase label (accent) + source tag ──────────────────────
             HStack(alignment: .center, spacing: 0) {
-                Text(context.state.toolCard != nil ? "Action Complete" : context.state.phase.label)
+                Text(context.state.emailAlert != nil ? "\(context.state.emailAlert!.count) Unread · Important"
+                     : context.state.toolCard != nil ? "Action Complete"
+                     : context.state.phase.label)
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(context.state.toolCard != nil ? violetLight : phaseAccent(context.state.phase))
+                    .foregroundStyle(context.state.emailAlert != nil ? blue
+                                     : context.state.toolCard != nil ? violetLight
+                                     : phaseAccent(context.state.phase))
 
                 Spacer()
 
@@ -147,8 +169,10 @@ private struct MaxLockScreenCard: View {
             }
             .padding(.bottom, 8)
 
-            // ── Body: tool card OR bold headline content ──────────────────────
-            if let card = context.state.toolCard {
+            // ── Body: email alert → tool card → transcript ────────────────────
+            if let alert = context.state.emailAlert {
+                EmailAlertCardView(alert: alert)
+            } else if let card = context.state.toolCard {
                 ToolCardView(card: card)
             } else if context.state.snippet.isEmpty {
                 Text(context.state.phase.emptyLabel)
@@ -200,6 +224,53 @@ private struct ToolCardView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+// MARK: - Email Alert Card View
+
+private struct EmailAlertCardView: View {
+    let alert: MaxAttr.ContentState.EmailAlert
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(blue.opacity(0.18))
+                    .frame(width: 36, height: 36)
+                Image(systemName: "envelope.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(blue)
+                // Unread count badge
+                Text("\(alert.count)")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(blue, in: Capsule())
+                    .offset(x: 10, y: -10)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(alert.latestFrom)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(alert.latestSubject)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.60))
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(blue.opacity(0.30), lineWidth: 0.75)
+        )
     }
 }
 

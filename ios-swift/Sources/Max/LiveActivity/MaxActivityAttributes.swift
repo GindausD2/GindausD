@@ -22,10 +22,29 @@ public struct MaxActivityAttributes: ActivityAttributes {
         /// Optional action card shown after a tool executes (Uber, flight, email, etc.)
         public var toolCard: ToolCard?
 
-        public init(phase: Phase, snippet: String, toolCard: ToolCard? = nil) {
+        /// Proactive email reminder shown in the Dynamic Island while Max is idle
+        public var emailAlert: EmailAlert?
+
+        public init(phase: Phase, snippet: String, toolCard: ToolCard? = nil, emailAlert: EmailAlert? = nil) {
             self.phase = phase
             self.snippet = snippet
             self.toolCard = toolCard
+            self.emailAlert = emailAlert
+        }
+
+        // MARK: - Email Alert
+
+        /// Shown persistently in the Dynamic Island when unread important emails exist.
+        public struct EmailAlert: Codable, Hashable {
+            public var count: Int
+            public var latestFrom: String
+            public var latestSubject: String
+
+            public init(count: Int, latestFrom: String, latestSubject: String) {
+                self.count = count
+                self.latestFrom = latestFrom
+                self.latestSubject = latestSubject
+            }
         }
 
         public enum Phase: String, Codable, Hashable {

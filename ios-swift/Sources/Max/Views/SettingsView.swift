@@ -34,6 +34,7 @@ struct SettingsView: View {
                     profileCard
                     appearanceSection
                     apiKeySection
+                    emailSection
                     assistantSection
                     dataSection
                     aboutSection
@@ -246,6 +247,94 @@ struct SettingsView: View {
                      destination: URL(string: "https://console.anthropic.com/settings/keys")!)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(Color(hex: "#7C3AED"))
+            }
+        }
+    }
+
+    // MARK: - Email Section
+
+    @State private var gmailClientID: String = EmailMonitorService.shared.clientID
+    @State private var isConnectingGmail: Bool = false
+
+    private var emailSection: some View {
+        SettingsGlassSection(title: "Email Reminders", colorScheme: colorScheme) {
+            VStack(alignment: .leading, spacing: 14) {
+
+                Text("Max will show unread important emails on your Dynamic Island while the app is in the background.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // Google Client ID input
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Google Client ID")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    TextField("com.example.app.googleusercontent.com", text: $gmailClientID)
+                        .font(.system(size: 14, design: .monospaced))
+                        .autocapitalization(.none)
+                        .autocorrectionDisabled()
+                        .onChange(of: gmailClientID) { _, v in
+                            EmailMonitorService.shared.clientID = v
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(colorScheme == .dark ? Color.white.opacity(0.07) : Color.black.opacity(0.04))
+                                .strokeBorder(Color.secondary.opacity(0.2), lineWidth: 0.5)
+                        )
+                    Link("Create one at console.cloud.google.com →",
+                         destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
+                        .font(.caption)
+                        .foregroundStyle(Color(hex: "#7C3AED"))
+                }
+
+                // Connect / Disconnect button
+                if EmailMonitorService.shared.isConnected {
+                    HStack {
+                        Label("Gmail connected", systemImage: "checkmark.circle.fill")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.green)
+                        Spacer()
+                        Button("Disconnect") {
+                            EmailMonitorService.shared.disconnect()
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.red)
+                    }
+                } else {
+                    Button {
+                        guard !gmailClientID.isEmpty else { return }
+                        isConnectingGmail = true
+                        Task {
+                            await EmailMonitorService.shared.connect()
+                            await EmailMonitorService.shared.checkAndNotify()
+                            isConnectingGmail = false
+                        }
+                    } label: {
+                        HStack {
+                            if isConnectingGmail {
+                                ProgressView().scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "envelope.badge.fill")
+                            }
+                            Text(isConnectingGmail ? "Connecting…" : "Connect Gmail")
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(LinearGradient(
+                                    colors: [Color(hex: "#4285F4"), Color(hex: "#1A73E8")],
+                                    startPoint: .leading, endPoint: .trailing
+                                ))
+                        )
+                    }
+                    .disabled(gmailClientID.isEmpty || isConnectingGmail)
+                    .opacity(gmailClientID.isEmpty ? 0.5 : 1.0)
+                }
             }
         }
     }

@@ -121,6 +121,23 @@ final class LiveActivityService {
         await activity.update(.init(state: current, staleDate: Date().addingTimeInterval(86400)))
     }
 
+    // MARK: - Email Alerts
+
+    func showEmailAlert(_ alert: MaxActivityAttributes.ContentState.EmailAlert) {
+        guard let activity = currentActivity else { return }
+        let s = activity.content.state
+        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet,
+                                                toolCard: s.toolCard, emailAlert: alert))
+    }
+
+    func clearEmailAlert() {
+        guard let activity = currentActivity else { return }
+        let s = activity.content.state
+        guard s.emailAlert != nil else { return }
+        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet,
+                                                toolCard: s.toolCard, emailAlert: nil))
+    }
+
     // MARK: - Stop (sign-out / explicit dismiss)
 
     func stopPersistentSession() {

@@ -49,15 +49,17 @@ struct MaxApp: App {
                     if phase == .background && authService.currentUser != nil {
                         scheduleBackgroundRefresh()
                     }
-                    // When app becomes active, ensure the session is alive
+                    // When app becomes active, ensure the session is alive + refresh emails
                     if phase == .active && authService.currentUser != nil {
                         LiveActivityService.shared.startPersistentSession()
+                        Task { await EmailMonitorService.shared.checkAndNotify() }
                     }
                 }
         }
-        // ── Background task: refresh every ~4 hours to extend the 24-hr staleDate
+        // ── Background task: refresh staleDate + check emails every ~4 hours
         .backgroundTask(.appRefresh(kLiveActivityRefreshID)) {
             await LiveActivityService.shared.refreshStaleDate()
+            await EmailMonitorService.shared.checkAndNotify()
             scheduleBackgroundRefresh()
         }
     }
