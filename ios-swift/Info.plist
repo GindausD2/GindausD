@@ -3,6 +3,8 @@
 <plist version="1.0">
 <dict>
     <!-- App Identity -->
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
     <key>CFBundleName</key>
     <string>Max</string>
     <key>CFBundleDisplayName</key>
