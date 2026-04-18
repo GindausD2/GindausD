@@ -33,7 +33,6 @@ struct WelcomeView: View {
             }
         }
         .ignoresSafeArea()
-        .environment(\.colorScheme, .dark)
     }
 
     // MARK: - Background
@@ -41,11 +40,9 @@ struct WelcomeView: View {
     private var backgroundGradient: some View {
         LinearGradient(
             stops: [
-                .init(color: Color(hex: "#07041A"), location: 0.0),
-                .init(color: Color(hex: "#160A38"), location: 0.3),
-                .init(color: Color(hex: "#2D1B69"), location: 0.6),
-                .init(color: Color(hex: "#4F46E5"), location: 0.85),
-                .init(color: Color(hex: "#7C3AED"), location: 1.0)
+                .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
+                .init(color: Color(red: 0.97, green: 0.95, blue: 1.00), location: 0.5),
+                .init(color: Color(red: 0.93, green: 0.89, blue: 1.00), location: 1.0)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -55,17 +52,17 @@ struct WelcomeView: View {
     private var ambientBlobs: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: "#7C3AED").opacity(0.22))
+                .fill(Color(hex: "#7C3AED").opacity(0.07))
                 .frame(width: 340, height: 340)
                 .blur(radius: 70)
                 .offset(x: -90, y: -210)
             Circle()
-                .fill(Color(hex: "#4F46E5").opacity(0.18))
+                .fill(Color(hex: "#4F46E5").opacity(0.05))
                 .frame(width: 280, height: 280)
                 .blur(radius: 80)
                 .offset(x: 110, y: 280)
             Circle()
-                .fill(Color(hex: "#C084FC").opacity(0.10))
+                .fill(Color(hex: "#C084FC").opacity(0.04))
                 .frame(width: 200, height: 200)
                 .blur(radius: 60)
                 .offset(x: 60, y: -60)
@@ -78,7 +75,7 @@ struct WelcomeView: View {
         HStack(spacing: 8) {
             ForEach(0..<3) { i in
                 Capsule()
-                    .fill(currentPage == i ? Color.white : Color.white.opacity(0.30))
+                    .fill(currentPage == i ? Color(hex: "#7C3AED") : Color(hex: "#7C3AED").opacity(0.25))
                     .frame(width: currentPage == i ? 22 : 7, height: 7)
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPage)
             }
@@ -89,7 +86,7 @@ struct WelcomeView: View {
             Capsule()
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    Capsule().strokeBorder(.white.opacity(0.20), lineWidth: 0.5)
+                    Capsule().strokeBorder(Color(hex: "#7C3AED").opacity(0.15), lineWidth: 0.5)
                 )
         )
     }
@@ -111,7 +108,7 @@ private struct LiquidGlassField<F: Hashable>: View {
         VStack(alignment: .leading, spacing: 7) {
             Text(label)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.white.opacity(0.70))
+                .foregroundStyle(.secondary)
                 .padding(.leading, 2)
 
             Group {
@@ -131,27 +128,18 @@ private struct LiquidGlassField<F: Hashable>: View {
             .focused(focused, equals: fieldID)
             .padding(.horizontal, 16)
             .padding(.vertical, 13)
-            .foregroundStyle(.white)
-            .tint(Color(hex: "#A78BFA"))
+            .foregroundStyle(.primary)
+            .tint(Color(hex: "#7C3AED"))
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .fill(.ultraThinMaterial)
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.white.opacity(0.07))
-                    // Specular top
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.16), .clear],
-                                startPoint: .top,
-                                endPoint: UnitPoint(x: 0.5, y: 0.5)
-                            )
-                        )
+                        .fill(Color.black.opacity(0.03))
                     RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(
                             LinearGradient(
-                                colors: [.white.opacity(0.40), .white.opacity(0.08)],
+                                colors: [Color.black.opacity(0.10), Color.black.opacity(0.04)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
@@ -196,7 +184,6 @@ private struct LiquidGlassPrimaryButton: View {
                             endPoint: .bottomTrailing
                         )
                     )
-                // Specular
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
                         LinearGradient(
@@ -217,8 +204,8 @@ private struct LiquidGlassPrimaryButton: View {
             }
         )
         .foregroundStyle(.white)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.5), radius: 14, x: 0, y: 5)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.2), radius: 30, x: 0, y: 10)
+        .shadow(color: Color(hex: "#7C3AED").opacity(0.35), radius: 14, x: 0, y: 5)
+        .shadow(color: Color(hex: "#7C3AED").opacity(0.12), radius: 30, x: 0, y: 10)
         .disabled(isLoading || isDisabled)
         .opacity(isDisabled ? 0.55 : 1.0)
     }
@@ -250,19 +237,11 @@ private struct LiquidGlassOutlineButton: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(.ultraThinMaterial)
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.14), .clear],
-                            startPoint: .top,
-                            endPoint: UnitPoint(x: 0.5, y: 0.5)
-                        )
-                    )
+                    .fill(Color.black.opacity(0.03))
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(
                         LinearGradient(
-                            colors: [.white.opacity(0.40), .white.opacity(0.08)],
+                            colors: [Color.black.opacity(0.10), Color.black.opacity(0.04)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         ),
@@ -270,7 +249,7 @@ private struct LiquidGlassOutlineButton: View {
                     )
             }
         )
-        .foregroundStyle(.white)
+        .foregroundStyle(.primary)
     }
 }
 
@@ -293,17 +272,17 @@ private struct LoginPage: View {
                 VStack(spacing: 8) {
                     Text("Welcome back")
                         .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Text("Sign in to continue with Max")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 32)
 
                 // Glass card
                 GlassCard(
                     cornerRadius: 26,
-                    depth: .thin,
+                    depth: .ultraThin,
                     padding: EdgeInsets(top: 26, leading: 22, bottom: 26, trailing: 22)
                 ) {
                     VStack(spacing: 18) {
@@ -340,9 +319,9 @@ private struct LoginPage: View {
                 Button { onNavigateToWelcome() } label: {
                     HStack(spacing: 5) {
                         Text("Don't have an account?")
-                            .foregroundStyle(.white.opacity(0.60))
+                            .foregroundStyle(.secondary)
                         Text("Sign up →")
-                            .foregroundStyle(.white)
+                            .foregroundStyle(Color(hex: "#7C3AED"))
                             .fontWeight(.semibold)
                     }
                     .font(.subheadline)
@@ -375,19 +354,19 @@ private struct WelcomePage: View {
 
             GlassCard(
                 cornerRadius: 26,
-                depth: .thin,
+                depth: .ultraThin,
                 padding: EdgeInsets(top: 22, leading: 28, bottom: 22, trailing: 28)
             ) {
                 VStack(spacing: 12) {
-                    MaxLogoView(color: .white, width: 180)
+                    MaxLogoView(color: Color(hex: "#7C3AED"), width: 180)
                         .padding(.bottom, 2)
                     Text("Your AI personal assistant")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.80))
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                     Text("Powered by Claude")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.45))
+                        .foregroundStyle(Color.secondary.opacity(0.7))
                 }
             }
             .padding(.horizontal, 44)
@@ -412,7 +391,6 @@ private struct WelcomePage: View {
             }
             .padding(.bottom, 18)
 
-            // Try Demo — opens the sliding onboarding flow
             Button {
                 showDemoOnboarding = true
             } label: {
@@ -422,7 +400,7 @@ private struct WelcomePage: View {
                     Text("Try Demo")
                         .font(.subheadline.weight(.medium))
                 }
-                .foregroundStyle(.white.opacity(0.60))
+                .foregroundStyle(.secondary)
             }
             .disabled(authService.isLoading)
             .fullScreenCover(isPresented: $showDemoOnboarding) {
@@ -455,16 +433,16 @@ private struct SignUpPage: View {
                 VStack(spacing: 8) {
                     Text("Create account")
                         .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Text("Choose how you'd like to sign up")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.65))
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 32)
 
                 GlassCard(
                     cornerRadius: 26,
-                    depth: .thin,
+                    depth: .ultraThin,
                     padding: EdgeInsets(top: 22, leading: 22, bottom: 22, trailing: 22)
                 ) {
                     VStack(spacing: 12) {
@@ -476,10 +454,10 @@ private struct SignUpPage: View {
                         .overlay(
                             HStack {
                                 ZStack {
-                                    Circle().fill(.white).frame(width: 22, height: 22)
+                                    Circle().fill(Color(red: 0.26, green: 0.52, blue: 0.96)).frame(width: 22, height: 22)
                                     Text("G")
                                         .font(.system(size: 12, weight: .bold))
-                                        .foregroundStyle(Color(red: 0.26, green: 0.52, blue: 0.96))
+                                        .foregroundStyle(.white)
                                 }
                                 .padding(.leading, 16)
                                 Spacer()
@@ -492,17 +470,17 @@ private struct SignUpPage: View {
                             onRequest: { $0.requestedScopes = [.fullName, .email] },
                             onCompletion: handleAppleSignIn
                         )
-                        .signInWithAppleButtonStyle(.white)
+                        .signInWithAppleButtonStyle(.black)
                         .frame(maxWidth: .infinity, minHeight: 52)
                         .cornerRadius(16)
-                        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
+                        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 3)
 
                         // Divider
                         HStack {
                             Rectangle()
                                 .fill(
                                     LinearGradient(
-                                        colors: [.clear, .white.opacity(0.20), .clear],
+                                        colors: [.clear, Color.black.opacity(0.10), .clear],
                                         startPoint: .leading, endPoint: .trailing
                                     )
                                 )
@@ -530,26 +508,18 @@ private struct SignUpPage: View {
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                                     .fill(.ultraThinMaterial)
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [.white.opacity(0.14), .clear],
-                                            startPoint: .top,
-                                            endPoint: UnitPoint(x: 0.5, y: 0.5)
-                                        )
-                                    )
+                                    .fill(Color.black.opacity(0.03))
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                                     .strokeBorder(
                                         LinearGradient(
-                                            colors: [.white.opacity(0.40), .white.opacity(0.08)],
+                                            colors: [Color.black.opacity(0.10), Color.black.opacity(0.04)],
                                             startPoint: .topLeading, endPoint: .bottomTrailing
                                         ),
                                         lineWidth: 1.0
                                     )
                             }
                         )
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
 
                         // Inline email form
                         if showEmailForm {
@@ -592,7 +562,7 @@ private struct SignUpPage: View {
                         Text("Back")
                     }
                     .font(.subheadline)
-                    .foregroundStyle(.white.opacity(0.55))
+                    .foregroundStyle(.secondary)
                 }
                 .padding(.top, 22)
 

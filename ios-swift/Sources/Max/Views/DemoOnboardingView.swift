@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - DemoOnboardingView
 //
-// Three-slide liquid glass onboarding shown before the demo session:
+// Three-slide onboarding shown before the demo session:
 //   Slide 1 — Name + Gender
 //   Slide 2 — AI Voice preference (Male / Female)
 //   Slide 3 — Summary + "Start Demo" CTA
@@ -17,22 +17,18 @@ struct DemoOnboardingView: View {
     @State private var voice: DemoVoice = .female
     @State private var isLaunching: Bool = false
 
-    // Slide count
     private let totalSteps = 3
 
     var body: some View {
         ZStack {
-            // Same deep violet gradient as WelcomeView
             demoBackground.ignoresSafeArea()
             ambientBlobs
 
             VStack(spacing: 0) {
-                // ── Progress dots ───────────────────────────────────────────
                 progressIndicator
                     .padding(.top, 56)
                     .padding(.bottom, 12)
 
-                // ── Slides ──────────────────────────────────────────────────
                 TabView(selection: $step) {
                     Slide1(name: $name, gender: $gender, onNext: advance)
                         .tag(0)
@@ -45,7 +41,6 @@ struct DemoOnboardingView: View {
                 .animation(.spring(response: 0.45, dampingFraction: 0.85), value: step)
             }
         }
-        .environment(\.colorScheme, .dark)
     }
 
     // MARK: - Background
@@ -53,11 +48,9 @@ struct DemoOnboardingView: View {
     private var demoBackground: some View {
         LinearGradient(
             stops: [
-                .init(color: Color(hex: "#07041A"), location: 0.0),
-                .init(color: Color(hex: "#160A38"), location: 0.3),
-                .init(color: Color(hex: "#2D1B69"), location: 0.6),
-                .init(color: Color(hex: "#4F46E5"), location: 0.85),
-                .init(color: Color(hex: "#7C3AED"), location: 1.0)
+                .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
+                .init(color: Color(red: 0.97, green: 0.95, blue: 1.00), location: 0.5),
+                .init(color: Color(red: 0.93, green: 0.89, blue: 1.00), location: 1.0)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -67,13 +60,13 @@ struct DemoOnboardingView: View {
     private var ambientBlobs: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: "#7C3AED").opacity(0.22))
+                .fill(Color(hex: "#7C3AED").opacity(0.07))
                 .frame(width: 340)
                 .blur(radius: 80)
                 .offset(x: -80, y: -220)
                 .allowsHitTesting(false)
             Circle()
-                .fill(Color(hex: "#4F46E5").opacity(0.18))
+                .fill(Color(hex: "#4F46E5").opacity(0.05))
                 .frame(width: 260)
                 .blur(radius: 70)
                 .offset(x: 120, y: 300)
@@ -87,7 +80,7 @@ struct DemoOnboardingView: View {
         HStack(spacing: 8) {
             ForEach(0..<totalSteps, id: \.self) { i in
                 Capsule()
-                    .fill(step >= i ? Color.white : Color.white.opacity(0.28))
+                    .fill(step >= i ? Color(hex: "#7C3AED") : Color(hex: "#7C3AED").opacity(0.22))
                     .frame(width: step == i ? 24 : 8, height: 8)
                     .animation(.spring(response: 0.32, dampingFraction: 0.72), value: step)
             }
@@ -97,7 +90,7 @@ struct DemoOnboardingView: View {
         .background(
             Capsule()
                 .fill(.ultraThinMaterial)
-                .overlay(Capsule().strokeBorder(.white.opacity(0.20), lineWidth: 0.5))
+                .overlay(Capsule().strokeBorder(Color(hex: "#7C3AED").opacity(0.15), lineWidth: 0.5))
         )
     }
 
@@ -137,44 +130,40 @@ private struct Slide1: View {
             VStack(spacing: 0) {
                 Spacer().frame(height: 24)
 
-                // Header
                 VStack(spacing: 10) {
                     Text("What should Max\ncall you?")
                         .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
                     Text("Personalise your demo experience")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.60))
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 32)
 
-                // Glass card
                 DemoGlassCard {
                     VStack(spacing: 22) {
-                        // Name field
                         VStack(alignment: .leading, spacing: 8) {
                             Text("YOUR NAME")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.55))
+                                .foregroundStyle(.secondary)
                                 .kerning(0.8)
 
                             TextField("e.g. Alex", text: $name)
                                 .focused($nameFocused)
                                 .font(.system(size: 17))
-                                .foregroundStyle(.white)
-                                .tint(Color(hex: "#A78BFA"))
+                                .foregroundStyle(.primary)
+                                .tint(Color(hex: "#7C3AED"))
                                 .autocorrectionDisabled()
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 14)
                                 .background(demoFieldBackground)
                         }
 
-                        // Gender picker
                         VStack(alignment: .leading, spacing: 10) {
                             Text("GENDER")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.white.opacity(0.55))
+                                .foregroundStyle(.secondary)
                                 .kerning(0.8)
 
                             HStack(spacing: 10) {
@@ -188,7 +177,6 @@ private struct Slide1: View {
                             }
                         }
 
-                        // Continue
                         DemoPrimaryButton(
                             title: "Continue →",
                             isDisabled: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -220,19 +208,17 @@ private struct Slide2: View {
             VStack(spacing: 0) {
                 Spacer().frame(height: 24)
 
-                // Header
                 VStack(spacing: 10) {
                     Text("How should\nMax sound?")
                         .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .multilineTextAlignment(.center)
                     Text("Choose the voice Max will use to reply")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.60))
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 32)
 
-                // Glass card
                 DemoGlassCard {
                     VStack(spacing: 16) {
                         ForEach(DemoVoice.allCases, id: \.self) { v in
@@ -268,42 +254,37 @@ private struct Slide3: View {
         VStack(spacing: 0) {
             Spacer()
 
-            // Orb
             OrbView(state: .idle, size: 110)
                 .padding(.bottom, 28)
-                .shadow(color: Color(hex: "#7C3AED").opacity(0.40), radius: 40)
+                .shadow(color: Color(hex: "#7C3AED").opacity(0.25), radius: 40)
 
             DemoGlassCard {
                 VStack(spacing: 18) {
-                    // Summary header
                     VStack(spacing: 6) {
                         Text("You're all set\(name.isEmpty ? "" : ", \(name)")!")
                             .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                             .multilineTextAlignment(.center)
                         Text("Max is ready to assist you")
                             .font(.subheadline)
-                            .foregroundStyle(.white.opacity(0.65))
+                            .foregroundStyle(.secondary)
                     }
 
-                    // Summary pills
                     HStack(spacing: 12) {
                         SummaryPill(icon: "person.fill", label: name.isEmpty ? "Guest" : name)
                         SummaryPill(icon: voice.symbolName, label: voice.label)
                     }
                     .frame(maxWidth: .infinity)
 
-                    // Divider
                     Rectangle()
                         .fill(
                             LinearGradient(
-                                colors: [.clear, .white.opacity(0.18), .clear],
+                                colors: [.clear, Color.black.opacity(0.08), .clear],
                                 startPoint: .leading, endPoint: .trailing
                             )
                         )
                         .frame(height: 0.5)
 
-                    // CTA
                     DemoPrimaryButton(
                         title: isLaunching ? "Starting…" : "Start exploring Max",
                         isLoading: isLaunching
@@ -313,7 +294,7 @@ private struct Slide3: View {
 
                     Text("All features included · No account required")
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.40))
+                        .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
             }
@@ -326,40 +307,21 @@ private struct Slide3: View {
 
 // MARK: - Supporting Views ─────────────────────────────────────────────────────
 
-/// Frosted glass container card used on each demo slide
 private struct DemoGlassCard<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
         ZStack {
-            // Material base
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(.thinMaterial)
-            // White tint
+                .fill(.ultraThinMaterial)
             RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Color.white.opacity(0.06))
-            // Specular top highlight
-            VStack(spacing: 0) {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.22), .clear],
-                            startPoint: .top,
-                            endPoint: UnitPoint(x: 0.5, y: 0.45)
-                        )
-                    )
-                    .frame(height: 60)
-                Spacer()
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            // Gradient border
+                .fill(Color.white.opacity(0.55))
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .strokeBorder(
                     LinearGradient(
                         stops: [
-                            .init(color: .white.opacity(0.55), location: 0.0),
-                            .init(color: .white.opacity(0.18), location: 0.40),
-                            .init(color: .white.opacity(0.04), location: 1.0)
+                            .init(color: Color.black.opacity(0.08), location: 0.0),
+                            .init(color: Color.black.opacity(0.03), location: 1.0)
                         ],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
@@ -368,12 +330,11 @@ private struct DemoGlassCard<Content: View>: View {
                 )
         }
         .overlay(content().padding(24))
-        .shadow(color: .black.opacity(0.28), radius: 24, x: 0, y: 10)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.12), radius: 40, x: 0, y: 16)
+        .shadow(color: .black.opacity(0.06), radius: 24, x: 0, y: 8)
+        .shadow(color: Color(hex: "#7C3AED").opacity(0.06), radius: 40, x: 0, y: 16)
     }
 }
 
-/// Gender selection pill
 private struct DemoGenderPill: View {
     var label: String
     var isSelected: Bool
@@ -383,26 +344,24 @@ private struct DemoGenderPill: View {
         Button(action: action) {
             Text(label)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(isSelected ? Color(hex: "#7C3AED") : .white.opacity(0.75))
+                .foregroundStyle(isSelected ? .white : .primary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity)
                 .background(
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(isSelected ? .white : Color.white.opacity(0.10))
-                        if !isSelected {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isSelected
+                              ? LinearGradient(colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
+                                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                              : LinearGradient(colors: [Color.black.opacity(0.04), Color.black.opacity(0.04)],
+                                               startPoint: .top, endPoint: .bottom))
+                        .overlay(
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [.white.opacity(0.14), .clear],
-                                        startPoint: .top, endPoint: .center
-                                    )
+                                .strokeBorder(
+                                    isSelected ? Color.white.opacity(0.25) : Color.black.opacity(0.08),
+                                    lineWidth: 0.75
                                 )
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(.white.opacity(0.25), lineWidth: 0.75)
-                        }
-                    }
+                        )
                 )
         }
         .buttonStyle(.plain)
@@ -413,7 +372,6 @@ private struct DemoGenderPill: View {
     }
 }
 
-/// Voice selection card (large tap target with waveform icon)
 private struct DemoVoiceCard: View {
     var option: DemoVoice
     var isSelected: Bool
@@ -422,7 +380,6 @@ private struct DemoVoiceCard: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 16) {
-                // Icon circle
                 ZStack {
                     Circle()
                         .fill(
@@ -432,46 +389,44 @@ private struct DemoVoiceCard: View {
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             )
                             : LinearGradient(
-                                colors: [Color.white.opacity(0.14), Color.white.opacity(0.06)],
+                                colors: [Color.black.opacity(0.06), Color.black.opacity(0.04)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             )
                         )
                         .frame(width: 52, height: 52)
                         .overlay(
                             Circle().strokeBorder(
-                                isSelected ? Color.white.opacity(0.30) : Color.white.opacity(0.15),
+                                isSelected ? Color.white.opacity(0.30) : Color.black.opacity(0.08),
                                 lineWidth: 0.75
                             )
                         )
                     Image(systemName: option.symbolName)
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(isSelected ? .white : Color(hex: "#7C3AED"))
                         .symbolEffect(.variableColor.iterative, isActive: isSelected)
                 }
                 .shadow(
-                    color: isSelected ? Color(hex: "#7C3AED").opacity(0.50) : .clear,
+                    color: isSelected ? Color(hex: "#7C3AED").opacity(0.40) : .clear,
                     radius: 12, x: 0, y: 4
                 )
 
-                // Labels
                 VStack(alignment: .leading, spacing: 3) {
                     Text(option.label)
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Text(option.description)
                         .font(.caption)
-                        .foregroundStyle(.white.opacity(0.55))
+                        .foregroundStyle(.secondary)
                 }
 
                 Spacer()
 
-                // Selection check
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color(hex: "#7C3AED") : Color.white.opacity(0.12))
+                        .fill(isSelected ? Color(hex: "#7C3AED") : Color.black.opacity(0.06))
                         .frame(width: 24, height: 24)
                         .overlay(Circle().strokeBorder(
-                            isSelected ? Color.white.opacity(0.3) : Color.white.opacity(0.20),
+                            isSelected ? Color.white.opacity(0.3) : Color.black.opacity(0.10),
                             lineWidth: 0.75
                         ))
                     if isSelected {
@@ -485,14 +440,7 @@ private struct DemoVoiceCard: View {
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(isSelected ? Color.white.opacity(0.12) : Color.white.opacity(0.07))
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.14), .clear],
-                                startPoint: .top, endPoint: .center
-                            )
-                        )
+                        .fill(isSelected ? Color(hex: "#7C3AED").opacity(0.06) : Color.black.opacity(0.03))
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(
                             isSelected
@@ -501,7 +449,7 @@ private struct DemoVoiceCard: View {
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             )
                             : LinearGradient(
-                                colors: [.white.opacity(0.30), .white.opacity(0.06)],
+                                colors: [Color.black.opacity(0.08), Color.black.opacity(0.03)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             ),
                             lineWidth: isSelected ? 1.5 : 0.75
@@ -511,14 +459,13 @@ private struct DemoVoiceCard: View {
         }
         .buttonStyle(.plain)
         .shadow(
-            color: isSelected ? Color(hex: "#7C3AED").opacity(0.22) : .clear,
+            color: isSelected ? Color(hex: "#7C3AED").opacity(0.12) : .clear,
             radius: 14, x: 0, y: 5
         )
         .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isSelected)
     }
 }
 
-/// Compact summary pill used on slide 3
 private struct SummaryPill: View {
     var icon: String
     var label: String
@@ -527,26 +474,22 @@ private struct SummaryPill: View {
         HStack(spacing: 7) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color(hex: "#A78BFA"))
+                .foregroundStyle(Color(hex: "#7C3AED"))
             Text(label)
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.85))
+                .foregroundStyle(.primary)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(
             ZStack {
-                Capsule().fill(Color.white.opacity(0.10))
-                Capsule().fill(
-                    LinearGradient(colors: [.white.opacity(0.14), .clear], startPoint: .top, endPoint: .center)
-                )
-                Capsule().strokeBorder(.white.opacity(0.22), lineWidth: 0.75)
+                Capsule().fill(Color.black.opacity(0.04))
+                Capsule().strokeBorder(Color.black.opacity(0.08), lineWidth: 0.75)
             }
         )
     }
 }
 
-/// Primary CTA button with violet gradient + glass spec
 private struct DemoPrimaryButton: View {
     var title: String
     var isLoading: Bool = false
@@ -574,7 +517,6 @@ private struct DemoPrimaryButton: View {
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         )
                     )
-                // Specular
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
                         LinearGradient(
@@ -594,33 +536,23 @@ private struct DemoPrimaryButton: View {
             }
         )
         .foregroundStyle(.white)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.50), radius: 12, x: 0, y: 5)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.20), radius: 28, x: 0, y: 10)
+        .shadow(color: Color(hex: "#7C3AED").opacity(0.35), radius: 12, x: 0, y: 5)
+        .shadow(color: Color(hex: "#7C3AED").opacity(0.12), radius: 28, x: 0, y: 10)
         .disabled(isLoading || isDisabled)
         .opacity(isDisabled ? 0.50 : 1.0)
     }
 }
-
-// MARK: - Glass text field background helper
 
 private var demoFieldBackground: some View {
     ZStack {
         RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(.ultraThinMaterial)
         RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.white.opacity(0.07))
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: [.white.opacity(0.16), .clear],
-                    startPoint: .top,
-                    endPoint: UnitPoint(x: 0.5, y: 0.5)
-                )
-            )
+            .fill(Color.black.opacity(0.03))
         RoundedRectangle(cornerRadius: 14, style: .continuous)
             .strokeBorder(
                 LinearGradient(
-                    colors: [.white.opacity(0.40), .white.opacity(0.08)],
+                    colors: [Color.black.opacity(0.10), Color.black.opacity(0.04)],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ),
                 lineWidth: 1.0
