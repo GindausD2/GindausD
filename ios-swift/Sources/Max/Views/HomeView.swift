@@ -16,8 +16,15 @@ struct HomeView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            // ── Pure white background ──────────────────────────────────────────
-            Color(red: 0.97, green: 0.97, blue: 1.0).ignoresSafeArea()
+            // ── Liquid glass background ───────────────────────────────────────
+            LinearGradient(
+                stops: [
+                    .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
+                    .init(color: Color(red: 0.97, green: 0.96, blue: 1.00), location: 0.5),
+                    .init(color: Color(red: 0.94, green: 0.91, blue: 1.00), location: 1.0)
+                ],
+                startPoint: .top, endPoint: .bottom
+            ).ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
@@ -90,8 +97,39 @@ struct HomeView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(
-            Color(red: 0.97, green: 0.97, blue: 1.0)
-                .shadow(color: .black.opacity(0.06), radius: 8, x: 0, y: 2)
+            ZStack {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                Rectangle()
+                    .fill(Color.white.opacity(0.65))
+                // Specular top streak
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.90), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .frame(height: 2)
+                    Spacer()
+                }
+                // Bottom hairline border
+                VStack(spacing: 0) {
+                    Spacer()
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.12), .clear],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                        )
+                        .frame(height: 0.5)
+                }
+            }
+            .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 3)
+            .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.04), radius: 20, x: 0, y: 6)
         )
     }
 
