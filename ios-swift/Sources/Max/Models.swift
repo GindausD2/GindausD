@@ -66,13 +66,13 @@ struct UserMemory: Codable {
 // MARK: - MemoryCard
 
 enum MemoryCategory: String, Codable, CaseIterable {
-    case personal, likes, dislikes, people, goals, other
+    case personal, likes, hobbies, people, goals, other
 
     var label: String {
         switch self {
         case .personal:  return "Personal"
         case .likes:     return "Likes"
-        case .dislikes:  return "Dislikes"
+        case .hobbies:   return "Hobbies"
         case .people:    return "People"
         case .goals:     return "Goals"
         case .other:     return "Other"
@@ -83,7 +83,7 @@ enum MemoryCategory: String, Codable, CaseIterable {
         switch self {
         case .personal:  return "person.fill"
         case .likes:     return "heart.fill"
-        case .dislikes:  return "hand.thumbsdown.fill"
+        case .hobbies:   return "paintbrush.fill"
         case .people:    return "person.2.fill"
         case .goals:     return "flag.fill"
         case .other:     return "folder.fill"
@@ -96,7 +96,7 @@ enum MemoryCategory: String, Codable, CaseIterable {
         switch self {
         case .personal:  return "Add things about yourself so Max can\ngive you better, personalized responses."
         case .likes:     return "Add things you like so Max can\ntailor its responses."
-        case .dislikes:  return "Add things you dislike so Max can\navoid them in its responses."
+        case .hobbies:   return "Add your hobbies so Max can\nsuggest activities and topics you enjoy."
         case .people:    return "Add people in your life so Max can\nremember them."
         case .goals:     return "Add your goals so Max can\nhelp you achieve them."
         case .other:     return "Add other things about yourself so Max\ncan give you better responses."
