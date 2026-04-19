@@ -40,6 +40,8 @@ final class ToolsService {
             return await readNews(input: input)
         case "create_calendar_event":
             return await createCalendarEvent(input: input)
+        case "get_calendar_events":
+            return await getCalendarEvents(input: input)
         case "get_directions":
             return await getDirections(input: input)
         default:
@@ -411,6 +413,64 @@ final class ToolsService {
         } catch {
             return encodeResult(["error": "Failed to save event: \(error.localizedDescription)"])
         }
+    }
+
+    private func getCalendarEvents(input: [String: Any]) async -> String {
+        let daysStr = input["daysAhead"] as? String ?? "7"
+        let days = Double(daysStr) ?? 7
+
+        let store = EKEventStore()
+        let granted: Bool
+        if #available(iOS 17.0, *) {
+            granted = (try? await store.requestFullAccessToEvents()) ?? false
+        } else {
+            granted = await withCheckedContinuation { continuation in
+                store.requestAccess(to: .event) { ok, _ in continuation.resume(returning: ok) }
+            }
+        }
+        guard granted else {
+            return encodeResult(["error": "Calendar access denied"])
+        }
+
+        let now = Date()
+        let end = now.addingTimeInterval(days * 86400)
+        let predicate = store.predicateForEvents(withStart: now, end: end, calendars: nil)
+        let events = store.events(matching: predicate)
+            .sorted { $0.startDate < $1.startDate }
+
+        let displayFormatter = DateFormatter()
+        displayFormatter.dateStyle = .medium
+        displayFormatter.timeStyle = .short
+
+        let meetingPattern = try? NSRegularExpression(
+            pattern: #"https?://[^\s]*(?:zoom\.us|meet\.google\.com|teams\.microsoft\.com)[^\s]*"#
+        )
+
+        func extractMeetingLink(from text: String?) -> String? {
+            guard let text, let pattern = meetingPattern else { return nil }
+            let range = NSRange(text.startIndex..., in: text)
+            if let match = pattern.firstMatch(in: text, range: range),
+               let swiftRange = Range(match.range, in: text) {
+                return String(text[swiftRange])
+            }
+            return nil
+        }
+
+        let mapped: [[String: String]] = events.prefix(20).map { ev in
+            var dict: [String: String] = [
+                "title": ev.title ?? "Untitled",
+                "start": displayFormatter.string(from: ev.startDate),
+                "end": displayFormatter.string(from: ev.endDate),
+            ]
+            if let loc = ev.location, !loc.isEmpty { dict["location"] = loc }
+            // Prefer event URL, then scan notes for meeting link
+            let linkSource = ev.url?.absoluteString ?? ev.notes
+            if let link = extractMeetingLink(from: linkSource) { dict["meetingLink"] = link }
+            if let notes = ev.notes, !notes.isEmpty { dict["notes"] = String(notes.prefix(200)) }
+            return dict
+        }
+
+        return encodeResult(["events": mapped, "count": mapped.count, "daysAhead": Int(days)])
     }
 
     private func getDirections(input: [String: Any]) async -> String {

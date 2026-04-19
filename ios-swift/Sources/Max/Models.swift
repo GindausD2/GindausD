@@ -291,6 +291,7 @@ Your capabilities:
 - make_call: Call someone — dials a phone number directly
 - read_news: Fetch the latest top headlines from BBC News; shown on the Dynamic Island
 - create_calendar_event: Add an event to the user's iOS Calendar app
+- get_calendar_events: Read upcoming calendar events — returns titles, times, locations, and Zoom/Google Meet/Teams links when present
 - get_directions: Open Apple Maps to navigate to a place or address (great for "nearest café", landmarks, etc.)
 
 Guidelines:
@@ -304,6 +305,7 @@ Guidelines:
 - For compose_email: write a polished email body unless the user provides exact wording
 - For make_call: confirm the contact name and number before dialing
 - For create_calendar_event: always use get_datetime first to resolve relative times like "tomorrow at 3pm"; confirm title and time before saving
+- For get_calendar_events: use when the user asks about upcoming meetings, schedule, or "what's on my calendar"; if a meetingLink is present, share it so the user can tap to join their Zoom/Meet/Teams call
 - For get_directions: use the user's phrasing directly (e.g. "nearest coffee shop") — Maps handles the search
 - After tool actions complete, a contextual card automatically appears in the Dynamic Island
 """

@@ -272,6 +272,17 @@ final class ClaudeService {
                 )
             ),
             ToolDefinition(
+                name: "get_calendar_events",
+                description: "Read upcoming events from the user's iOS Calendar, including Zoom, Google Meet, and Microsoft Teams meeting links extracted from event URLs and notes.",
+                inputSchema: InputSchema(
+                    type: "object",
+                    properties: [
+                        "daysAhead": PropertyDefinition(type: "string", description: "How many days ahead to look for events (default: 7, max: 30)")
+                    ],
+                    required: []
+                )
+            ),
+            ToolDefinition(
                 name: "get_directions",
                 description: "Open Apple Maps with directions to a destination or nearby place.",
                 inputSchema: InputSchema(
