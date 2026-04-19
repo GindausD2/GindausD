@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var showSignOutConfirm: Bool = false
     @State private var showSubscription: Bool = false
     @State private var showPrivacy: Bool = false
+    @State private var showMemory: Bool = false
     @State private var showIslandDebug: Bool = false
     @State private var showApiConfig: Bool = false
     @State private var showEmailConfig: Bool = false
@@ -47,6 +48,9 @@ struct SettingsView: View {
                         ProfileSection(title: "QUICK ACTIONS") {
                             ProfileRow(icon: "crown.fill", iconColor: Color(hex: "#F59E0B"),
                                        title: "Subscription") { showSubscription = true }
+                            Divider().padding(.leading, 56)
+                            ProfileRow(icon: "brain", iconColor: Color(hex: "#7C3AED"),
+                                       title: "Memory") { showMemory = true }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.fill", iconColor: Color(hex: "#6B7280"),
                                        title: "Privacy") { showPrivacy = true }
@@ -177,6 +181,7 @@ struct SettingsView: View {
         }
         // ── Destination sheets ────────────────────────────────────────────────
         .sheet(isPresented: $showSubscription) { SubscriptionSheet() }
+        .sheet(isPresented: $showMemory)       { MemoryView() }
         .sheet(isPresented: $showPrivacy)      { PrivacySheet() }
         .sheet(isPresented: $showIslandDebug)  { IslandDebugSheet() }
         .sheet(isPresented: $showApiConfig)    { ApiConfigSheet(settings: $settings, onSave: saveSettings) }

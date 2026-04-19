@@ -63,6 +63,61 @@ struct UserMemory: Codable {
     var updatedAt: Date
 }
 
+// MARK: - MemoryCard
+
+enum MemoryCategory: String, Codable, CaseIterable {
+    case personal, likes, dislikes, people, goals, other
+
+    var label: String {
+        switch self {
+        case .personal:  return "Personal"
+        case .likes:     return "Likes"
+        case .dislikes:  return "Dislikes"
+        case .people:    return "People"
+        case .goals:     return "Goals"
+        case .other:     return "Other"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .personal:  return "person.fill"
+        case .likes:     return "heart.fill"
+        case .dislikes:  return "hand.thumbsdown.fill"
+        case .people:    return "person.2.fill"
+        case .goals:     return "flag.fill"
+        case .other:     return "folder.fill"
+        }
+    }
+
+    var emptyTitle: String { "No \(label) Yet" }
+
+    var emptySubtitle: String {
+        switch self {
+        case .personal:  return "Add things about yourself so Max can\ngive you better, personalized responses."
+        case .likes:     return "Add things you like so Max can\ntailor its responses."
+        case .dislikes:  return "Add things you dislike so Max can\navoid them in its responses."
+        case .people:    return "Add people in your life so Max can\nremember them."
+        case .goals:     return "Add your goals so Max can\nhelp you achieve them."
+        case .other:     return "Add other things about yourself so Max\ncan give you better responses."
+        }
+    }
+}
+
+struct MemoryCard: Identifiable, Codable {
+    var id: String
+    var category: MemoryCategory
+    var content: String
+    var createdAt: Date
+
+    init(id: String = UUID().uuidString, category: MemoryCategory, content: String, createdAt: Date = Date()) {
+        self.id = id
+        self.category = category
+        self.content = content
+        self.createdAt = createdAt
+    }
+}
+
 // MARK: - Reminder
 
 struct Reminder: Identifiable, Codable {

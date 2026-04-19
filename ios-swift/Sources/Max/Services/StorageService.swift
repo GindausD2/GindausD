@@ -7,6 +7,7 @@ final class StorageService {
     private let settingsKey = "max:settings"
     private let notesKey = "max:notes"
     private let memoriesKey = "max:memories"
+    private let memoryCardsKey = "max:memorycards"
     private let remindersKey = "max:reminders"
 
     private let encoder = JSONEncoder()
@@ -120,6 +121,27 @@ final class StorageService {
 
     func clearMemories() {
         UserDefaults.standard.removeObject(forKey: memoriesKey)
+    }
+
+    // MARK: - MemoryCards
+
+    func loadMemoryCards() -> [MemoryCard] {
+        guard let data = UserDefaults.standard.data(forKey: memoryCardsKey),
+              let cards = try? decoder.decode([MemoryCard].self, from: data)
+        else { return [] }
+        return cards
+    }
+
+    func saveMemoryCards(_ cards: [MemoryCard]) {
+        if let data = try? encoder.encode(cards) {
+            UserDefaults.standard.set(data, forKey: memoryCardsKey)
+        }
+    }
+
+    func deleteMemoryCard(id: String) {
+        var cards = loadMemoryCards()
+        cards.removeAll { $0.id == id }
+        saveMemoryCards(cards)
     }
 
     // MARK: - Reminders
