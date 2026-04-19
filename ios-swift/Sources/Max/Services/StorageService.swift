@@ -8,6 +8,7 @@ final class StorageService {
     private let notesKey = "max:notes"
     private let memoriesKey = "max:memories"
     private let memoryCardsKey = "max:memorycards"
+    private let placeVisitsKey = "max:placevisits"
     private let remindersKey = "max:reminders"
 
     private let encoder = JSONEncoder()
@@ -142,6 +143,28 @@ final class StorageService {
         var cards = loadMemoryCards()
         cards.removeAll { $0.id == id }
         saveMemoryCards(cards)
+    }
+
+    // MARK: - Place Visits
+
+    func loadPlaceVisits() -> [PlaceVisit] {
+        guard let data = UserDefaults.standard.data(forKey: placeVisitsKey),
+              let visits = try? decoder.decode([PlaceVisit].self, from: data)
+        else { return [] }
+        return visits
+    }
+
+    func savePlaceVisit(_ visit: PlaceVisit) {
+        var visits = loadPlaceVisits()
+        visits.append(visit)
+        if visits.count > 100 { visits = Array(visits.suffix(100)) }
+        if let data = try? encoder.encode(visits) {
+            UserDefaults.standard.set(data, forKey: placeVisitsKey)
+        }
+    }
+
+    func clearPlaceVisits() {
+        UserDefaults.standard.removeObject(forKey: placeVisitsKey)
     }
 
     // MARK: - Reminders

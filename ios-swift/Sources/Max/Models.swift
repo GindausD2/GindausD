@@ -63,6 +63,25 @@ struct UserMemory: Codable {
     var updatedAt: Date
 }
 
+// MARK: - PlaceVisit
+
+struct PlaceVisit: Identifiable, Codable {
+    var id: String
+    var destination: String
+    var person: String?
+    var note: String?
+    var visitedAt: Date
+
+    init(id: String = UUID().uuidString, destination: String,
+         person: String? = nil, note: String? = nil, visitedAt: Date = Date()) {
+        self.id = id
+        self.destination = destination
+        self.person = person
+        self.note = note
+        self.visitedAt = visitedAt
+    }
+}
+
 // MARK: - MemoryCard
 
 enum MemoryCategory: String, Codable, CaseIterable {
@@ -292,7 +311,8 @@ Your capabilities:
 - read_news: Fetch the latest top headlines from BBC News; shown on the Dynamic Island
 - create_calendar_event: Add an event to the user's iOS Calendar app
 - get_calendar_events: Read upcoming calendar events — returns titles, times, locations, and Zoom/Google Meet/Teams links when present
-- get_directions: Open Apple Maps to navigate to a place or address (great for "nearest café", landmarks, etc.)
+- get_directions: Open Apple Maps to navigate to a place or address; also saves the visit (destination + person met) to the user's place memory
+- recall_places: Retrieve the log of places the user has navigated to and who they met there
 
 Guidelines:
 - Always use get_datetime when the user asks about time or wants to schedule something
@@ -306,6 +326,8 @@ Guidelines:
 - For make_call: confirm the contact name and number before dialing
 - For create_calendar_event: always use get_datetime first to resolve relative times like "tomorrow at 3pm"; confirm title and time before saving
 - For get_calendar_events: use when the user asks about upcoming meetings, schedule, or "what's on my calendar"; if a meetingLink is present, share it so the user can tap to join their Zoom/Meet/Teams call
+- For get_directions: always pass `person` if the user mentions meeting someone, and `note` if they give a reason (e.g. "dinner", "job interview") — this is saved to their place memory automatically
+- For recall_places: use when the user asks "where did I go?", "who did I meet at X?", "remind me of that place", or taps the places button — surfaces the full navigation history
 - For get_directions: use the user's phrasing directly (e.g. "nearest coffee shop") — Maps handles the search
 - After tool actions complete, a contextual card automatically appears in the Dynamic Island
 """

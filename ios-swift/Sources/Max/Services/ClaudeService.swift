@@ -283,12 +283,19 @@ final class ClaudeService {
                 )
             ),
             ToolDefinition(
+                name: "recall_places",
+                description: "Retrieve the chronological log of places the user has navigated to, including who they met and any context (e.g. 'dinner', 'job interview'). Use when the user asks about past trips, visits, or who they met somewhere.",
+                inputSchema: InputSchema(type: "object", properties: [:], required: [])
+            ),
+            ToolDefinition(
                 name: "get_directions",
-                description: "Open Apple Maps with directions to a destination or nearby place.",
+                description: "Open Apple Maps with directions to a destination. Also auto-saves the visit to the user's place memory.",
                 inputSchema: InputSchema(
                     type: "object",
                     properties: [
-                        "destination": PropertyDefinition(type: "string", description: "Destination address, place name, or search query (e.g. 'nearest café', 'Heathrow Airport', '10 Downing Street')")
+                        "destination": PropertyDefinition(type: "string", description: "Destination address, place name, or search query (e.g. 'nearest café', 'Heathrow Airport', '10 Downing Street')"),
+                        "person":      PropertyDefinition(type: "string", description: "Optional — the person the user is meeting at this destination"),
+                        "note":        PropertyDefinition(type: "string", description: "Optional — reason or context for the visit (e.g. 'dinner', 'job interview', 'gym')")
                     ],
                     required: ["destination"]
                 )

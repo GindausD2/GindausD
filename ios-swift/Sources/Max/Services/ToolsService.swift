@@ -42,6 +42,8 @@ final class ToolsService {
             return await createCalendarEvent(input: input)
         case "get_calendar_events":
             return await getCalendarEvents(input: input)
+        case "recall_places":
+            return recallPlaces()
         case "get_directions":
             return await getDirections(input: input)
         default:
@@ -473,19 +475,46 @@ final class ToolsService {
         return encodeResult(["events": mapped, "count": mapped.count, "daysAhead": Int(days)])
     }
 
+    private func recallPlaces() -> String {
+        let visits = StorageService.shared.loadPlaceVisits()
+            .sorted { $0.visitedAt > $1.visitedAt }
+            .prefix(20)
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        let mapped: [[String: String]] = visits.map { v in
+            var d: [String: String] = [
+                "destination": v.destination,
+                "when": formatter.string(from: v.visitedAt)
+            ]
+            if let p = v.person { d["person"] = p }
+            if let n = v.note   { d["note"]   = n }
+            return d
+        }
+        return encodeResult(["visits": mapped, "count": mapped.count])
+    }
+
     private func getDirections(input: [String: Any]) async -> String {
         guard let destination = input["destination"] as? String else {
             return encodeResult(["error": "Missing destination"])
         }
 
+        let person = input["person"] as? String
+        let note   = input["note"]   as? String
+
         let encoded = destination.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? destination
         await openURL("maps://?q=\(encoded)")
+
+        // Save to place memory
+        StorageService.shared.savePlaceVisit(
+            PlaceVisit(destination: destination, person: person, note: note)
+        )
 
         await MainActor.run {
             LiveActivityService.shared.showToolCard(ToolCard(
                 kind: .directions,
                 line1: destination,
-                line2: "Opening Maps…",
+                line2: person.map { "Meeting \($0)" } ?? "Opening Maps…",
                 iconName: "map.fill"
             ))
         }

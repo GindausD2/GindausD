@@ -209,6 +209,10 @@ struct HomeView: View {
                 // Mic
                 micButton
                     .frame(maxWidth: .infinity)
+
+                // Places memory
+                placesButton
+                    .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 16)
             .padding(.top, 18)
@@ -369,6 +373,20 @@ struct HomeView: View {
         case .listening:           return Color(red: 0.94, green: 0.27, blue: 0.27)
         case .thinking, .speaking: return Color(white: 0.70)
         default:                   return Color(red: 0.49, green: 0.23, blue: 0.93)
+        }
+    }
+
+    // MARK: - Places Button
+
+    private var placesButton: some View {
+        Button {
+            viewModel.inputText = "Where have I been recently and who did I meet?"
+            viewModel.sendTextMessage()
+        } label: {
+            Image(systemName: "mappin.and.ellipse")
+                .font(.system(size: 21, weight: .regular))
+                .foregroundStyle(Color(white: 0.35))
+                .frame(width: 44, height: 44)
         }
     }
 
