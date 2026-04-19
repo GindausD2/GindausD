@@ -378,10 +378,39 @@ struct HomeView: View {
 
     // MARK: - Places Button
 
+    @State private var placeVisitIndex: Int = 0
+
     private var placesButton: some View {
         Button {
-            viewModel.inputText = "Where have I been recently and who did I meet?"
-            viewModel.sendTextMessage()
+            let visits = StorageService.shared.loadPlaceVisits()
+                .sorted { $0.visitedAt > $1.visitedAt }
+
+            guard !visits.isEmpty else {
+                LiveActivityService.shared.showToolCard(ToolCard(
+                    kind: .directions,
+                    line1: "No places yet",
+                    line2: "Ask Max to navigate somewhere",
+                    iconName: "mappin.and.ellipse"
+                ))
+                return
+            }
+
+            // Cycle through recent visits on repeated taps
+            let visit = visits[placeVisitIndex % visits.count]
+            placeVisitIndex += 1
+
+            let formatter = DateFormatter()
+            formatter.dateStyle = .short
+            formatter.timeStyle = .none
+            let meta = [visit.person.map { "Met \($0)" }, formatter.string(from: visit.visitedAt)]
+                .compactMap { $0 }.joined(separator: " · ")
+
+            LiveActivityService.shared.showToolCard(ToolCard(
+                kind: .directions,
+                line1: visit.destination,
+                line2: meta,
+                iconName: "mappin.circle.fill"
+            ))
         } label: {
             Image(systemName: "mappin.and.ellipse")
                 .font(.system(size: 21, weight: .regular))
