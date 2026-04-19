@@ -9,6 +9,7 @@ struct HomeView: View {
 
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
+    @State private var showDeviceLink: Bool = false
     @State private var showImagePicker: Bool = false
     @State private var pendingImage: UIImage? = nil
 
@@ -37,6 +38,7 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 12)
         }
+        .sheet(isPresented: $showDeviceLink) { DeviceLinkView() }
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
@@ -86,9 +88,9 @@ struct HomeView: View {
 
             Spacer()
 
-            // New chat
-            Button { viewModel.startNewChat() } label: {
-                Image(systemName: "square.and.pencil")
+            // Device link
+            Button { showDeviceLink = true } label: {
+                Image(systemName: "link")
                     .font(.system(size: 19, weight: .regular))
                     .foregroundStyle(Color(white: 0.35))
                     .frame(width: 44, height: 44)
