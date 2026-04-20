@@ -10,6 +10,8 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
     @State private var showDeviceLink: Bool = false
+    @State private var showCamera: Bool = false
+    @State private var capturedImage: UIImage? = nil
 
     private let liveActivity = LiveActivityService.shared
 
@@ -37,6 +39,15 @@ struct HomeView: View {
                 .padding(.bottom, 12)
         }
         .sheet(isPresented: $showDeviceLink) { DeviceLinkView() }
+        .fullScreenCover(isPresented: $showCamera) {
+            ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
+                .ignoresSafeArea()
+        }
+        .onChange(of: capturedImage) { _, img in
+            guard let img else { return }
+            viewModel.sendTextMessage(image: img)
+            capturedImage = nil
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
@@ -163,7 +174,7 @@ struct HomeView: View {
             Text("Hi! I'm Max")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(Color(white: 0.15))
-            Text("Tap the orb or mic button\nto start talking")
+            Text("Tap the orb to talk\nor the camera to show Max something")
                 .font(.subheadline)
                 .foregroundStyle(Color(white: 0.5))
                 .multilineTextAlignment(.center)
@@ -186,13 +197,13 @@ struct HomeView: View {
 
             // Main dock row
             HStack(spacing: 0) {
-                // Orb
+                // Orb (voice)
                 OrbView(state: viewModel.orbState, size: 100)
                     .onTapGesture { viewModel.handleOrbTap() }
                     .frame(maxWidth: .infinity)
 
-                // Mic
-                micButton
+                // Camera (vision)
+                cameraButton
                     .frame(maxWidth: .infinity)
 
                 // Places memory
@@ -285,46 +296,21 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Mic Button
+    // MARK: - Camera Button
 
-    private var micButton: some View {
-        Button { viewModel.handleMicTap() } label: {
+    private var cameraButton: some View {
+        Button { showCamera = true } label: {
             ZStack {
-                // Glow
                 Circle()
-                    .fill(micColor.opacity(0.18))
-                    .frame(width: 62, height: 62)
-                    .blur(radius: 6)
-                // Body
-                Circle()
-                    .fill(micColor)
+                    .fill(Color(white: 0.0).opacity(0.06))
                     .frame(width: 50, height: 50)
                     .overlay(
-                        Circle().fill(
-                            LinearGradient(colors: [.white.opacity(0.30), .clear], startPoint: .top, endPoint: .center)
-                        )
+                        Circle().strokeBorder(Color(white: 0.0).opacity(0.12), lineWidth: 1)
                     )
-                    .overlay(
-                        Circle().strokeBorder(
-                            LinearGradient(colors: [.white.opacity(0.55), .clear], startPoint: .topLeading, endPoint: .bottomTrailing),
-                            lineWidth: 0.8
-                        )
-                    )
-                    .shadow(color: micColor.opacity(0.50), radius: 10, x: 0, y: 4)
-                Image(systemName: viewModel.conversationState == .listening ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                Image(systemName: "camera.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color(white: 0.30))
             }
-        }
-        .scaleEffect(viewModel.conversationState == .listening ? 1.1 : 1.0)
-        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: viewModel.conversationState)
-    }
-
-    private var micColor: Color {
-        switch viewModel.conversationState {
-        case .listening:           return Color(red: 0.94, green: 0.27, blue: 0.27)
-        case .thinking, .speaking: return Color(white: 0.70)
-        default:                   return Color(red: 0.49, green: 0.23, blue: 0.93)
         }
     }
 
