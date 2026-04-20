@@ -20,33 +20,31 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <!-- App name label centred on screen -->
-                            <label opaque="NO" userInteractionEnabled="NO"
-                                   contentMode="left" horizontalHuggingPriority="251"
-                                   verticalHuggingPriority="251"
-                                   text="Max"
-                                   textAlignment="center"
-                                   lineBreakMode="middleTruncation"
-                                   baselineAdjustment="alignBaselines"
-                                   adjustsFontSizeToFit="NO"
-                                   translatesAutoresizingMaskIntoConstraints="NO"
-                                   id="GJd-Yh-RWb">
-                                <rect key="frame" x="146.5" y="406" width="100" height="44"/>
-                                <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="36"/>
-                                <color key="textColor" red="0.094" green="0.094" blue="0.094" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-                                <nil key="highlightedColor"/>
-                            </label>
+                            <!-- Triple moon logo centred -->
+                            <imageView opaque="NO" clipsSubviews="YES"
+                                       userInteractionEnabled="NO"
+                                       contentMode="scaleAspectFit"
+                                       image="LaunchLogo"
+                                       translatesAutoresizingMaskIntoConstraints="NO"
+                                       id="logo-img-01">
+                                <rect key="frame" x="96.5" y="376" width="200" height="100"/>
+                            </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeAreaLayoutGuide" id="Bcu-3y-fUS"/>
-                        <!-- Lavender-white gradient background matches the app -->
-                        <color key="backgroundColor" red="0.976" green="0.965" blue="1.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <!-- Lavender-white background matching HomeView -->
+                        <color key="backgroundColor" red="0.976" green="0.965" blue="1.0" alpha="1"
+                               colorSpace="custom" customColorSpace="sRGB"/>
                         <constraints>
-                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="centerX"
-                                        secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="Q3B-4y-6We"/>
-                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="centerY"
-                                        secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="moa-c2-u7t"/>
-                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="width"
-                                        constant="100" id="Koa-jQ-x0M"/>
+                            <constraint firstItem="logo-img-01" firstAttribute="centerX"
+                                        secondItem="Ze5-6b-2t3" secondAttribute="centerX"
+                                        id="cx-logo"/>
+                            <constraint firstItem="logo-img-01" firstAttribute="centerY"
+                                        secondItem="Ze5-6b-2t3" secondAttribute="centerY"
+                                        id="cy-logo"/>
+                            <constraint firstItem="logo-img-01" firstAttribute="width"
+                                        constant="200" id="w-logo"/>
+                            <constraint firstItem="logo-img-01" firstAttribute="height"
+                                        constant="100" id="h-logo"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -56,4 +54,7 @@
             <point key="canvasLocation" x="53" y="375"/>
         </scene>
     </scenes>
+    <resources>
+        <image name="LaunchLogo" width="512" height="512"/>
+    </resources>
 </document>
