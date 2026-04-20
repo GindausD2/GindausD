@@ -137,6 +137,19 @@
         </dict>
     </dict>
 
+    <!-- OAuth callback URL scheme (Supabase redirect) -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>com.gindausd.max</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.gindausd.max</string>
+            </array>
+        </dict>
+    </array>
+
     <!-- Capabilities -->
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>

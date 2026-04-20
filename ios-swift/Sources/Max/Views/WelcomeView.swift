@@ -303,6 +303,14 @@ private struct LoginPage: View {
                             focused: $focusedField,
                             fieldID: Field.password
                         )
+
+                        if let err = authService.authError {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .multilineTextAlignment(.center)
+                        }
+
                         LiquidGlassPrimaryButton(
                             title: "Login",
                             isLoading: authService.isLoading,
@@ -422,8 +430,12 @@ private struct SignUpPage: View {
     @State private var showEmailForm: Bool = false
     @State private var name: String = ""
     @State private var email: String = ""
+    @State private var password: String = ""
+    @State private var confirmPassword: String = ""
     @FocusState private var focusedField: Field?
-    enum Field { case name, email }
+    enum Field { case name, email, password, confirmPassword }
+
+    private var passwordsMatch: Bool { password == confirmPassword && !password.isEmpty }
 
     var body: some View {
         ScrollView {
@@ -541,13 +553,45 @@ private struct SignUpPage: View {
                                     focused: $focusedField,
                                     fieldID: Field.email
                                 )
+                                LiquidGlassField(
+                                    label: "Password",
+                                    text: $password,
+                                    placeholder: "Min. 8 characters",
+                                    isSecure: true,
+                                    contentType: .newPassword,
+                                    focused: $focusedField,
+                                    fieldID: Field.password
+                                )
+                                LiquidGlassField(
+                                    label: "Confirm Password",
+                                    text: $confirmPassword,
+                                    placeholder: "Repeat password",
+                                    isSecure: true,
+                                    contentType: .newPassword,
+                                    focused: $focusedField,
+                                    fieldID: Field.confirmPassword
+                                )
+
+                                if !confirmPassword.isEmpty && !passwordsMatch {
+                                    Text("Passwords don't match")
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                }
+
+                                if let err = authService.authError {
+                                    Text(err)
+                                        .font(.caption)
+                                        .foregroundStyle(.red)
+                                        .multilineTextAlignment(.center)
+                                }
+
                                 LiquidGlassPrimaryButton(
                                     title: "Create Account",
                                     isLoading: authService.isLoading,
-                                    isDisabled: name.isEmpty || email.isEmpty
+                                    isDisabled: name.isEmpty || email.isEmpty || !passwordsMatch
                                 ) {
                                     focusedField = nil
-                                    Task { await authService.signUp(name: name, email: email) }
+                                    Task { await authService.signUp(name: name, email: email, password: password) }
                                 }
                             }
                             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -575,14 +619,16 @@ private struct SignUpPage: View {
 
     private func handleAppleSignIn(result: Result<ASAuthorization, Error>) {
         guard case .success(let auth) = result,
-              let credential = auth.credential as? ASAuthorizationAppleIDCredential
+              let credential = auth.credential as? ASAuthorizationAppleIDCredential,
+              let tokenData = credential.identityToken,
+              let idToken = String(data: tokenData, encoding: .utf8)
         else { return }
         let fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
             .compactMap { $0 }.joined(separator: " ")
         Task {
             await authService.signInWithApple(
-                name: fullName.isEmpty ? nil : fullName,
-                email: credential.email
+                idToken: idToken,
+                name: fullName.isEmpty ? nil : fullName
             )
         }
     }

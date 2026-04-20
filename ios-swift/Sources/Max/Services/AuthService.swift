@@ -1,91 +1,189 @@
+import AuthenticationServices
 import Foundation
-import Combine
+import Supabase
 
 @MainActor
-final class AuthService: ObservableObject {
+final class AuthService: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = AuthService()
 
-    private let storageKey = "max:auth_user"
+    // Supabase client — shared across the app for DB / storage if needed later
+    let supabase: SupabaseClient
 
     @Published var currentUser: AuthUser?
     @Published var isLoading: Bool = false
+    @Published var authError: String? = nil
 
-    private init() {
-        currentUser = loadUser()
-    }
+    private let callbackScheme = "com.gindausd.max"
+    private let demoKey = "max:auth_user_demo"
 
-    // MARK: - Persistence
+    private override init() {
+        supabase = SupabaseClient(
+            supabaseURL: URL(string: kSupabaseURL)!,
+            supabaseKey: kSupabaseAnonKey
+        )
+        super.init()
 
-    private func loadUser() -> AuthUser? {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let user = try? JSONDecoder().decode(AuthUser.self, from: data)
-        else { return nil }
-        return user
-    }
-
-    private func saveUser(_ user: AuthUser?) {
-        if let user = user,
-           let data = try? JSONEncoder().encode(user) {
-            UserDefaults.standard.set(data, forKey: storageKey)
-        } else {
-            UserDefaults.standard.removeObject(forKey: storageKey)
+        // Restore demo session first (no network needed)
+        if let data = UserDefaults.standard.data(forKey: demoKey),
+           let user = try? JSONDecoder().decode(AuthUser.self, from: data) {
+            currentUser = user
         }
-        currentUser = user
+
+        // Then try to restore real Supabase session
+        Task {
+            if let session = try? await supabase.auth.session {
+                currentUser = AuthUser(supabaseUser: session.user)
+            }
+        }
+
+        // Listen for ongoing auth state changes
+        Task {
+            for await (event, session) in await supabase.auth.authStateChanges {
+                switch event {
+                case .signedIn, .tokenRefreshed, .userUpdated:
+                    if let session { currentUser = AuthUser(supabaseUser: session.user) }
+                case .signedOut:
+                    if currentUser?.isDemo != true { currentUser = nil }
+                default: break
+                }
+            }
+        }
     }
 
-    // MARK: - Auth Actions
+    // MARK: - Email / Password
+
+    func signUp(name: String, email: String, password: String) async {
+        isLoading = true; authError = nil
+        do {
+            let response = try await supabase.auth.signUp(
+                email: email,
+                password: password,
+                data: ["full_name": .string(name)]
+            )
+            if let user = response.user {
+                currentUser = AuthUser(supabaseUser: user)
+            }
+        } catch {
+            authError = error.localizedDescription
+        }
+        isLoading = false
+    }
 
     func signIn(email: String, password: String) async {
-        isLoading = true
-        // Simulate network delay
-        try? await Task.sleep(nanoseconds: 800_000_000)
-        let user = AuthUser(name: nil, email: email, isDemo: false)
-        saveUser(user)
+        isLoading = true; authError = nil
+        do {
+            let session = try await supabase.auth.signIn(email: email, password: password)
+            currentUser = AuthUser(supabaseUser: session.user)
+        } catch {
+            authError = error.localizedDescription
+        }
         isLoading = false
     }
 
-    func signUp(name: String, email: String) async {
-        isLoading = true
-        try? await Task.sleep(nanoseconds: 800_000_000)
-        let user = AuthUser(name: name, email: email, isDemo: false)
-        saveUser(user)
+    // MARK: - Apple (native button → Supabase ID-token exchange)
+
+    func signInWithApple(idToken: String, name: String?) async {
+        isLoading = true; authError = nil
+        do {
+            let session = try await supabase.auth.signInWithIdToken(
+                credentials: .init(provider: .apple, idToken: idToken)
+            )
+            // Store display name in Supabase user metadata on first sign-in
+            if let name, !name.isEmpty {
+                try? await supabase.auth.update(
+                    user: UserAttributes(data: ["full_name": .string(name)])
+                )
+            }
+            currentUser = AuthUser(
+                name: name ?? session.user.userMetadata["full_name"]?.stringValue,
+                email: session.user.email,
+                isDemo: false
+            )
+        } catch {
+            authError = error.localizedDescription
+        }
         isLoading = false
     }
+
+    // MARK: - Google (web OAuth via ASWebAuthenticationSession)
+
+    func signInWithGoogle() async {
+        isLoading = true; authError = nil
+        do {
+            let url = try await supabase.auth.getOAuthSignInURL(
+                provider: .google,
+                redirectTo: URL(string: "\(callbackScheme)://login-callback")!
+            )
+            let callbackURL = try await openOAuth(url: url)
+            let session = try await supabase.auth.session(from: callbackURL)
+            currentUser = AuthUser(supabaseUser: session.user)
+        } catch {
+            let cancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
+            if !cancelled { authError = error.localizedDescription }
+        }
+        isLoading = false
+    }
+
+    // MARK: - Demo (local only, no Supabase)
 
     func startDemo(name: String = "", voice: String = "female") async {
         isLoading = true
-        try? await Task.sleep(nanoseconds: 400_000_000)
-        let displayName = name.isEmpty ? "Demo User" : name
+        let displayName = name.isEmpty ? "Guest" : name
         let user = AuthUser(name: displayName, email: nil, isDemo: true)
-        saveUser(user)
-
-        // Persist the voice preference so HomeView and VoiceService can use it
+        if let data = try? JSONEncoder().encode(user) {
+            UserDefaults.standard.set(data, forKey: demoKey)
+        }
         var settings = StorageService.shared.loadSettings()
         settings.preferredVoice = voice
         if settings.userName.isEmpty { settings.userName = displayName }
         StorageService.shared.saveSettings(settings)
-
+        currentUser = user
         isLoading = false
     }
+
+    // MARK: - Sign Out
 
     func signOut() {
-        UserDefaults.standard.removeObject(forKey: storageKey)
-        currentUser = nil
+        if currentUser?.isDemo == true {
+            UserDefaults.standard.removeObject(forKey: demoKey)
+            currentUser = nil
+        } else {
+            Task { try? await supabase.auth.signOut() }
+        }
     }
 
-    func signInWithGoogle() async {
-        isLoading = true
-        try? await Task.sleep(nanoseconds: 600_000_000)
-        let user = AuthUser(name: "Google User", email: "user@gmail.com", isDemo: false)
-        saveUser(user)
-        isLoading = false
+    // MARK: - OAuth browser helper
+
+    private func openOAuth(url: URL) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            let session = ASWebAuthenticationSession(
+                url: url,
+                callbackURLScheme: callbackScheme
+            ) { callbackURL, error in
+                if let error      { continuation.resume(throwing: error) }
+                else if let cbURL { continuation.resume(returning: cbURL) }
+                else              { continuation.resume(throwing: URLError(.badURL)) }
+            }
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = false
+            session.start()
+        }
     }
 
-    func signInWithApple(name: String?, email: String?) async {
-        isLoading = true
-        try? await Task.sleep(nanoseconds: 400_000_000)
-        let user = AuthUser(name: name ?? "Apple User", email: email, isDemo: false)
-        saveUser(user)
-        isLoading = false
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap { $0.windows }
+            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+    }
+}
+
+// MARK: - AuthUser from Supabase User
+
+private extension AuthUser {
+    init(supabaseUser user: Supabase.User) {
+        self.name  = user.userMetadata["full_name"]?.stringValue
+        self.email = user.email
+        self.isDemo = false
     }
 }
