@@ -14,6 +14,14 @@ final class DeviceLinkService: NSObject, ObservableObject {
     private override init() {
         super.init()
         checkiCloud()
+        pullFromiCloud()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(iCloudDidChange),
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: NSUbiquitousKeyValueStore.default
+        )
+        NSUbiquitousKeyValueStore.default.synchronize()
         if WCSession.isSupported() {
             let s = WCSession.default
             s.delegate = self
@@ -26,19 +34,37 @@ final class DeviceLinkService: NSObject, ObservableObject {
     }
 
     func enableiCloudSync() {
-        // Push current settings + memories to iCloud KV store
         let storage = StorageService.shared
-        let settings = storage.loadSettings()
         let kv = NSUbiquitousKeyValueStore.default
-        if let data = try? JSONEncoder().encode(settings) {
+        let encoder = JSONEncoder()
+        if let data = try? encoder.encode(storage.loadSettings()) {
             kv.set(data, forKey: "max:settings")
         }
-        let cards = storage.loadMemoryCards()
-        if let data = try? JSONEncoder().encode(cards) {
+        if let data = try? encoder.encode(storage.loadMemoryCards()) {
             kv.set(data, forKey: "max:memorycards")
         }
         kv.synchronize()
         iCloudEnabled = true
+    }
+
+    func pullFromiCloud() {
+        guard FileManager.default.ubiquityIdentityToken != nil else { return }
+        let kv = NSUbiquitousKeyValueStore.default
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let data = kv.data(forKey: "max:settings"),
+           let settings = try? decoder.decode(AppSettings.self, from: data) {
+            StorageService.shared.saveSettings(settings)
+        }
+        if let data = kv.data(forKey: "max:memorycards"),
+           let cards = try? decoder.decode([MemoryCard].self, from: data) {
+            StorageService.shared.saveMemoryCards(cards)
+        }
+        iCloudEnabled = true
+    }
+
+    @objc private func iCloudDidChange(_ notification: Notification) {
+        pullFromiCloud()
     }
 }
 

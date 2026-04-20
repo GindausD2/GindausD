@@ -1,3 +1,4 @@
+import Contacts
 import EventKit
 import Foundation
 import UIKit
@@ -293,30 +294,51 @@ final class ToolsService {
     }
 
     private func makeCall(input: [String: Any]) async -> String {
-        guard let phoneNumber = input["phoneNumber"] as? String else {
-            return encodeResult(["error": "Missing phoneNumber"])
+        let contactName = input["contactName"] as? String
+        var rawNumber   = input["phoneNumber"]  as? String
+
+        // If no number given, look it up from Contacts by name
+        if (rawNumber == nil || rawNumber!.isEmpty), let name = contactName {
+            rawNumber = await lookupPhoneNumber(for: name)
+            if rawNumber == nil {
+                return encodeResult(["error": "Could not find a phone number for \(name) in Contacts"])
+            }
         }
-        let contactName = input["contactName"] as? String ?? phoneNumber
-        let digits = phoneNumber.filter(\.isNumber)
+
+        guard let rawNumber, !rawNumber.isEmpty else {
+            return encodeResult(["error": "Provide either phoneNumber or contactName"])
+        }
+
+        let digits = rawNumber.filter(\.isNumber)
         guard !digits.isEmpty else {
             return encodeResult(["error": "Invalid phone number"])
         }
 
+        let displayName = contactName ?? rawNumber
         await openURL("tel://\(digits)")
 
         await MainActor.run {
             LiveActivityService.shared.showToolCard(ToolCard(
                 kind: .call,
-                line1: contactName,
+                line1: displayName,
                 line2: "Calling…",
                 iconName: "phone.fill"
             ))
         }
 
-        return encodeResult([
-            "success": true,
-            "message": "Calling \(contactName)…"
-        ])
+        return encodeResult(["success": true, "message": "Calling \(displayName)…"])
+    }
+
+    private func lookupPhoneNumber(for name: String) async -> String? {
+        let store = CNContactStore()
+        let granted = (try? await store.requestAccess(for: .contacts)) ?? false
+        guard granted else { return nil }
+
+        let pred = CNContact.predicateForContacts(matchingName: name)
+        let keys = [CNContactPhoneNumbersKey] as [CNKeyDescriptor]
+        let contacts = (try? store.unifiedContacts(matching: pred, keysToFetch: keys)) ?? []
+
+        return contacts.first?.phoneNumbers.first?.value.stringValue
     }
 
     // MARK: - New Tools

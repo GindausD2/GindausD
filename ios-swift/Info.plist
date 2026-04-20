@@ -31,6 +31,8 @@
     <string>Max uses speech recognition to convert your voice into text for the assistant.</string>
     <key>NSUserNotificationsUsageDescription</key>
     <string>Max can send you reminders you ask it to schedule.</string>
+    <key>NSContactsUsageDescription</key>
+    <string>Max uses your Contacts to look up phone numbers when you ask it to call someone by name.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>Max can create calendar events you ask it to schedule.</string>
     <key>NSCalendarsWriteOnlyAccessUsageDescription</key>

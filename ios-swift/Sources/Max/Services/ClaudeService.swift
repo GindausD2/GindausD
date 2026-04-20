@@ -236,14 +236,14 @@ final class ClaudeService {
             ),
             ToolDefinition(
                 name: "make_call",
-                description: "Make a phone call to a contact or phone number.",
+                description: "Make a phone call. Provide contactName to look up the number from the user's Contacts, or phoneNumber if you already have it.",
                 inputSchema: InputSchema(
                     type: "object",
                     properties: [
-                        "phoneNumber": PropertyDefinition(type: "string", description: "Phone number to call (digits only, e.g. '14155552671')"),
-                        "contactName": PropertyDefinition(type: "string", description: "Name of the person being called")
+                        "contactName": PropertyDefinition(type: "string", description: "Name of the person to call — used to search the user's Contacts for their number"),
+                        "phoneNumber": PropertyDefinition(type: "string", description: "Phone number to dial directly (digits only). Optional if contactName is provided.")
                     ],
-                    required: ["phoneNumber"]
+                    required: []
                 )
             ),
             ToolDefinition(

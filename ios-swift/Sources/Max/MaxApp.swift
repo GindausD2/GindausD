@@ -83,7 +83,21 @@ struct MaxApp: App {
     }
 
     private func requestNotificationPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+        let center = UNUserNotificationCenter.current()
+        center.delegate = NotificationDelegate.shared
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+}
+
+// MARK: - Foreground notification display
+
+final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+    static let shared = NotificationDelegate()
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                willPresent notification: UNNotification,
+                                withCompletionHandler handler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        handler([.banner, .sound, .badge])
     }
 }
 
