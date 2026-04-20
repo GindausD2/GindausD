@@ -20,7 +20,6 @@ struct SettingsView: View {
     @State private var showPrivacy: Bool = false
     @State private var showMemory: Bool = false
     @State private var showIslandDebug: Bool = false
-    @State private var showApiConfig: Bool = false
     @State private var showEmailConfig: Bool = false
     @State private var showAssistant: Bool = false
     @State private var showAppearance: Bool = false
@@ -61,9 +60,6 @@ struct SettingsView: View {
 
                         // ── CONFIGURATION ─────────────────────────────────────
                         ProfileSection(title: "CONFIGURATION") {
-                            ProfileRow(icon: "key.fill", iconColor: Color(hex: "#7C3AED"),
-                                       title: "AI Configuration") { showApiConfig = true }
-                            Divider().padding(.leading, 56)
                             ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#3B82F6"),
                                        title: "Email Reminders") { showEmailConfig = true }
                             Divider().padding(.leading, 56)
@@ -190,7 +186,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showMemory)       { MemoryView() }
         .sheet(isPresented: $showPrivacy)      { PrivacySheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showIslandDebug)  { IslandDebugSheet() }
-        .sheet(isPresented: $showApiConfig)    { ApiConfigSheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showEmailConfig)  { EmailConfigSheet() }
         .sheet(isPresented: $showAssistant)    { AssistantSheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showAppearance)   { AppearanceSheet(appearance: $appearance, settings: $settings, onSave: saveSettings) }
@@ -566,50 +561,6 @@ private struct IslandDebugSheet: View {
                 Spacer()
             }
             .navigationTitle("Island Debug")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }.fontWeight(.semibold)
-            }}
-        }
-    }
-}
-
-private struct ApiConfigSheet: View {
-    @Binding var settings: AppSettings
-    var onSave: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @State private var apiKeyVisible: Bool = false
-
-    var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    HStack {
-                        Group {
-                            if apiKeyVisible {
-                                TextField("sk-ant-...", text: $settings.apiKey)
-                                    .autocapitalization(.none).autocorrectionDisabled()
-                            } else {
-                                SecureField("sk-ant-...", text: $settings.apiKey)
-                            }
-                        }
-                        .font(.system(.body, design: .monospaced))
-                        .tint(Color(hex: "#7C3AED"))
-                        .onChange(of: settings.apiKey) { _, _ in onSave() }
-                        Button { apiKeyVisible.toggle() } label: {
-                            Image(systemName: apiKeyVisible ? "eye.slash" : "eye")
-                                .foregroundStyle(.secondary)
-                        }.buttonStyle(.plain)
-                    }
-                } header: { Text("Anthropic API Key") }
-                  footer: { Text("Stored locally · only sent to Anthropic's API") }
-
-                Section {
-                    Link("Get your key →", destination: URL(string: "https://console.anthropic.com/settings/keys")!)
-                        .foregroundStyle(Color(hex: "#7C3AED"))
-                }
-            }
-            .navigationTitle("AI Configuration")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }.fontWeight(.semibold)

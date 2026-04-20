@@ -29,7 +29,6 @@ struct AuthUser: Codable {
 // MARK: - AppSettings
 
 struct AppSettings: Codable {
-    var apiKey: String = ""
     var assistantName: String = "Max"
     var voiceEnabled: Bool = true
     var userName: String = ""

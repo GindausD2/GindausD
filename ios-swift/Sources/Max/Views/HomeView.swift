@@ -456,13 +456,7 @@ final class HomeViewModel: ObservableObject {
         conversationState = .idle
         isTranscribing = true
         Task {
-            let settings = storage.loadSettings()
-            guard !settings.apiKey.isEmpty else {
-                isTranscribing = false
-                addSystemError("Add your API key in Settings to use voice.")
-                return
-            }
-            let transcription = await voice.stopAndTranscribe(apiKey: settings.apiKey)
+            let transcription = await voice.stopAndTranscribe(apiKey: kAnthropicAPIKey)
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
@@ -492,11 +486,6 @@ final class HomeViewModel: ObservableObject {
 
     private func streamResponse(userText: String, imageData: Data? = nil) {
         let settings = storage.loadSettings()
-        guard !settings.apiKey.isEmpty else {
-            conversationState = .idle
-            addSystemError("Add your API key in Settings.")
-            return
-        }
         conversationState = .thinking
 
         let streamId = UUID().uuidString
@@ -506,7 +495,7 @@ final class HomeViewModel: ObservableObject {
         var fullText = ""
 
         claude.streamMessage(
-            apiKey: settings.apiKey,
+            apiKey: kAnthropicAPIKey,
             messages: messages.filter { $0.id != streamId },
             imageData: imageData
         ) { [weak self] chunk in
