@@ -479,7 +479,7 @@ final class HomeViewModel: ObservableObject {
                     self.storage.saveMessages(self.messages)
                     if settings.voiceEnabled && !fullText.isEmpty {
                         self.conversationState = .speaking
-                        self.voice.speak(fullText)
+                        self.voice.speak(fullText, preferredVoice: settings.preferredVoice)
                         Task {
                             while self.voice.isSpeaking {
                                 try? await Task.sleep(nanoseconds: 200_000_000)

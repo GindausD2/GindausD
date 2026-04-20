@@ -31,7 +31,7 @@ struct AuthUser: Codable {
 struct AppSettings: Codable {
     var apiKey: String = ""
     var assistantName: String = "Max"
-    var voiceEnabled: Bool = false
+    var voiceEnabled: Bool = true
     var userName: String = ""
     var colorScheme: String = "system"      // "system" | "light" | "dark"
     var preferredVoice: String = "female"   // "female" | "male"

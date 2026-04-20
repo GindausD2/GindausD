@@ -135,21 +135,62 @@ final class VoiceService: NSObject, ObservableObject {
 
     // MARK: - Speech Synthesis
 
-    func speak(_ text: String) {
+    func speak(_ text: String, preferredVoice: String = "female") {
         stopSpeaking()
 
+        let clean = cleanForSpeech(text)
+        guard !clean.isEmpty else { return }
+
         let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .spokenAudio)
+        try? session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
         try? session.setActive(true)
 
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        utterance.rate = AVSpeechUtteranceDefaultSpeechRate
-        utterance.pitchMultiplier = 1.1
+        let utterance = AVSpeechUtterance(string: clean)
+
+        let gender: AVSpeechSynthesisVoiceGender = preferredVoice == "male" ? .male : .female
+        let voice = AVSpeechSynthesisVoice.speechVoices()
+            .filter { $0.language.hasPrefix("en") && $0.gender == gender }
+            .sorted {
+                let rank: (AVSpeechSynthesisVoice) -> Int = {
+                    switch $0.quality {
+                    case .premium:  return 2
+                    case .enhanced: return 1
+                    default:        return 0
+                    }
+                }
+                return rank($0) > rank($1)
+            }
+            .first ?? AVSpeechSynthesisVoice(language: "en-US")
+
+        utterance.voice = voice
+        utterance.rate = 0.52
+        utterance.pitchMultiplier = 1.05
         utterance.volume = 1.0
 
         speechSynthesizer.speak(utterance)
         isSpeaking = true
+    }
+
+    // MARK: - Markdown Stripper
+
+    private func cleanForSpeech(_ text: String) -> String {
+        var s = text
+        // Bold / italic
+        s = s.replacingOccurrences(of: "**", with: "")
+        s = s.replacingOccurrences(of: "__", with: "")
+        s = s.replacingOccurrences(of: "*",  with: "")
+        s = s.replacingOccurrences(of: "_",  with: "")
+        // Headings
+        s = s.replacingOccurrences(of: #"#{1,6}\s"#, with: "", options: .regularExpression)
+        // Code fences → "code block"
+        s = s.replacingOccurrences(of: #"```[\s\S]*?```"#, with: "code block", options: .regularExpression)
+        s = s.replacingOccurrences(of: "`", with: "")
+        // Bullet / numbered list markers
+        s = s.replacingOccurrences(of: #"^\s*[-•]\s"#,  with: "", options: [.regularExpression, .anchorsMatchLines])
+        s = s.replacingOccurrences(of: #"^\s*\d+\.\s"#, with: "", options: [.regularExpression, .anchorsMatchLines])
+        // Links [label](url) → label
+        s = s.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]+\)"#, with: "$1", options: .regularExpression)
+        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func stopSpeaking() {
