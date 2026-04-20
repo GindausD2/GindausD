@@ -494,9 +494,13 @@ final class HomeViewModel: ObservableObject {
 
         var fullText = ""
 
+        // Keep the last 40 messages (20 exchanges) to stay within token limits
+        let history = messages.filter { $0.id != streamId }
+        let trimmed = history.count > 40 ? Array(history.suffix(40)) : history
+
         claude.streamMessage(
             apiKey: kAnthropicAPIKey,
-            messages: messages.filter { $0.id != streamId },
+            messages: trimmed,
             imageData: imageData
         ) { [weak self] chunk in
             Task { @MainActor [weak self] in

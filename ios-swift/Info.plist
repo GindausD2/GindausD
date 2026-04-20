@@ -39,6 +39,8 @@
     <string>Max can create calendar events you ask it to schedule.</string>
     <key>NSCalendarsWriteOnlyAccessUsageDescription</key>
     <string>Max can add events to your calendar when you ask it to schedule something.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Max uses your location to find nearby places and get directions.</string>
 
     <!-- Main Interface -->
     <key>UIMainStoryboardFile</key>

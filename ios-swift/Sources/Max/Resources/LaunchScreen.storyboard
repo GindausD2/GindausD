@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0"
+          toolsVersion="21701" targetRuntime="AppleCocoa Touch"
+          propertyAccessControl="none" useAutolayout="YES"
+          launchScreen="YES" useTraitCollections="YES"
+          useSafeAreas="YES" colorMatched="YES"
+          initialViewController="01J-lp-oVM">
+    <device id="retina6_1" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="21679"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <scene sceneID="tne-QT-ifu">
+            <objects>
+                <viewController id="01J-lp-oVM" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="Ze5-6b-2t3">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <!-- App name label centred on screen -->
+                            <label opaque="NO" userInteractionEnabled="NO"
+                                   contentMode="left" horizontalHuggingPriority="251"
+                                   verticalHuggingPriority="251"
+                                   text="Max"
+                                   textAlignment="center"
+                                   lineBreakMode="middleTruncation"
+                                   baselineAdjustment="alignBaselines"
+                                   adjustsFontSizeToFit="NO"
+                                   translatesAutoresizingMaskIntoConstraints="NO"
+                                   id="GJd-Yh-RWb">
+                                <rect key="frame" x="146.5" y="406" width="100" height="44"/>
+                                <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="36"/>
+                                <color key="textColor" red="0.094" green="0.094" blue="0.094" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                <nil key="highlightedColor"/>
+                            </label>
+                        </subviews>
+                        <viewLayoutGuide key="safeAreaLayoutGuide" id="Bcu-3y-fUS"/>
+                        <!-- Lavender-white gradient background matches the app -->
+                        <color key="backgroundColor" red="0.976" green="0.965" blue="1.0" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                        <constraints>
+                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="centerX"
+                                        secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="Q3B-4y-6We"/>
+                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="centerY"
+                                        secondItem="Ze5-6b-2t3" secondAttribute="centerY" id="moa-c2-u7t"/>
+                            <constraint firstItem="GJd-Yh-RWb" firstAttribute="width"
+                                        constant="100" id="Koa-jQ-x0M"/>
+                        </constraints>
+                    </view>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="iYj-Kq-Ea1"
+                             userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="53" y="375"/>
+        </scene>
+    </scenes>
+</document>
