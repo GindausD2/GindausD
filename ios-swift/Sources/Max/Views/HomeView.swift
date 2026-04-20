@@ -10,8 +10,6 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
     @State private var showDeviceLink: Bool = false
-    @State private var showImagePicker: Bool = false
-    @State private var pendingImage: UIImage? = nil
 
     private let liveActivity = LiveActivityService.shared
 
@@ -42,10 +40,6 @@ struct HomeView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
-        }
-        .fullScreenCover(isPresented: $showImagePicker) {
-            ImageSourcePicker(selectedImage: $pendingImage, isPresented: $showImagePicker)
-                .ignoresSafeArea()
         }
         .onAppear {
             viewModel.loadMessages()
@@ -169,7 +163,7 @@ struct HomeView: View {
             Text("Hi! I'm Max")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(Color(white: 0.15))
-            Text("Tap the orb to start talking,\nor type a message below")
+            Text("Tap the orb or mic button\nto start talking")
                 .font(.subheadline)
                 .foregroundStyle(Color(white: 0.5))
                 .multilineTextAlignment(.center)
@@ -190,19 +184,8 @@ struct HomeView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            // Image thumbnail if pending
-            if let img = pendingImage {
-                imageThumbnailRow(img)
-                    .padding(.bottom, 10)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
             // Main dock row
             HStack(spacing: 0) {
-                // Camera
-                cameraButton
-                    .frame(maxWidth: .infinity)
-
                 // Orb
                 OrbView(state: viewModel.orbState, size: 100)
                     .onTapGesture { viewModel.handleOrbTap() }
@@ -261,7 +244,6 @@ struct HomeView: View {
         .shadow(color: .black.opacity(0.10), radius: 24, x: 0, y: -4)
         .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.08), radius: 40, x: 0, y: -10)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.conversationState)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: pendingImage == nil)
     }
 
     // MARK: - Status Pill
@@ -301,38 +283,6 @@ struct HomeView: View {
         case .thinking:  return "Thinking…"
         case .speaking:  return "Speaking…"
         }
-    }
-
-    // MARK: - Camera Button
-
-    private var cameraButton: some View {
-        Button { showImagePicker = true } label: {
-            ZStack {
-                Circle()
-                    .fill(
-                        pendingImage == nil
-                            ? Color(white: 0.0).opacity(0.06)
-                            : Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.12)
-                    )
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Circle().strokeBorder(
-                            pendingImage == nil
-                                ? Color(white: 0.0).opacity(0.12)
-                                : Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.40),
-                            lineWidth: 1
-                        )
-                    )
-                Image(systemName: pendingImage == nil ? "camera" : "camera.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(
-                        pendingImage == nil
-                            ? Color(white: 0.30)
-                            : Color(red: 0.49, green: 0.23, blue: 0.93)
-                    )
-            }
-        }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage == nil)
     }
 
     // MARK: - Mic Button
@@ -395,42 +345,6 @@ struct HomeView: View {
 
     // MARK: - Image Thumbnail Row
 
-    private func imageThumbnailRow(_ image: UIImage) -> some View {
-        HStack(spacing: 10) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: 52, height: 52)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.black.opacity(0.08), lineWidth: 0.5)
-                )
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Photo attached")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color(white: 0.20))
-                Text("Ask Max anything about it")
-                    .font(.caption2)
-                    .foregroundStyle(Color(white: 0.50))
-            }
-            Spacer()
-            Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { pendingImage = nil }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(Color(white: 0.55))
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(white: 0.0).opacity(0.04))
-        )
-        .padding(.horizontal, 12)
-    }
 }
 
 // MARK: - HomeViewModel
