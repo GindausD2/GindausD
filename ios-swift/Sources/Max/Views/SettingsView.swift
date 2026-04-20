@@ -77,13 +77,19 @@ struct SettingsView: View {
                         // ── ABOUT ─────────────────────────────────────────────
                         ProfileSection(title: "ABOUT") {
                             ProfileRow(icon: "questionmark.circle.fill", iconColor: Color(hex: "#3B82F6"),
-                                       title: "Help Center") { }
+                                       title: "Help Center") {
+                                UIApplication.shared.open(URL(string: "mailto:support@getmax.app")!)
+                            }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "doc.text.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "Terms of Use") { }
+                                       title: "Terms of Use") {
+                                UIApplication.shared.open(URL(string: "https://www.anthropic.com/legal/consumer-terms")!)
+                            }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.shield.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "Privacy Policy") { }
+                                       title: "Privacy Policy") {
+                                UIApplication.shared.open(URL(string: "https://www.anthropic.com/legal/privacy")!)
+                            }
                             Divider().padding(.leading, 56)
                             HStack {
                                 Label {
@@ -182,7 +188,7 @@ struct SettingsView: View {
         // ── Destination sheets ────────────────────────────────────────────────
         .sheet(isPresented: $showSubscription) { SubscriptionSheet() }
         .sheet(isPresented: $showMemory)       { MemoryView() }
-        .sheet(isPresented: $showPrivacy)      { PrivacySheet() }
+        .sheet(isPresented: $showPrivacy)      { PrivacySheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showIslandDebug)  { IslandDebugSheet() }
         .sheet(isPresented: $showApiConfig)    { ApiConfigSheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showEmailConfig)  { EmailConfigSheet() }
@@ -383,25 +389,100 @@ private struct ProfileRow: View {
 
 private struct SubscriptionSheet: View {
     @Environment(\.dismiss) private var dismiss
+
+    private let violet = Color(hex: "#7C3AED")
+    private let amber  = Color(hex: "#F59E0B")
+
+    private let features: [(icon: String, title: String, detail: String)] = [
+        ("infinity",          "Unlimited Conversations", "No message caps — talk to Max as much as you want"),
+        ("bolt.fill",         "Priority Responses",      "Faster replies during peak hours"),
+        ("icloud.fill",       "Full iCloud Sync",        "Sync history, memories, and notes across all devices"),
+        ("waveform",          "Advanced Voice",          "Premium neural voices and custom wake phrases"),
+        ("bell.badge.fill",   "Smart Notifications",     "Proactive reminders and email alerts")
+    ]
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: 24) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 56))
-                    .foregroundStyle(Color(hex: "#F59E0B"))
-                    .padding(.top, 40)
-                Text("Upgrade to Pro")
-                    .font(.title.weight(.bold))
-                Text("Unlock unlimited conversations,\npriority responses, and more.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                Spacer()
-                Text("Coming soon")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 28) {
+                    // Header
+                    VStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(amber.opacity(0.12))
+                                .frame(width: 88, height: 88)
+                            Image(systemName: "crown.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(amber)
+                        }
+                        .padding(.top, 24)
+
+                        Text("Max Pro")
+                            .font(.system(size: 32, weight: .bold))
+                        Text("Everything you need for a truly personal AI assistant.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+
+                    // Feature list
+                    VStack(spacing: 0) {
+                        ForEach(features, id: \.title) { f in
+                            HStack(spacing: 14) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(violet.opacity(0.10))
+                                        .frame(width: 38, height: 38)
+                                    Image(systemName: f.icon)
+                                        .font(.system(size: 17, weight: .medium))
+                                        .foregroundStyle(violet)
+                                }
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(f.title)
+                                        .font(.system(size: 15, weight: .semibold))
+                                    Text(f.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            if f.title != features.last?.title {
+                                Divider().padding(.leading, 72)
+                            }
+                        }
+                    }
+                    .background(Color(UIColor.secondarySystemGroupedBackground))
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .padding(.horizontal, 16)
+
+                    // CTA
+                    VStack(spacing: 12) {
+                        Button {
+                            UIApplication.shared.open(URL(string: "mailto:pro@getmax.app?subject=Max%20Pro%20Early%20Access")!)
+                        } label: {
+                            Text("Join the Waitlist")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(violet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 16)
+
+                        Text("Pro is coming soon. Join the waitlist to get early access.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
                     .padding(.bottom, 40)
+                }
             }
+            .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Subscription")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) {
@@ -412,13 +493,20 @@ private struct SubscriptionSheet: View {
 }
 
 private struct PrivacySheet: View {
+    @Binding var settings: AppSettings
+    var onSave: () -> Void
     @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    Toggle("Share analytics", isOn: .constant(false))
-                    Toggle("Personalised suggestions", isOn: .constant(true))
+                    Toggle("Share analytics", isOn: $settings.shareAnalytics)
+                        .tint(Color(hex: "#7C3AED"))
+                        .onChange(of: settings.shareAnalytics) { _, _ in onSave() }
+                    Toggle("Personalised suggestions", isOn: $settings.personalisedSuggestions)
+                        .tint(Color(hex: "#7C3AED"))
+                        .onChange(of: settings.personalisedSuggestions) { _, _ in onSave() }
                 } header: { Text("Data Usage") }
                 Section {
                     Text("Your conversations are processed by Anthropic's Claude API and are subject to Anthropic's privacy policy.")
@@ -534,6 +622,7 @@ private struct EmailConfigSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var clientID: String = EmailMonitorService.shared.clientID
     @State private var isConnecting: Bool = false
+    @State private var connectError: String? = nil
 
     var body: some View {
         NavigationStack {
@@ -560,9 +649,13 @@ private struct EmailConfigSheet: View {
                     } else {
                         Button {
                             isConnecting = true
+                            connectError = nil
                             Task {
                                 await EmailMonitorService.shared.connect()
-                                await EmailMonitorService.shared.checkAndNotify()
+                                connectError = EmailMonitorService.shared.connectError
+                                if connectError == nil {
+                                    await EmailMonitorService.shared.checkAndNotify()
+                                }
                                 isConnecting = false
                             }
                         } label: {
@@ -572,6 +665,11 @@ private struct EmailConfigSheet: View {
                             }
                         }
                         .disabled(clientID.isEmpty || isConnecting)
+                        if let err = connectError {
+                            Text(err)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
 

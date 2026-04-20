@@ -344,8 +344,22 @@ final class ToolsService {
     // MARK: - New Tools
 
     private func readNews(input: [String: Any]) async -> String {
-        let topic = input["topic"] as? String ?? ""
-        let feedURL = URL(string: "https://feeds.bbci.co.uk/news/rss.xml")!
+        let topic = (input["topic"] as? String ?? "").lowercased()
+
+        let feedMap: [String: String] = [
+            "tech": "technology", "technology": "technology",
+            "business": "business", "finance": "business", "economy": "business",
+            "world": "world", "international": "world",
+            "science": "science_and_environment", "environment": "science_and_environment",
+            "health": "health", "medical": "health",
+            "sport": "sport", "sports": "sport",
+            "entertainment": "entertainment_and_arts", "arts": "entertainment_and_arts",
+            "politics": "politics", "political": "politics"
+        ]
+        let path = feedMap.first(where: { topic.contains($0.key) })?.value
+        let feedURLString = path.map { "https://feeds.bbci.co.uk/news/\($0)/rss.xml" }
+            ?? "https://feeds.bbci.co.uk/news/rss.xml"
+        let feedURL = URL(string: feedURLString)!
 
         do {
             let (data, _) = try await URLSession.shared.data(from: feedURL)

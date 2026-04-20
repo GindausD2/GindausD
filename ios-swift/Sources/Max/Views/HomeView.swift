@@ -12,6 +12,7 @@ struct HomeView: View {
     @State private var showDeviceLink: Bool = false
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
+    @State private var pendingImage: UIImage? = nil
 
     private let liveActivity = LiveActivityService.shared
 
@@ -33,10 +34,21 @@ struct HomeView: View {
                     .padding(.bottom, 140) // space for dock
             }
 
-            // ── Floating glass dock ────────────────────────────────────────────
-            bottomDock
-                .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+            // ── Image preview bar ──────────────────────────────────────────────
+            VStack(spacing: 0) {
+                Spacer()
+                if let img = pendingImage {
+                    imagePendingBar(img: img)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                // ── Floating glass dock ────────────────────────────────────────
+                bottomDock
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage != nil)
         }
         .sheet(isPresented: $showDeviceLink) { DeviceLinkView() }
         .fullScreenCover(isPresented: $showCamera) {
@@ -45,7 +57,7 @@ struct HomeView: View {
         }
         .onChange(of: capturedImage) { _, img in
             guard let img else { return }
-            viewModel.sendTextMessage(image: img)
+            pendingImage = img
             capturedImage = nil
         }
         .sheet(isPresented: $showSettings) {
@@ -189,7 +201,7 @@ struct HomeView: View {
     private var bottomDock: some View {
         VStack(spacing: 0) {
             // Status pill
-            if viewModel.conversationState != .idle {
+            if viewModel.conversationState != .idle || viewModel.isTranscribing {
                 statusPill
                     .padding(.bottom, 10)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -279,6 +291,7 @@ struct HomeView: View {
     }
 
     private var statusColor: Color {
+        if viewModel.isTranscribing { return Color(red: 0.95, green: 0.60, blue: 0.11) }
         switch viewModel.conversationState {
         case .idle:      return .gray
         case .listening: return Color(red: 0.94, green: 0.27, blue: 0.27)
@@ -288,6 +301,7 @@ struct HomeView: View {
     }
 
     private var statusText: String {
+        if viewModel.isTranscribing { return "Transcribing…" }
         switch viewModel.conversationState {
         case .idle:      return "Idle"
         case .listening: return "Listening…"
@@ -329,8 +343,51 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Image Thumbnail Row
+    // MARK: - Image Pending Bar
 
+    private func imagePendingBar(img: UIImage) -> some View {
+        HStack(spacing: 12) {
+            Image(uiImage: img)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 52, height: 52)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Text("Send this image to Max?")
+                .font(.subheadline)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            Button { withAnimation { pendingImage = nil } } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundStyle(Color.secondary)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                let img = pendingImage
+                pendingImage = nil
+                viewModel.sendTextMessage(image: img)
+            } label: {
+                Text("Send")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .background(Color(hex: "#7C3AED"), in: Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.5), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
+    }
 }
 
 // MARK: - HomeViewModel
@@ -341,6 +398,7 @@ final class HomeViewModel: ObservableObject {
     @Published var inputText: String = ""
     @Published var conversationState: ConversationState = .idle
     @Published var streamingText: String = ""
+    @Published var isTranscribing: Bool = false
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
@@ -395,17 +453,19 @@ final class HomeViewModel: ObservableObject {
 
     private func stopListening() {
         guard conversationState == .listening else { return }
-        conversationState = .thinking
+        conversationState = .idle
+        isTranscribing = true
         Task {
             let settings = storage.loadSettings()
             guard !settings.apiKey.isEmpty else {
-                conversationState = .idle
+                isTranscribing = false
                 addSystemError("Add your API key in Settings to use voice.")
                 return
             }
-            guard let transcription = await voice.stopAndTranscribe(apiKey: settings.apiKey),
-                  !transcription.isEmpty else {
-                conversationState = .idle
+            let transcription = await voice.stopAndTranscribe(apiKey: settings.apiKey)
+            isTranscribing = false
+            guard let transcription, !transcription.isEmpty else {
+                addSystemError("Couldn't catch that — please try again.")
                 return
             }
             addUserMessage(transcription)
@@ -502,15 +562,6 @@ final class HomeViewModel: ObservableObject {
             }
         }
     }
-}
-
-// MARK: - ConversationState
-
-enum ConversationState: Equatable {
-    case idle
-    case listening
-    case thinking
-    case speaking
 }
 
 #Preview {

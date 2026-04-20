@@ -37,11 +37,15 @@ final class DeviceLinkService: NSObject, ObservableObject {
         let storage = StorageService.shared
         let kv = NSUbiquitousKeyValueStore.default
         let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
         if let data = try? encoder.encode(storage.loadSettings()) {
             kv.set(data, forKey: "max:settings")
         }
         if let data = try? encoder.encode(storage.loadMemoryCards()) {
             kv.set(data, forKey: "max:memorycards")
+        }
+        if let data = try? encoder.encode(storage.loadMessages()) {
+            kv.set(data, forKey: "max:messages")
         }
         kv.synchronize()
         iCloudEnabled = true
@@ -59,6 +63,10 @@ final class DeviceLinkService: NSObject, ObservableObject {
         if let data = kv.data(forKey: "max:memorycards"),
            let cards = try? decoder.decode([MemoryCard].self, from: data) {
             StorageService.shared.saveMemoryCards(cards)
+        }
+        if let data = kv.data(forKey: "max:messages"),
+           let messages = try? decoder.decode([Message].self, from: data) {
+            StorageService.shared.saveMessages(messages)
         }
         iCloudEnabled = true
     }

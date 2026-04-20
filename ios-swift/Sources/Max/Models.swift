@@ -35,6 +35,8 @@ struct AppSettings: Codable {
     var userName: String = ""
     var colorScheme: String = "system"      // "system" | "light" | "dark"
     var preferredVoice: String = "female"   // "female" | "male"
+    var shareAnalytics: Bool = false
+    var personalisedSuggestions: Bool = true
 }
 
 // MARK: - Note
@@ -157,7 +159,7 @@ struct Reminder: Identifiable, Codable {
 
 // MARK: - App State Enums
 
-enum ConversationState {
+enum ConversationState: Equatable {
     case idle
     case listening
     case thinking

@@ -30,6 +30,7 @@ final class EmailMonitorService: NSObject, ASWebAuthenticationPresentationContex
     private let kClientID     = "max.gmail.clientID"
 
     var isConnected: Bool { accessToken != nil }
+    @Published var connectError: String? = nil
 
     private var accessToken: String? {
         get { UserDefaults.standard.string(forKey: kAccessToken) }
@@ -78,8 +79,12 @@ final class EmailMonitorService: NSObject, ASWebAuthenticationPresentationContex
                 session.start()
             }
             await exchangeCodeForTokens(from: callbackURL)
+            connectError = nil
         } catch {
-            // User cancelled or error — fail silently
+            let isCancel = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
+            if !isCancel {
+                connectError = "Connection failed. Please try again."
+            }
         }
     }
 
