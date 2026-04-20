@@ -27,8 +27,10 @@
     <!-- Privacy Descriptions -->
     <key>NSMicrophoneUsageDescription</key>
     <string>Max needs microphone access so you can speak to your assistant hands-free.</string>
-    <key>NSSpeechRecognitionUsageDescription</key>
-    <string>Max uses speech recognition to convert your voice into text for the assistant.</string>
+    <key>NSCameraUsageDescription</key>
+    <string>Max uses your camera so you can show it something and ask about it.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Max can read a photo from your library so you can ask about it.</string>
     <key>NSUserNotificationsUsageDescription</key>
     <string>Max can send you reminders you ask it to schedule.</string>
     <key>NSContactsUsageDescription</key>
