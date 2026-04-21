@@ -18,7 +18,7 @@ import SwiftUI
 //   LiveActivityService if any are found.
 
 @MainActor
-final class EmailMonitorService: NSObject, ASWebAuthenticationPresentationContextProviding {
+final class EmailMonitorService: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
 
     static let shared = EmailMonitorService()
     private override init() {}

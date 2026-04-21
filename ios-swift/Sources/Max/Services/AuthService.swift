@@ -1,27 +1,23 @@
-import AuthenticationServices
 import Foundation
 import Supabase
 
 @MainActor
-final class AuthService: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
+final class AuthService: ObservableObject {
     static let shared = AuthService()
 
-    // Supabase client — shared across the app for DB / storage if needed later
     let supabase: SupabaseClient
 
     @Published var currentUser: AuthUser?
     @Published var isLoading: Bool = false
     @Published var authError: String? = nil
 
-    private let callbackScheme = "com.gindausd.max"
     private let demoKey = "max:auth_user_demo"
 
-    private override init() {
+    private init() {
         supabase = SupabaseClient(
             supabaseURL: URL(string: kSupabaseURL)!,
             supabaseKey: kSupabaseAnonKey
         )
-        super.init()
 
         // Restore demo session first (no network needed)
         if let data = UserDefaults.standard.data(forKey: demoKey),
@@ -50,36 +46,6 @@ final class AuthService: NSObject, ObservableObject, ASWebAuthenticationPresenta
         }
     }
 
-    // MARK: - Email / Password
-
-    func signUp(name: String, email: String, password: String) async {
-        isLoading = true; authError = nil
-        do {
-            let response = try await supabase.auth.signUp(
-                email: email,
-                password: password,
-                data: ["full_name": .string(name)]
-            )
-            if let user = response.user {
-                currentUser = AuthUser(supabaseUser: user)
-            }
-        } catch {
-            authError = error.localizedDescription
-        }
-        isLoading = false
-    }
-
-    func signIn(email: String, password: String) async {
-        isLoading = true; authError = nil
-        do {
-            let session = try await supabase.auth.signIn(email: email, password: password)
-            currentUser = AuthUser(supabaseUser: session.user)
-        } catch {
-            authError = error.localizedDescription
-        }
-        isLoading = false
-    }
-
     // MARK: - Apple (native button → Supabase ID-token exchange)
 
     func signInWithApple(idToken: String, name: String?) async {
@@ -88,7 +54,6 @@ final class AuthService: NSObject, ObservableObject, ASWebAuthenticationPresenta
             let session = try await supabase.auth.signInWithIdToken(
                 credentials: .init(provider: .apple, idToken: idToken)
             )
-            // Store display name in Supabase user metadata on first sign-in
             if let name, !name.isEmpty {
                 try? await supabase.auth.update(
                     user: UserAttributes(data: ["full_name": .string(name)])
@@ -101,25 +66,6 @@ final class AuthService: NSObject, ObservableObject, ASWebAuthenticationPresenta
             )
         } catch {
             authError = error.localizedDescription
-        }
-        isLoading = false
-    }
-
-    // MARK: - Google (web OAuth via ASWebAuthenticationSession)
-
-    func signInWithGoogle() async {
-        isLoading = true; authError = nil
-        do {
-            let url = try await supabase.auth.getOAuthSignInURL(
-                provider: .google,
-                redirectTo: URL(string: "\(callbackScheme)://login-callback")!
-            )
-            let callbackURL = try await openOAuth(url: url)
-            let session = try await supabase.auth.session(from: callbackURL)
-            currentUser = AuthUser(supabaseUser: session.user)
-        } catch {
-            let cancelled = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
-            if !cancelled { authError = error.localizedDescription }
         }
         isLoading = false
     }
@@ -150,31 +96,6 @@ final class AuthService: NSObject, ObservableObject, ASWebAuthenticationPresenta
         } else {
             Task { try? await supabase.auth.signOut() }
         }
-    }
-
-    // MARK: - OAuth browser helper
-
-    private func openOAuth(url: URL) async throws -> URL {
-        try await withCheckedThrowingContinuation { continuation in
-            let session = ASWebAuthenticationSession(
-                url: url,
-                callbackURLScheme: callbackScheme
-            ) { callbackURL, error in
-                if let error      { continuation.resume(throwing: error) }
-                else if let cbURL { continuation.resume(returning: cbURL) }
-                else              { continuation.resume(throwing: URLError(.badURL)) }
-            }
-            session.presentationContextProvider = self
-            session.prefersEphemeralWebBrowserSession = false
-            session.start()
-        }
-    }
-
-    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap { $0.windows }
-            .first { $0.isKeyWindow } ?? ASPresentationAnchor()
     }
 }
 
