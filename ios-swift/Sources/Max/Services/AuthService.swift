@@ -11,7 +11,25 @@ final class AuthService: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var authError: String? = nil
 
-    private let demoKey = "max:auth_user_demo"
+    private let demoKey      = "max:auth_user_demo"
+    private let demoStartKey = "max:demo_start_date"
+    private let trialDuration: TimeInterval = 7 * 24 * 3600   // 7 days
+
+    var demoTrialExpiry: Date? {
+        guard let start = UserDefaults.standard.object(forKey: demoStartKey) as? Date
+        else { return nil }
+        return start.addingTimeInterval(trialDuration)
+    }
+
+    var isDemoExpired: Bool {
+        guard currentUser?.isDemo == true, let expiry = demoTrialExpiry else { return false }
+        return Date() >= expiry
+    }
+
+    var demoTrialDaysRemaining: Int {
+        guard let expiry = demoTrialExpiry else { return 7 }
+        return max(0, Int(ceil(expiry.timeIntervalSinceNow / 86400)))
+    }
 
     private init() {
         supabase = SupabaseClient(
@@ -79,6 +97,10 @@ final class AuthService: ObservableObject {
         if let data = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(data, forKey: demoKey)
         }
+        // Record trial start only on first demo start (don't reset on restore)
+        if UserDefaults.standard.object(forKey: demoStartKey) == nil {
+            UserDefaults.standard.set(Date(), forKey: demoStartKey)
+        }
         var settings = StorageService.shared.loadSettings()
         settings.preferredVoice = voice
         if settings.userName.isEmpty { settings.userName = displayName }
@@ -92,10 +114,19 @@ final class AuthService: ObservableObject {
     func signOut() {
         if currentUser?.isDemo == true {
             UserDefaults.standard.removeObject(forKey: demoKey)
+            UserDefaults.standard.removeObject(forKey: demoStartKey)
             currentUser = nil
         } else {
             Task { try? await supabase.auth.signOut() }
         }
+    }
+
+    /// Called on each app foreground to expire a demo whose 7-day trial is over.
+    func expireDemoIfNeeded() {
+        guard isDemoExpired else { return }
+        UserDefaults.standard.removeObject(forKey: demoKey)
+        UserDefaults.standard.removeObject(forKey: demoStartKey)
+        currentUser = nil
     }
 }
 

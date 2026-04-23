@@ -30,6 +30,9 @@ struct HomeView: View {
 
             VStack(spacing: 0) {
                 topBar
+                if authService.currentUser?.isDemo == true {
+                    trialBanner
+                }
                 transcriptArea
                     .padding(.bottom, 140) // space for dock
             }
@@ -84,6 +87,41 @@ struct HomeView: View {
                 snippet: text
             )
         }
+    }
+
+    // MARK: - Trial Banner
+
+    private var trialBanner: some View {
+        let days = authService.demoTrialDaysRemaining
+        let urgent = days <= 2
+        return HStack(spacing: 8) {
+            Image(systemName: urgent ? "exclamationmark.triangle.fill" : "clock.fill")
+                .font(.system(size: 12, weight: .semibold))
+            Text(days == 0
+                 ? "Your free trial has ended"
+                 : days == 1
+                 ? "1 day left in your free trial"
+                 : "\(days) days left in your free trial")
+                .font(.system(size: 13, weight: .medium))
+            Spacer()
+            Button {
+                authService.signOut()   // clears demo → WelcomeView shows plan page
+            } label: {
+                Text("Subscribe")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(urgent ? Color.red : Color(hex: "#7C3AED"),
+                                in: Capsule())
+            }
+        }
+        .foregroundStyle(urgent ? Color.red : Color(hex: "#7C3AED"))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(
+            (urgent ? Color.red : Color(hex: "#7C3AED")).opacity(0.08)
+        )
     }
 
     // MARK: - Top Bar
