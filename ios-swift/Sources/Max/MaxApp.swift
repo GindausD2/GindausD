@@ -111,22 +111,30 @@ func scheduleBackgroundRefresh() {
     try? BGTaskScheduler.shared.submit(request)
 }
 
-// MARK: - Root View (Auth Gate)
+// MARK: - Root View (Auth + Subscription Gate)
 
 struct RootView: View {
     @EnvironmentObject private var authService: AuthService
+    @StateObject private var store = StoreKitService.shared
 
     var body: some View {
         Group {
-            if authService.currentUser != nil {
-                HomeView()
+            if authService.currentUser == nil {
+                WelcomeView()
+                    .environmentObject(authService)
+                    .transition(.asymmetric(
+                        insertion: .opacity.animation(.easeIn(duration: 0.35)),
+                        removal:   .opacity.animation(.easeOut(duration: 0.25))
+                    ))
+            } else if needsPaywall {
+                PaywallView()
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
                         removal:   .opacity.animation(.easeOut(duration: 0.25))
                     ))
             } else {
-                WelcomeView()
+                HomeView()
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
@@ -135,5 +143,11 @@ struct RootView: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: authService.currentUser != nil)
+        .animation(.easeInOut(duration: 0.3), value: store.isSubscribed)
+    }
+
+    // Demo users bypass the paywall; real users must subscribe
+    private var needsPaywall: Bool {
+        authService.currentUser?.isDemo == true ? false : !store.isSubscribed
     }
 }
