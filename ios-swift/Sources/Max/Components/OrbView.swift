@@ -12,46 +12,46 @@ enum OrbState {
         switch self {
         case .idle:
             return [
-                Color(red: 1.0, green: 0.84, blue: 0.0),
-                Color(red: 1.0, green: 0.65, blue: 0.0),
-                Color(red: 1.0, green: 0.45, blue: 0.1)
+                Color(red: 1.00, green: 0.55, blue: 0.05),
+                Color(red: 0.95, green: 0.35, blue: 0.00),
+                Color(red: 1.00, green: 0.70, blue: 0.10)
             ]
         case .listening:
             return [
-                Color(red: 0.6, green: 0.2, blue: 0.9),
-                Color(red: 0.4, green: 0.1, blue: 0.8),
-                Color(red: 0.8, green: 0.4, blue: 1.0)
+                Color(red: 1.00, green: 0.45, blue: 0.00),
+                Color(red: 0.90, green: 0.25, blue: 0.00),
+                Color(red: 1.00, green: 0.60, blue: 0.10)
             ]
         case .thinking:
             return [
-                Color(red: 0.5, green: 0.5, blue: 0.55),
-                Color(red: 0.35, green: 0.35, blue: 0.4),
-                Color(red: 0.65, green: 0.65, blue: 0.7)
+                Color(red: 0.85, green: 0.42, blue: 0.00),
+                Color(red: 0.70, green: 0.28, blue: 0.00),
+                Color(red: 0.95, green: 0.55, blue: 0.10)
             ]
         case .speaking:
             return [
-                Color(red: 0.55, green: 0.2, blue: 0.85),
-                Color(red: 0.35, green: 0.05, blue: 0.75),
-                Color(red: 0.75, green: 0.35, blue: 0.95)
+                Color(red: 1.00, green: 0.50, blue: 0.00),
+                Color(red: 0.95, green: 0.28, blue: 0.00),
+                Color(red: 1.00, green: 0.65, blue: 0.05)
             ]
         }
     }
 
     var pulseSpeed: Double {
         switch self {
-        case .idle: return 2.8
+        case .idle:      return 2.8
         case .listening: return 0.6
-        case .thinking: return 1.4
-        case .speaking: return 0.7
+        case .thinking:  return 1.4
+        case .speaking:  return 0.5
         }
     }
 
     var pulseScale: CGFloat {
         switch self {
-        case .idle: return 1.08
+        case .idle:      return 1.08
         case .listening: return 1.18
-        case .thinking: return 1.12
-        case .speaking: return 1.20
+        case .thinking:  return 1.12
+        case .speaking:  return 1.22
         }
     }
 }
@@ -64,6 +64,9 @@ struct OrbView: View {
 
     @State private var pulsing: Bool = false
     @State private var rotation: Double = 0
+    @State private var hapticTimer: Timer? = nil
+
+    private let haptic = UIImpactFeedbackGenerator(style: .soft)
 
     var body: some View {
         ZStack {
@@ -136,6 +139,7 @@ struct OrbView: View {
                 .shadow(color: state.colors[1].opacity(0.35), radius: size * 0.4, x: 0, y: 0)
         }
         .onAppear {
+            haptic.prepare()
             pulsing = true
             withAnimation(
                 .linear(duration: 6)
@@ -144,13 +148,30 @@ struct OrbView: View {
                 rotation = 360
             }
         }
-        .onChange(of: state) { _, _ in
-            // Re-trigger pulse animation on state change
+        .onChange(of: state) { _, newState in
             pulsing = false
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 pulsing = true
             }
+            updateHaptics(for: newState)
         }
+        .onDisappear { stopHaptics() }
+    }
+
+    // MARK: - Haptics
+
+    private func updateHaptics(for state: OrbState) {
+        stopHaptics()
+        guard state == .speaking else { return }
+        haptic.prepare()
+        hapticTimer = Timer.scheduledTimer(withTimeInterval: 0.28, repeats: true) { _ in
+            haptic.impactOccurred(intensity: 0.55)
+        }
+    }
+
+    private func stopHaptics() {
+        hapticTimer?.invalidate()
+        hapticTimer = nil
     }
 }
 
@@ -162,8 +183,8 @@ struct OrbView: View {
             OrbView(state: .thinking, size: 80)
             OrbView(state: .speaking, size: 80)
         }
-        OrbView(state: .listening, size: 128)
+        OrbView(state: .speaking, size: 128)
     }
     .padding(40)
-    .background(Color(red: 0.18, green: 0.11, blue: 0.41))
+    .background(Color(red: 0.12, green: 0.08, blue: 0.05))
 }
