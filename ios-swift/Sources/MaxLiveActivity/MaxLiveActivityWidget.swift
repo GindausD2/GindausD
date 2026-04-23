@@ -117,6 +117,7 @@ struct MaxLiveActivityWidget: Widget {
             }
             .keylineTint(violet)
         }
+        .supplementalActivityFamilies([.small])
     }
 }
 
@@ -130,6 +131,19 @@ struct MaxLiveActivityWidget: Widget {
 //
 
 private struct MaxLockScreenCard: View {
+    let context: ActivityViewContext<MaxAttr>
+    @Environment(\.activityFamily) var activityFamily
+
+    var body: some View {
+        if activityFamily == .small {
+            MaxStandByView(context: context)
+        } else {
+            MaxLockScreenBody(context: context)
+        }
+    }
+}
+
+private struct MaxLockScreenBody: View {
     let context: ActivityViewContext<MaxAttr>
 
     var body: some View {
@@ -189,6 +203,66 @@ private struct MaxLockScreenCard: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 16)
+        .background(cardBg)
+        .activityBackgroundTint(cardBg)
+        .activitySystemActionForegroundColor(.white)
+    }
+}
+
+// MARK: - StandBy View (iOS 17 landscape charging display)
+
+private struct MaxStandByView: View {
+    let context: ActivityViewContext<MaxAttr>
+
+    var body: some View {
+        HStack(spacing: 24) {
+            MaxLogoView(color: .white, width: 80)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Max")
+                    .font(.system(size: 36, weight: .bold))
+                    .foregroundStyle(.white)
+
+                if let alert = context.state.emailAlert {
+                    Text("\(alert.count) unread · \(alert.latestFrom)")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(blue)
+                        .lineLimit(1)
+                    Text(alert.latestSubject)
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .lineLimit(1)
+                } else if let card = context.state.toolCard {
+                    HStack(spacing: 10) {
+                        Image(systemName: card.iconName)
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(toolCardAccent(card.kind))
+                        Text(card.line1)
+                            .font(.system(size: 22, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                    }
+                    Text(card.line2)
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .lineLimit(1)
+                } else {
+                    Text(context.state.phase.label)
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(phaseAccent(context.state.phase))
+                    if !context.state.snippet.isEmpty {
+                        Text(context.state.snippet)
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.75))
+                            .lineLimit(2)
+                    }
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 20)
         .background(cardBg)
         .activityBackgroundTint(cardBg)
         .activitySystemActionForegroundColor(.white)
@@ -441,4 +515,22 @@ extension MaxActivityAttributes.ContentState.Phase {
     MaxAttr.ContentState(phase: .listening, snippet: "")
     MaxAttr.ContentState(phase: .thinking, snippet: "What's on my calendar today?")
     MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .calendar, line1: "Dentist Appointment", line2: "Apr 20 at 3:00 PM", iconName: "calendar.badge.plus"))
+}
+
+#Preview("StandBy — Thinking", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
+    MaxLiveActivityWidget()
+} contentStates: {
+    MaxAttr.ContentState(phase: .thinking, snippet: "What's the weather in London today?")
+}
+
+#Preview("StandBy — Speaking", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
+    MaxLiveActivityWidget()
+} contentStates: {
+    MaxAttr.ContentState(phase: .speaking, snippet: "It's currently 18°C and cloudy in London.")
+}
+
+#Preview("StandBy — News Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
+    MaxLiveActivityWidget()
+} contentStates: {
+    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .news, line1: "UK economy grows 0.5% in Q1", line2: "BBC News", iconName: "newspaper.fill"))
 }
