@@ -119,22 +119,17 @@ struct RootView: View {
 
     var body: some View {
         Group {
-            if authService.currentUser == nil {
-                WelcomeView()
-                    .environmentObject(authService)
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeIn(duration: 0.35)),
-                        removal:   .opacity.animation(.easeOut(duration: 0.25))
-                    ))
-            } else if needsPaywall {
-                PaywallView()
+            if showHome {
+                HomeView()
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
                         removal:   .opacity.animation(.easeOut(duration: 0.25))
                     ))
             } else {
-                HomeView()
+                // WelcomeView handles: login, signup, plan selection, and
+                // returning users who need to resubscribe (jumps to page 3).
+                WelcomeView()
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
@@ -142,12 +137,11 @@ struct RootView: View {
                     ))
             }
         }
-        .animation(.easeInOut(duration: 0.3), value: authService.currentUser != nil)
-        .animation(.easeInOut(duration: 0.3), value: store.isSubscribed)
+        .animation(.easeInOut(duration: 0.3), value: showHome)
     }
 
-    // Demo users bypass the paywall; real users must subscribe
-    private var needsPaywall: Bool {
-        authService.currentUser?.isDemo == true ? false : !store.isSubscribed
+    private var showHome: Bool {
+        guard let user = authService.currentUser else { return false }
+        return user.isDemo == true || store.isSubscribed
     }
 }

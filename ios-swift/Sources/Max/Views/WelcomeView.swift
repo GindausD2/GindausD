@@ -24,8 +24,13 @@ struct WelcomeView: View {
                             .tag(0)
                         WelcomePage(onLogin: { currentPage = 0 }, onSignUp: { currentPage = 2 })
                             .tag(1)
-                        SignUpPage(onBack: { currentPage = 1 })
+                        SignUpPage(onBack: { currentPage = 1 }, onSignedUp: { currentPage = 3 })
                             .tag(2)
+                        PlanPage(onBack: {
+                            authService.signOut()
+                            currentPage = 2
+                        })
+                        .tag(3)
                     }
                     .tabViewStyle(.page(indexDisplayMode: .never))
                     .animation(.spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
@@ -33,6 +38,12 @@ struct WelcomeView: View {
             }
         }
         .ignoresSafeArea()
+        .onAppear {
+            // Returning signed-in user who hasn't subscribed yet → jump to plan page
+            if authService.currentUser != nil && authService.currentUser?.isDemo != true {
+                currentPage = 3
+            }
+        }
     }
 
     // MARK: - Background
@@ -73,7 +84,7 @@ struct WelcomeView: View {
 
     private var pageIndicator: some View {
         HStack(spacing: 8) {
-            ForEach(0..<3) { i in
+            ForEach(0..<4) { i in
                 Capsule()
                     .fill(currentPage == i ? Color(hex: "#7C3AED") : Color(hex: "#7C3AED").opacity(0.25))
                     .frame(width: currentPage == i ? 22 : 7, height: 7)
@@ -318,6 +329,7 @@ private struct WelcomePage: View {
 
 private struct SignUpPage: View {
     var onBack: () -> Void
+    var onSignedUp: () -> Void
     @EnvironmentObject private var authService: AuthService
 
     var body: some View {
@@ -376,6 +388,238 @@ private struct SignUpPage: View {
             .padding(.horizontal)
         }
         .scrollBounceBehavior(.basedOnSize)
+        .onChange(of: authService.currentUser) { _, user in
+            if user != nil && user?.isDemo != true {
+                onSignedUp()
+            }
+        }
+    }
+}
+
+// MARK: - Plan Page (Step 3 of signup)
+
+private struct PlanPage: View {
+    var onBack: () -> Void
+    @EnvironmentObject private var authService: AuthService
+    @StateObject private var store = StoreKitService.shared
+    @State private var selectedPlan: String = StoreKitService.yearlyID
+
+    private let violet = Color(hex: "#7C3AED")
+    private let amber  = Color(hex: "#F59E0B")
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 0) {
+                Spacer().frame(height: 32)
+
+                // Header
+                VStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(amber.opacity(0.12))
+                            .frame(width: 72, height: 72)
+                        Image(systemName: "crown.fill")
+                            .font(.system(size: 32))
+                            .foregroundStyle(amber)
+                    }
+                    Text("Choose Your Plan")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text("Start your Max Pro subscription")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 28)
+
+                // Plan cards
+                VStack(spacing: 10) {
+                    WelcomePlanCard(
+                        title: "Yearly",
+                        price: store.yearlyProduct?.displayPrice ?? "$119.99",
+                        period: "/ year",
+                        subtext: "Best value · save 17%",
+                        badge: "Most Popular",
+                        isSelected: selectedPlan == StoreKitService.yearlyID,
+                        violet: violet
+                    ) { selectedPlan = StoreKitService.yearlyID }
+
+                    WelcomePlanCard(
+                        title: "Monthly",
+                        price: store.monthlyProduct?.displayPrice ?? "$9.99",
+                        period: "/ month",
+                        subtext: "Flexible · cancel anytime",
+                        badge: nil,
+                        isSelected: selectedPlan == StoreKitService.monthlyID,
+                        violet: violet
+                    ) { selectedPlan = StoreKitService.monthlyID }
+                }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 16)
+
+                // What's included
+                GlassCard(
+                    cornerRadius: 20,
+                    depth: .ultraThin,
+                    padding: EdgeInsets(top: 16, leading: 18, bottom: 16, trailing: 18)
+                ) {
+                    VStack(spacing: 10) {
+                        ForEach([
+                            ("infinity",           "Unlimited conversations"),
+                            ("bolt.fill",          "Priority AI responses"),
+                            ("icloud.fill",        "Full iCloud sync"),
+                            ("bell.badge.fill",    "Smart reminders & alerts")
+                        ], id: \.0) { icon, text in
+                            HStack(spacing: 12) {
+                                Image(systemName: icon)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(violet)
+                                    .frame(width: 20)
+                                Text(text)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(violet)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 20)
+
+                // Error
+                if let err = store.purchaseError {
+                    Text(err)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 10)
+                }
+
+                // Subscribe button
+                LiquidGlassPrimaryButton(
+                    title: store.isLoading ? "" : subscribeLabel,
+                    isLoading: store.isLoading,
+                    isDisabled: store.isLoading
+                ) {
+                    Task {
+                        let product = selectedPlan == StoreKitService.yearlyID
+                            ? store.yearlyProduct : store.monthlyProduct
+                        if let product { await store.purchase(product) }
+                    }
+                }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 12)
+
+                // Footer
+                VStack(spacing: 8) {
+                    Button {
+                        Task { await store.restorePurchases() }
+                    } label: {
+                        Text("Restore Purchases")
+                            .font(.subheadline)
+                            .foregroundStyle(violet)
+                    }
+                    .disabled(store.isLoading)
+
+                    Text("Auto-renews. Cancel anytime in Settings → Apple ID.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding(.bottom, 16)
+
+                Button { onBack() } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.left").font(.caption)
+                        Text("Back")
+                    }
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 40)
+            }
+            .padding(.horizontal)
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .task { await store.loadProducts() }
+    }
+
+    private var subscribeLabel: String {
+        let price = selectedPlan == StoreKitService.yearlyID
+            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
+            : (store.monthlyProduct?.displayPrice ?? "$9.99")
+        let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
+        return "Subscribe — \(price)/\(period)"
+    }
+}
+
+private struct WelcomePlanCard: View {
+    let title: String
+    let price: String
+    let period: String
+    let subtext: String
+    let badge: String?
+    let isSelected: Bool
+    let violet: Color
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(isSelected ? violet : Color.secondary.opacity(0.3), lineWidth: 2)
+                        .frame(width: 22, height: 22)
+                    if isSelected {
+                        Circle().fill(violet).frame(width: 12, height: 12)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(violet, in: Capsule())
+                        }
+                    }
+                    Text(subtext)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    Text(price)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text(period)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(isSelected ? violet : Color.clear, lineWidth: 2)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
