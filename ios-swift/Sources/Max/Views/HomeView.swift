@@ -332,9 +332,7 @@ struct HomeView: View {
 
     private var placesButton: some View {
         Button {
-            // Activate Dynamic Island in listening state, then start voice
-            LiveActivityService.shared.start()
-            viewModel.handleMicTap()
+            viewModel.sendPlacesQuery()
         } label: {
             Image(systemName: "mappin.and.ellipse")
                 .font(.system(size: 21, weight: .regular))
@@ -438,6 +436,13 @@ final class HomeViewModel: ObservableObject {
     }
 
     func handleOrbTap() { handleMicTap() }
+
+    func sendPlacesQuery() {
+        guard conversationState == .idle else { return }
+        let query = "What interesting places are near me right now?"
+        addUserMessage(query)
+        streamResponse(userText: query, imageData: nil)
+    }
 
     private func startListening() {
         Task {

@@ -197,6 +197,9 @@ struct SettingsView: View {
             Button("Sign Out", role: .destructive) { authService.signOut(); dismiss() }
             Button("Cancel", role: .cancel) {}
         }
+        .onAppear {
+            profileImage = storage.loadProfilePhoto()
+        }
     }
 
     // MARK: - Sheet Header
@@ -289,6 +292,7 @@ struct SettingsView: View {
                     if let data = try? await item?.loadTransferable(type: Data.self),
                        let img = UIImage(data: data) {
                         profileImage = img
+                        storage.saveProfilePhoto(img)
                     }
                 }
             }
@@ -662,6 +666,17 @@ private struct AssistantSheet: View {
                     }
                     .tint(Color(hex: "#7C3AED"))
                     .onChange(of: settings.voiceEnabled) { _, _ in onSave() }
+
+                    if settings.voiceEnabled {
+                        Picker(selection: $settings.preferredVoice) {
+                            Text("Female").tag("female")
+                            Text("Male").tag("male")
+                        } label: {
+                            Label("Voice", systemImage: "waveform")
+                        }
+                        .tint(Color(hex: "#7C3AED"))
+                        .onChange(of: settings.preferredVoice) { _, _ in onSave() }
+                    }
                 } header: { Text("Preferences") }
             }
             .navigationTitle("Assistant")

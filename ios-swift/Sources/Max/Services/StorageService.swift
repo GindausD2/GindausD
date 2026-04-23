@@ -3,13 +3,14 @@ import Foundation
 final class StorageService {
     static let shared = StorageService()
 
-    private let messagesKey = "max:messages"
-    private let settingsKey = "max:settings"
-    private let notesKey = "max:notes"
-    private let memoriesKey = "max:memories"
+    private let messagesKey    = "max:messages"
+    private let settingsKey    = "max:settings"
+    private let notesKey       = "max:notes"
+    private let memoriesKey    = "max:memories"
     private let memoryCardsKey = "max:memorycards"
     private let placeVisitsKey = "max:placevisits"
-    private let remindersKey = "max:reminders"
+    private let remindersKey   = "max:reminders"
+    private let profilePhotoKey = "max:profilePhoto"
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -191,6 +192,25 @@ final class StorageService {
             UserDefaults.standard.set(data, forKey: remindersKey)
         }
     }
+
+    // MARK: - Profile Photo
+
+    func saveProfilePhoto(_ image: UIImage) {
+        if let data = image.jpegData(compressionQuality: 0.8) {
+            UserDefaults.standard.set(data, forKey: profilePhotoKey)
+        }
+    }
+
+    func loadProfilePhoto() -> UIImage? {
+        guard let data = UserDefaults.standard.data(forKey: profilePhotoKey) else { return nil }
+        return UIImage(data: data)
+    }
+
+    func clearProfilePhoto() {
+        UserDefaults.standard.removeObject(forKey: profilePhotoKey)
+    }
+
+    // MARK: - Clear All
 
     func clearAll() {
         clearMessages()
