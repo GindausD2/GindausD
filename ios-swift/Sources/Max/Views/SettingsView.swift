@@ -303,13 +303,14 @@ struct SettingsView: View {
                 .foregroundStyle(.primary)
 
             // Plan badge
+            let subscribed = StoreKitService.shared.isSubscribed
             HStack(spacing: 4) {
-                Image(systemName: "plus")
+                Image(systemName: subscribed ? "crown.fill" : "plus")
                     .font(.system(size: 12, weight: .semibold))
-                Text("Free Plan")
+                Text(subscribed ? "Max Pro" : "Free Plan")
                     .font(.subheadline)
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(subscribed ? Color(hex: "#F59E0B") : .secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
@@ -388,24 +389,28 @@ private struct ProfileRow: View {
 
 private struct SubscriptionSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @StateObject private var store = StoreKitService.shared
+
+    @State private var selectedPlan: String = StoreKitService.yearlyID
 
     private let violet = Color(hex: "#7C3AED")
     private let amber  = Color(hex: "#F59E0B")
 
     private let features: [(icon: String, title: String, detail: String)] = [
-        ("infinity",          "Unlimited Conversations", "No message caps — talk to Max as much as you want"),
-        ("bolt.fill",         "Priority Responses",      "Faster replies during peak hours"),
-        ("icloud.fill",       "Full iCloud Sync",        "Sync history, memories, and notes across all devices"),
-        ("waveform",          "Advanced Voice",          "Premium neural voices and custom wake phrases"),
-        ("bell.badge.fill",   "Smart Notifications",     "Proactive reminders and email alerts")
+        ("infinity",        "Unlimited Conversations", "No message caps — talk to Max as much as you want"),
+        ("bolt.fill",       "Priority Responses",      "Faster replies during peak hours"),
+        ("icloud.fill",     "Full iCloud Sync",        "History, memories, and notes across all devices"),
+        ("waveform",        "Advanced Voice",          "Premium neural voices and custom wake phrases"),
+        ("bell.badge.fill", "Smart Notifications",     "Proactive reminders and email alerts")
     ]
 
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 28) {
-                    // Header
-                    VStack(spacing: 12) {
+                VStack(spacing: 24) {
+
+                    // ── Header ──────────────────────────────────────────────
+                    VStack(spacing: 10) {
                         ZStack {
                             Circle()
                                 .fill(amber.opacity(0.12))
@@ -414,7 +419,7 @@ private struct SubscriptionSheet: View {
                                 .font(.system(size: 40))
                                 .foregroundStyle(amber)
                         }
-                        .padding(.top, 24)
+                        .padding(.top, 20)
 
                         Text("Max Pro")
                             .font(.system(size: 32, weight: .bold))
@@ -425,7 +430,31 @@ private struct SubscriptionSheet: View {
                             .padding(.horizontal, 32)
                     }
 
-                    // Feature list
+                    // ── Plan Selector ───────────────────────────────────────
+                    VStack(spacing: 10) {
+                        PlanCard(
+                            id: StoreKitService.yearlyID,
+                            title: "Yearly",
+                            price: store.yearlyProduct?.displayPrice ?? "$99.99",
+                            period: "/ year",
+                            badge: "Save 17%",
+                            isSelected: selectedPlan == StoreKitService.yearlyID,
+                            violet: violet
+                        ) { selectedPlan = StoreKitService.yearlyID }
+
+                        PlanCard(
+                            id: StoreKitService.monthlyID,
+                            title: "Monthly",
+                            price: store.monthlyProduct?.displayPrice ?? "$9.99",
+                            period: "/ month",
+                            badge: nil,
+                            isSelected: selectedPlan == StoreKitService.monthlyID,
+                            violet: violet
+                        ) { selectedPlan = StoreKitService.monthlyID }
+                    }
+                    .padding(.horizontal, 16)
+
+                    // ── Feature List ────────────────────────────────────────
                     VStack(spacing: 0) {
                         ForEach(features, id: \.title) { f in
                             HStack(spacing: 14) {
@@ -445,6 +474,11 @@ private struct SubscriptionSheet: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
+                                if store.isSubscribed {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(violet)
+                                        .font(.system(size: 18))
+                                }
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 12)
@@ -457,24 +491,64 @@ private struct SubscriptionSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .padding(.horizontal, 16)
 
-                    // CTA
-                    VStack(spacing: 12) {
-                        Button {
-                            UIApplication.shared.open(URL(string: "mailto:pro@getmax.app?subject=Max%20Pro%20Early%20Access")!)
-                        } label: {
-                            Text("Join the Waitlist")
+                    // ── Error ───────────────────────────────────────────────
+                    if let err = store.purchaseError {
+                        Text(err)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
+                    }
+
+                    // ── CTA ─────────────────────────────────────────────────
+                    VStack(spacing: 14) {
+                        if store.isSubscribed {
+                            Text("You're subscribed to Max Pro")
                                 .font(.body.weight(.semibold))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(violet)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(violet.opacity(0.10),
+                                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .padding(.horizontal, 16)
+                        } else {
+                            Button {
+                                Task {
+                                    let product = selectedPlan == StoreKitService.yearlyID
+                                        ? store.yearlyProduct : store.monthlyProduct
+                                    if let product { await store.purchase(product) }
+                                }
+                            } label: {
+                                Group {
+                                    if store.isLoading {
+                                        ProgressView().tint(.white)
+                                    } else {
+                                        Text(subscribeLabel)
+                                            .font(.body.weight(.semibold))
+                                            .foregroundStyle(.white)
+                                    }
+                                }
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
                                 .background(violet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(store.isLoading)
+                            .padding(.horizontal, 16)
                         }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 16)
 
-                        Text("Pro is coming soon. Join the waitlist to get early access.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        Button {
+                            Task { await store.restorePurchases() }
+                        } label: {
+                            Text("Restore Purchases")
+                                .font(.subheadline)
+                                .foregroundStyle(violet)
+                        }
+                        .disabled(store.isLoading)
+
+                        Text("Subscription auto-renews. Cancel anytime in Settings → Apple ID → Subscriptions.")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 32)
                     }
@@ -488,6 +562,83 @@ private struct SubscriptionSheet: View {
                 Button("Done") { dismiss() }.fontWeight(.semibold)
             }}
         }
+    }
+
+    private var subscribeLabel: String {
+        let price = selectedPlan == StoreKitService.yearlyID
+            ? (store.yearlyProduct?.displayPrice ?? "$99.99")
+            : (store.monthlyProduct?.displayPrice ?? "$9.99")
+        let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
+        return "Subscribe — \(price)/\(period)"
+    }
+}
+
+private struct PlanCard: View {
+    let id: String
+    let title: String
+    let price: String
+    let period: String
+    let badge: String?
+    let isSelected: Bool
+    let violet: Color
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                ZStack {
+                    Circle()
+                        .strokeBorder(isSelected ? violet : Color.secondary.opacity(0.3), lineWidth: 2)
+                        .frame(width: 22, height: 22)
+                    if isSelected {
+                        Circle()
+                            .fill(violet)
+                            .frame(width: 12, height: 12)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 8) {
+                        Text(title)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        if let badge {
+                            Text(badge)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(violet, in: Capsule())
+                        }
+                    }
+                    Text("Billed \(title.lowercased())")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                HStack(alignment: .lastTextBaseline, spacing: 2) {
+                    Text(price)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text(period)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(isSelected ? violet : Color.clear, lineWidth: 2)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
