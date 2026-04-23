@@ -435,7 +435,7 @@ private struct SubscriptionSheet: View {
                         PlanCard(
                             id: StoreKitService.yearlyID,
                             title: "Yearly",
-                            price: store.yearlyProduct?.displayPrice ?? "$99.99",
+                            price: store.yearlyProduct?.displayPrice ?? "$119.99",
                             period: "/ year",
                             badge: "Save 17%",
                             isSelected: selectedPlan == StoreKitService.yearlyID,
@@ -566,7 +566,7 @@ private struct SubscriptionSheet: View {
 
     private var subscribeLabel: String {
         let price = selectedPlan == StoreKitService.yearlyID
-            ? (store.yearlyProduct?.displayPrice ?? "$99.99")
+            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
             : (store.monthlyProduct?.displayPrice ?? "$9.99")
         let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
         return "Subscribe — \(price)/\(period)"

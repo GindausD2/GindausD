@@ -83,7 +83,7 @@ struct PaywallView: View {
                     VStack(spacing: 10) {
                         PaywallPlanCard(
                             title: "Yearly",
-                            price: store.yearlyProduct?.displayPrice ?? "$99.99",
+                            price: store.yearlyProduct?.displayPrice ?? "$119.99",
                             period: "/ year",
                             subtext: "Just \(monthlyEquivalent)/mo — save 17%",
                             badge: "Best Value",
@@ -211,7 +211,7 @@ struct PaywallView: View {
 
     private var ctaLabel: String {
         let price = selectedPlan == StoreKitService.yearlyID
-            ? (store.yearlyProduct?.displayPrice ?? "$99.99")
+            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
             : (store.monthlyProduct?.displayPrice ?? "$9.99")
         let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
         return "Subscribe — \(price)/\(period)"
