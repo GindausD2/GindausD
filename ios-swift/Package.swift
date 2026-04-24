@@ -30,6 +30,9 @@ let package = Package(
             resources: [
                 .process("Resources")
             ],
+            linkerSettings: [
+                .linkedFramework("AppIntents")
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals"),
                 .enableUpcomingFeature("ConciseMagicFile"),
