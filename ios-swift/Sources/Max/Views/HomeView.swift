@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import UIKit
+import WidgetKit
 
 // MARK: - HomeView
 
@@ -95,6 +96,10 @@ struct HomeView: View {
         // Start briefing when user taps the morning notification
         .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
             viewModel.startMorningBriefing()
+        }
+        // Start listening when user taps the home screen widget
+        .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
+            viewModel.handleOrbTap()
         }
     }
 
@@ -480,6 +485,17 @@ final class HomeViewModel: ObservableObject {
         conversationStartedAt = Date()
     }
 
+    private func pushToWidget(_ text: String) {
+        let clean = text
+            .replacingOccurrences(of: #"_Using [^_]+…_"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty else { return }
+        let def = UserDefaults(suiteName: "group.com.gindausd.max")
+        def?.set(clean, forKey: "max:widget_last_message")
+        def?.set(Date(), forKey: "max:widget_last_message_time")
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     private func archiveCurrentConversation() {
         let saveable = messages.filter { !$0.isStreaming && !$0.content.isEmpty }
         guard !saveable.isEmpty else { return }
@@ -621,6 +637,7 @@ final class HomeViewModel: ObservableObject {
                     self.streamingText = ""
                     self.storage.saveMessages(self.messages)
                     self.archiveCurrentConversation()
+                    self.pushToWidget(fullText)
                     if settings.voiceEnabled && !fullText.isEmpty {
                         self.conversationState = .speaking
                         self.voice.speak(fullText, preferredVoice: settings.preferredVoice)

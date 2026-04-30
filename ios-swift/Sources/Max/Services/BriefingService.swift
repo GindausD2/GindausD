@@ -4,7 +4,8 @@ import UserNotifications
 // MARK: - Notification name used to trigger the briefing inside the app
 
 extension Notification.Name {
-    static let maxStartBriefing = Notification.Name("max.start.briefing")
+    static let maxStartBriefing  = Notification.Name("max.start.briefing")
+    static let maxWidgetActivate = Notification.Name("max.widget.activate")
 }
 
 // MARK: - BriefingService

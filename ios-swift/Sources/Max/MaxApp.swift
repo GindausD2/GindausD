@@ -35,6 +35,11 @@ struct MaxApp: App {
             RootView()
                 .environmentObject(authService)
                 .preferredColorScheme(resolvedScheme)
+                // Handle widget deep link: maxapp://listen
+                .onOpenURL { url in
+                    guard url.scheme == "maxapp", url.host == "listen" else { return }
+                    NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+                }
                 // Start / stop the persistent Dynamic Island session when auth changes
                 .onChange(of: authService.currentUser) { _, user in
                     if user != nil {

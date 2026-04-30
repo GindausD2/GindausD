@@ -18,6 +18,15 @@ let package = Package(
         .library(
             name: "MaxLiveActivity",
             targets: ["MaxLiveActivity"]
+        ),
+        // The MaxWidget home-screen / lock-screen widget extension.
+        // Xcode setup: File → New → Target → Widget Extension → "MaxWidget"
+        //   1. Point source folder at Sources/MaxWidget/
+        //   2. Add App Group "group.com.gindausd.max" to main app + this target
+        //   3. Add URL scheme "maxapp" to main app target → Info → URL Types
+        .library(
+            name: "MaxWidget",
+            targets: ["MaxWidget"]
         )
     ],
     dependencies: [],
@@ -31,7 +40,8 @@ let package = Package(
                 .process("Resources")
             ],
             linkerSettings: [
-                .linkedFramework("AppIntents")
+                .linkedFramework("AppIntents"),
+                .linkedFramework("WidgetKit")
             ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals"),
@@ -58,6 +68,17 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("WidgetKit"),
                 .linkedFramework("ActivityKit"),
+                .linkedFramework("SwiftUI")
+            ]
+        ),
+
+        // ── Home screen / lock screen widget extension ───────────────────────
+        .target(
+            name: "MaxWidget",
+            dependencies: [],
+            path: "Sources/MaxWidget",
+            linkerSettings: [
+                .linkedFramework("WidgetKit"),
                 .linkedFramework("SwiftUI")
             ]
         )
