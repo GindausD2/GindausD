@@ -156,6 +156,32 @@ struct Reminder: Identifiable, Codable {
     }
 }
 
+// MARK: - Conversation (saved history session)
+
+struct Conversation: Identifiable, Codable {
+    var id: String
+    var title: String
+    var messages: [Message]
+    var startedAt: Date
+    var updatedAt: Date
+
+    init(id: String = UUID().uuidString, title: String, messages: [Message],
+         startedAt: Date = Date(), updatedAt: Date = Date()) {
+        self.id = id
+        self.title = title
+        self.messages = messages
+        self.startedAt = startedAt
+        self.updatedAt = updatedAt
+    }
+
+    var assistantPreview: String {
+        messages.first(where: { $0.role == "assistant" && !$0.content.isEmpty })
+            .map { String($0.content.prefix(100)) } ?? ""
+    }
+
+    var userMessageCount: Int { messages.filter { $0.role == "user" }.count }
+}
+
 // MARK: - App State Enums
 
 enum ConversationState: Equatable {

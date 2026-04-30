@@ -21,6 +21,7 @@ struct SettingsView: View {
     @State private var showMemory: Bool = false
     @State private var showIslandDebug: Bool = false
     @State private var showEmailConfig: Bool = false
+    @State private var showDeviceLink: Bool = false
     @State private var showAssistant: Bool = false
     @State private var showAppearance: Bool = false
     @State private var selectedPhoto: PhotosPickerItem? = nil
@@ -68,6 +69,9 @@ struct SettingsView: View {
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "circle.lefthalf.filled", iconColor: Color(hex: "#6B7280"),
                                        title: "Appearance") { showAppearance = true }
+                            Divider().padding(.leading, 56)
+                            ProfileRow(icon: "link", iconColor: Color(hex: "#3B82F6"),
+                                       title: "Device Link") { showDeviceLink = true }
                         }
 
                         // ── ABOUT ─────────────────────────────────────────────
@@ -189,6 +193,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showEmailConfig)  { EmailConfigSheet() }
         .sheet(isPresented: $showAssistant)    { AssistantSheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showAppearance)   { AppearanceSheet(appearance: $appearance, settings: $settings, onSave: saveSettings) }
+        .sheet(isPresented: $showDeviceLink)   { DeviceLinkView() }
         .confirmationDialog("Clear all messages?", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("Clear History", role: .destructive) { onClearHistory?(); dismiss() }
             Button("Cancel", role: .cancel) {}

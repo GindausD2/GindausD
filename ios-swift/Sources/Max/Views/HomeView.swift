@@ -9,7 +9,7 @@ struct HomeView: View {
 
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
-    @State private var showDeviceLink: Bool = false
+    @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
@@ -53,7 +53,12 @@ struct HomeView: View {
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage != nil)
         }
-        .sheet(isPresented: $showDeviceLink) { DeviceLinkView() }
+        .sheet(isPresented: $showHistory) {
+            ConversationHistoryView(onNewChat: {
+                showHistory = false
+                viewModel.startNewChat()
+            })
+        }
         .fullScreenCover(isPresented: $showCamera) {
             ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
                 .ignoresSafeArea()
@@ -143,9 +148,9 @@ struct HomeView: View {
 
             Spacer()
 
-            // Device link
-            Button { showDeviceLink = true } label: {
-                Image(systemName: "link")
+            // Conversation history
+            Button { showHistory = true } label: {
+                Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     .font(.system(size: 19, weight: .regular))
                     .foregroundStyle(Color(white: 0.35))
                     .frame(width: 44, height: 44)
@@ -441,6 +446,8 @@ final class HomeViewModel: ObservableObject {
     private let voice   = VoiceService.shared
 
     private var streamingMessageId: String? = nil
+    private var currentConversationId: String = UUID().uuidString
+    private var conversationStartedAt: Date = Date()
 
     var orbState: OrbState {
         switch conversationState {
@@ -451,9 +458,38 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    func loadMessages()  { messages = storage.loadMessages() }
-    func clearHistory()  { storage.clearMessages(); messages = [] }
-    func startNewChat()  { clearHistory() }
+    func loadMessages() {
+        messages = storage.loadMessages()
+        // If there are existing messages from a previous session, assign them a stable ID
+        // so resuming an app session keeps the archive up to date.
+    }
+
+    func clearHistory() {
+        storage.clearMessages()
+        messages = []
+    }
+
+    func startNewChat() {
+        archiveCurrentConversation()
+        clearHistory()
+        currentConversationId = UUID().uuidString
+        conversationStartedAt = Date()
+    }
+
+    private func archiveCurrentConversation() {
+        let saveable = messages.filter { !$0.isStreaming && !$0.content.isEmpty }
+        guard !saveable.isEmpty else { return }
+        let firstUserText = saveable.first(where: { $0.role == "user" })?.content ?? "Conversation"
+        let title = String(firstUserText.prefix(70))
+        let conv = Conversation(
+            id: currentConversationId,
+            title: title,
+            messages: saveable,
+            startedAt: conversationStartedAt,
+            updatedAt: Date()
+        )
+        storage.saveConversation(conv)
+    }
 
     func sendTextMessage(image: UIImage? = nil) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -573,6 +609,7 @@ final class HomeViewModel: ObservableObject {
                     self.streamingMessageId = nil
                     self.streamingText = ""
                     self.storage.saveMessages(self.messages)
+                    self.archiveCurrentConversation()
                     if settings.voiceEnabled && !fullText.isEmpty {
                         self.conversationState = .speaking
                         self.voice.speak(fullText, preferredVoice: settings.preferredVoice)

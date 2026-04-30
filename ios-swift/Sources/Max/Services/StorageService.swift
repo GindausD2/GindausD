@@ -9,8 +9,9 @@ final class StorageService {
     private let memoriesKey    = "max:memories"
     private let memoryCardsKey = "max:memorycards"
     private let placeVisitsKey = "max:placevisits"
-    private let remindersKey   = "max:reminders"
-    private let profilePhotoKey = "max:profilePhoto"
+    private let remindersKey       = "max:reminders"
+    private let profilePhotoKey    = "max:profilePhoto"
+    private let conversationsKey   = "max:conversations"
 
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -208,6 +209,40 @@ final class StorageService {
 
     func clearProfilePhoto() {
         UserDefaults.standard.removeObject(forKey: profilePhotoKey)
+    }
+
+    // MARK: - Conversations
+
+    func loadConversations() -> [Conversation] {
+        guard let data = UserDefaults.standard.data(forKey: conversationsKey),
+              let convs = try? decoder.decode([Conversation].self, from: data)
+        else { return [] }
+        return convs
+    }
+
+    func saveConversation(_ conversation: Conversation) {
+        var convs = loadConversations()
+        if let idx = convs.firstIndex(where: { $0.id == conversation.id }) {
+            convs[idx] = conversation
+        } else {
+            convs.insert(conversation, at: 0)
+        }
+        if convs.count > 200 { convs = Array(convs.prefix(200)) }
+        if let data = try? encoder.encode(convs) {
+            UserDefaults.standard.set(data, forKey: conversationsKey)
+        }
+    }
+
+    func deleteConversation(id: String) {
+        var convs = loadConversations()
+        convs.removeAll { $0.id == id }
+        if let data = try? encoder.encode(convs) {
+            UserDefaults.standard.set(data, forKey: conversationsKey)
+        }
+    }
+
+    func clearAllConversations() {
+        UserDefaults.standard.removeObject(forKey: conversationsKey)
     }
 
     // MARK: - Clear All
