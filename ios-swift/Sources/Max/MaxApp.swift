@@ -40,8 +40,10 @@ struct MaxApp: App {
                     if user != nil {
                         LiveActivityService.shared.startPersistentSession()
                         scheduleBackgroundRefresh()
+                        BriefingService.shared.rescheduleIfNeeded()
                     } else {
                         LiveActivityService.shared.stopPersistentSession()
+                        BriefingService.shared.cancel()
                     }
                 }
                 // Re-schedule background refresh whenever the app moves to background
@@ -99,6 +101,19 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
                                 willPresent notification: UNNotification,
                                 withCompletionHandler handler: @escaping (UNNotificationPresentationOptions) -> Void) {
         handler([.banner, .sound, .badge])
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                didReceive response: UNNotificationResponse,
+                                withCompletionHandler handler: @escaping () -> Void) {
+        let userInfo = response.notification.request.content.userInfo
+        if userInfo[BriefingService.userInfoTypeKey] as? String == BriefingService.briefingTypeValue {
+            // Post to main thread so HomeView's onReceive picks it up
+            DispatchQueue.main.async {
+                NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
+            }
+        }
+        handler()
     }
 }
 

@@ -36,6 +36,9 @@ struct AppSettings: Codable {
     var preferredVoice: String = "female"   // "female" | "male"
     var shareAnalytics: Bool = false
     var personalisedSuggestions: Bool = true
+    var briefingEnabled: Bool = false
+    var briefingHour: Int = 8
+    var briefingMinute: Int = 0
 }
 
 // MARK: - Note

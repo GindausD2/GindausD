@@ -22,6 +22,7 @@ struct SettingsView: View {
     @State private var showIslandDebug: Bool = false
     @State private var showEmailConfig: Bool = false
     @State private var showDeviceLink: Bool = false
+    @State private var showBriefing: Bool = false
     @State private var showAssistant: Bool = false
     @State private var showAppearance: Bool = false
     @State private var selectedPhoto: PhotosPickerItem? = nil
@@ -61,6 +62,9 @@ struct SettingsView: View {
 
                         // ── CONFIGURATION ─────────────────────────────────────
                         ProfileSection(title: "CONFIGURATION") {
+                            ProfileRow(icon: "sun.horizon.fill", iconColor: Color(hex: "#F59E0B"),
+                                       title: "Morning Briefing") { showBriefing = true }
+                            Divider().padding(.leading, 56)
                             ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#3B82F6"),
                                        title: "Email Reminders") { showEmailConfig = true }
                             Divider().padding(.leading, 56)
@@ -194,6 +198,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showAssistant)    { AssistantSheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showAppearance)   { AppearanceSheet(appearance: $appearance, settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showDeviceLink)   { DeviceLinkView() }
+        .sheet(isPresented: $showBriefing)     { BriefingSheet(settings: $settings, onSave: saveSettings) }
         .confirmationDialog("Clear all messages?", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("Clear History", role: .destructive) { onClearHistory?(); dismiss() }
             Button("Cancel", role: .cancel) {}
@@ -864,6 +869,97 @@ private struct AppearanceSheet: View {
                 } header: { Text("Color Scheme") }
             }
             .navigationTitle("Appearance")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) {
+                Button("Done") { dismiss() }.fontWeight(.semibold)
+            }}
+        }
+    }
+}
+
+// MARK: - BriefingSheet
+
+private struct BriefingSheet: View {
+    @Binding var settings: AppSettings
+    var onSave: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    // Local date for the time picker
+    @State private var briefingTime: Date
+
+    init(settings: Binding<AppSettings>, onSave: @escaping () -> Void) {
+        _settings = settings
+        self.onSave = onSave
+        var dc = DateComponents()
+        dc.hour   = settings.wrappedValue.briefingHour
+        dc.minute = settings.wrappedValue.briefingMinute
+        _briefingTime = State(initialValue: Calendar.current.date(from: dc) ?? Date())
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Toggle(isOn: $settings.briefingEnabled) {
+                        Label("Daily Briefing", systemImage: "sun.horizon.fill")
+                    }
+                    .onChange(of: settings.briefingEnabled) { _, enabled in
+                        onSave()
+                        if enabled {
+                            BriefingService.shared.schedule(
+                                hour: settings.briefingHour,
+                                minute: settings.briefingMinute
+                            )
+                        } else {
+                            BriefingService.shared.cancel()
+                        }
+                    }
+                } footer: {
+                    Text("Max will send you a notification each morning with a summary of your calendar, emails, and top news.")
+                }
+
+                if settings.briefingEnabled {
+                    Section {
+                        DatePicker(
+                            "Briefing Time",
+                            selection: $briefingTime,
+                            displayedComponents: .hourAndMinute
+                        )
+                        .onChange(of: briefingTime) { _, date in
+                            let comps = Calendar.current.dateComponents([.hour, .minute], from: date)
+                            settings.briefingHour   = comps.hour   ?? 8
+                            settings.briefingMinute = comps.minute ?? 0
+                            onSave()
+                            BriefingService.shared.schedule(
+                                hour: settings.briefingHour,
+                                minute: settings.briefingMinute
+                            )
+                        }
+                    } header: {
+                        Text("Delivery Time")
+                    } footer: {
+                        let h = settings.briefingHour
+                        let m = settings.briefingMinute
+                        let label = String(format: "%d:%02d %@",
+                                          h % 12 == 0 ? 12 : h % 12, m, h < 12 ? "AM" : "PM")
+                        Text("Your briefing will arrive every day at \(label).")
+                    }
+
+                    Section {
+                        Button {
+                            dismiss()
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                                NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
+                            }
+                        } label: {
+                            Label("Run Briefing Now", systemImage: "play.circle.fill")
+                        }
+                    } footer: {
+                        Text("Test your briefing immediately.")
+                    }
+                }
+            }
+            .navigationTitle("Morning Briefing")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) {
                 Button("Done") { dismiss() }.fontWeight(.semibold)

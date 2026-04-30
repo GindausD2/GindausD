@@ -92,6 +92,10 @@ struct HomeView: View {
                 snippet: text
             )
         }
+        // Start briefing when user taps the morning notification
+        .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+            viewModel.startMorningBriefing()
+        }
     }
 
     // MARK: - Trial Banner
@@ -516,6 +520,13 @@ final class HomeViewModel: ObservableObject {
         let query = "What interesting places are near me right now?"
         addUserMessage(query)
         streamResponse(userText: query, imageData: nil)
+    }
+
+    func startMorningBriefing() {
+        guard conversationState == .idle else { return }
+        let prompt = BriefingService.briefingPrompt
+        addUserMessage("Good morning — give me my daily briefing.")
+        streamResponse(userText: prompt, imageData: nil)
     }
 
     private func startListening() {
