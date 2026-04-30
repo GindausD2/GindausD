@@ -224,7 +224,7 @@ struct HomeView: View {
             Text("Hi! I'm Max")
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(Color(white: 0.15))
-            Text("Tap the orb to talk\nor the camera to show Max something")
+            Text("Press the orb to talk to Max\nor tap the camera to show something")
                 .font(.subheadline)
                 .foregroundStyle(Color(white: 0.5))
                 .multilineTextAlignment(.center)
@@ -247,17 +247,17 @@ struct HomeView: View {
 
             // Main dock row
             HStack(spacing: 0) {
-                // Orb (voice)
+                // Places memory
+                placesButton
+                    .frame(maxWidth: .infinity)
+
+                // Orb (voice) — centre
                 OrbView(state: viewModel.orbState, size: 100)
                     .onTapGesture { viewModel.handleOrbTap() }
                     .frame(maxWidth: .infinity)
 
                 // Camera (vision)
                 cameraButton
-                    .frame(maxWidth: .infinity)
-
-                // Places memory
-                placesButton
                     .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 16)
