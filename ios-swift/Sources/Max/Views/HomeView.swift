@@ -7,6 +7,7 @@ import WidgetKit
 
 struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
+    @AppStorage("max:onboarding_complete") private var onboardingComplete: Bool = false
 
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
@@ -72,6 +73,12 @@ struct HomeView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
+        }
+        .fullScreenCover(isPresented: Binding(
+            get: { !onboardingComplete },
+            set: { if !$0 { onboardingComplete = true } }
+        )) {
+            OnboardingView { onboardingComplete = true }
         }
         .onAppear {
             viewModel.loadMessages()
