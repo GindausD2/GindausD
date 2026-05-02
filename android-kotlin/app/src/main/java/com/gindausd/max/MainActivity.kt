@@ -1,5 +1,6 @@
 package com.gindausd.max
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -22,8 +23,19 @@ import com.gindausd.max.ui.WelcomeScreen
 
 class MainActivity : ComponentActivity() {
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        if (intent.action == "com.gindausd.max.START_LISTENING") {
+            AppEvents.emitStartListening()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Handle cold-start from widget or tile
+        if (intent?.action == "com.gindausd.max.START_LISTENING") {
+            AppEvents.emitStartListening()
+        }
         setContent {
             MaxTheme {
                 val navController = rememberNavController()

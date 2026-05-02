@@ -88,6 +88,13 @@ fun HomeScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // Start listening when user taps the home screen widget or Quick Settings tile
+    LaunchedEffect(Unit) {
+        com.gindausd.max.AppEvents.startListening.collect {
+            viewModel.handleOrbTap()
+        }
+    }
+
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)

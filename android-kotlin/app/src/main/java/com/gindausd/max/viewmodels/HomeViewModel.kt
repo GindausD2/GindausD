@@ -9,6 +9,7 @@ import com.gindausd.max.ConversationState
 import com.gindausd.max.Message
 import com.gindausd.max.OrbState
 import com.gindausd.max.data.StorageRepository
+import com.gindausd.max.ui.widget.MaxGlanceWidget
 import com.gindausd.max.services.ClaudeChunk
 import com.gindausd.max.services.ClaudeService
 import com.gindausd.max.services.ToolsService
@@ -180,7 +181,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
                         )
                         val finalList = _messages.value.map { if (it.id == streamingId) finalMsg else it }
                         _messages.value = finalList
-                        viewModelScope.launch(Dispatchers.IO) { storage.saveMessages(finalList) }
+                        viewModelScope.launch(Dispatchers.IO) {
+                            storage.saveMessages(finalList)
+                            MaxGlanceWidget.push(appContext, finalText)
+                        }
 
                         if (settings.voiceEnabled && finalText.isNotBlank()) {
                             setState(ConversationState.SPEAKING)
