@@ -64,6 +64,33 @@ data class Reminder(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+@Serializable
+enum class MemoryCategory {
+    PERSONAL,
+    PREFERENCES,
+    WORK,
+    HEALTH,
+    OTHER;
+
+    fun displayName(): String = when (this) {
+        PERSONAL -> "Personal"
+        PREFERENCES -> "Preferences"
+        WORK -> "Work"
+        HEALTH -> "Health"
+        OTHER -> "Other"
+    }
+}
+
+@Serializable
+data class MemoryCard(
+    val id: String,
+    val category: MemoryCategory = MemoryCategory.OTHER,
+    val key: String,
+    val value: String,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis()
+)
+
 enum class ConversationState {
     IDLE,
     LISTENING,

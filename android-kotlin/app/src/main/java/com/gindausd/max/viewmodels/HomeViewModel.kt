@@ -1,13 +1,18 @@
 package com.gindausd.max.viewmodels
 
 import android.app.Application
+import android.content.Context
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gindausd.max.Conversation
 import com.gindausd.max.ConversationState
 import com.gindausd.max.Message
 import com.gindausd.max.OrbState
+import com.gindausd.max.data.AuthRepository
 import com.gindausd.max.data.StorageRepository
 import com.gindausd.max.ui.widget.MaxGlanceWidget
 import com.gindausd.max.services.ClaudeChunk
@@ -30,7 +35,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val claude = ClaudeService.getInstance()
     private val voice = VoiceService.getInstance(application)
     private val tools = ToolsService.getInstance()
+    private val authRepo = AuthRepository.getInstance(application)
     private val appContext = application.applicationContext
+    private val connectivityManager =
+        appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages.asStateFlow()
@@ -53,8 +61,27 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
+    private val _isOffline = MutableStateFlow(false)
+    val isOffline: StateFlow<Boolean> = _isOffline.asStateFlow()
+
+    val isDemo: Boolean get() = authRepo.currentUser.value?.isDemo == true
+    val demoTrialDaysRemaining: Int get() = authRepo.demoTrialDaysRemaining
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) { _isOffline.value = false }
+        override fun onLost(network: Network) { _isOffline.value = !isNetworkAvailable() }
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val caps = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
     init {
         loadMessages()
+        _isOffline.value = !isNetworkAvailable()
+        connectivityManager.registerDefaultNetworkCallback(networkCallback)
     }
 
     fun loadMessages() {
@@ -314,5 +341,6 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         voice.stopSpeaking()
         voice.stopListening()
+        connectivityManager.unregisterNetworkCallback(networkCallback)
     }
 }

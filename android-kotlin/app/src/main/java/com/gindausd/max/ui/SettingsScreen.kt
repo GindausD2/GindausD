@@ -68,7 +68,8 @@ import kotlinx.coroutines.withContext
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
-    onSignOut: () -> Unit
+    onSignOut: () -> Unit,
+    onNavigateToMemory: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -135,7 +136,7 @@ fun SettingsScreen(
             // Quick actions section
             SectionHeader("QUICK ACTIONS")
             SettingsRow(icon = Icons.Default.Star, label = "Subscription", onClick = {})
-            SettingsRow(icon = Icons.Default.Memory, label = "Memory", onClick = {})
+            SettingsRow(icon = Icons.Default.Memory, label = "Memory", onClick = onNavigateToMemory)
             SettingsRow(icon = Icons.Default.Lock, label = "Privacy", onClick = {})
 
             Spacer(modifier = Modifier.height(16.dp))

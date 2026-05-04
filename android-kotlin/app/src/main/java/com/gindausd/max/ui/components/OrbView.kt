@@ -1,5 +1,6 @@
 package com.gindausd.max.ui.components
 
+import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -10,8 +11,11 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.delay
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -28,6 +32,16 @@ fun OrbView(
     sizeDp: Dp,
     modifier: Modifier = Modifier
 ) {
+    val view = LocalView.current
+    LaunchedEffect(state) {
+        if (state == OrbState.SPEAKING) {
+            while (true) {
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                delay(280L)
+            }
+        }
+    }
+
     val infiniteTransition = rememberInfiniteTransition(label = "orb")
 
     val pulseDuration = state.pulseSpeed.toInt()

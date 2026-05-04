@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.gindausd.max.AppSettings
 import com.gindausd.max.Conversation
+import com.gindausd.max.MemoryCard
 import com.gindausd.max.Message
 import com.gindausd.max.Note
 import com.gindausd.max.UserMemory
@@ -27,6 +28,7 @@ class StorageRepository private constructor(private val context: Context) {
         val CONVERSATIONS = stringPreferencesKey("conversations")
         val NOTES = stringPreferencesKey("notes")
         val MEMORIES = stringPreferencesKey("memories")
+        val MEMORY_CARDS = stringPreferencesKey("memory_cards")
         val PROFILE_PHOTO = stringPreferencesKey("profile_photo")
     }
 
@@ -136,6 +138,19 @@ class StorageRepository private constructor(private val context: Context) {
 
     suspend fun recallFacts(): List<UserMemory> = loadMemories()
 
+    suspend fun deleteMemory(key: String) {
+        val existing = loadMemories().filter { it.key != key }
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MEMORIES] = json.encodeToString(existing)
+        }
+    }
+
+    suspend fun clearMemories() {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MEMORIES] = json.encodeToString(emptyList<UserMemory>())
+        }
+    }
+
     private suspend fun loadMemories(): List<UserMemory> {
         val prefs = context.dataStore.data.firstOrNull() ?: return emptyList()
         val raw = prefs[Keys.MEMORIES] ?: return emptyList()
@@ -143,6 +158,40 @@ class StorageRepository private constructor(private val context: Context) {
             json.decodeFromString(raw)
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    // Memory cards
+
+    suspend fun saveMemoryCard(card: MemoryCard) {
+        val existing = loadMemoryCards().toMutableList()
+        val idx = existing.indexOfFirst { it.id == card.id }
+        if (idx >= 0) existing[idx] = card else existing.add(0, card)
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MEMORY_CARDS] = json.encodeToString(existing)
+        }
+    }
+
+    suspend fun loadMemoryCards(): List<MemoryCard> {
+        val prefs = context.dataStore.data.firstOrNull() ?: return emptyList()
+        val raw = prefs[Keys.MEMORY_CARDS] ?: return emptyList()
+        return try {
+            json.decodeFromString(raw)
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun deleteMemoryCard(id: String) {
+        val existing = loadMemoryCards().filter { it.id != id }
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MEMORY_CARDS] = json.encodeToString(existing)
+        }
+    }
+
+    suspend fun clearMemoryCards() {
+        context.dataStore.edit { prefs ->
+            prefs[Keys.MEMORY_CARDS] = json.encodeToString(emptyList<MemoryCard>())
         }
     }
 

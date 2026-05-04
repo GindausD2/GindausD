@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.SnackbarHost
@@ -84,6 +86,9 @@ fun HomeScreen(
     val orbState by viewModel.orbState.collectAsStateWithLifecycle()
     val pendingImage by viewModel.pendingImage.collectAsStateWithLifecycle()
     val errorMessage by viewModel.errorMessage.collectAsStateWithLifecycle()
+    val isOffline by viewModel.isOffline.collectAsStateWithLifecycle()
+    val isDemo = viewModel.isDemo
+    val demoTrialDaysRemaining = viewModel.demoTrialDaysRemaining
     val listState = rememberLazyListState()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -142,6 +147,16 @@ fun HomeScreen(
                 onSettingsClick = onNavigateToSettings,
                 onHistoryClick = onNavigateToHistory
             )
+
+            // Trial banner
+            AnimatedVisibility(visible = isDemo && demoTrialDaysRemaining in 1..7) {
+                TrialBanner(daysRemaining = demoTrialDaysRemaining)
+            }
+
+            // Offline banner
+            AnimatedVisibility(visible = isOffline) {
+                OfflineBanner()
+            }
 
             // Transcript Area
             if (messages.isEmpty()) {
@@ -351,6 +366,54 @@ private fun StatusPill(state: ConversationState) {
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(text = label, color = Color.White, fontSize = 13.sp)
+    }
+}
+
+@Composable
+private fun TrialBanner(daysRemaining: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFE87800).copy(alpha = 0.12f))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.Star,
+            contentDescription = null,
+            tint = Color(0xFFE87800),
+            modifier = Modifier.size(15.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "$daysRemaining day${if (daysRemaining != 1) "s" else ""} left in your free trial",
+            color = Color(0xFFE87800),
+            fontSize = 13.sp
+        )
+    }
+}
+
+@Composable
+private fun OfflineBanner() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1A1008))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.WifiOff,
+            contentDescription = null,
+            tint = Color(0xFF8A7A6A),
+            modifier = Modifier.size(15.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = "You're offline — Max needs a connection to respond",
+            color = Color(0xFF8A7A6A),
+            fontSize = 13.sp
+        )
     }
 }
 

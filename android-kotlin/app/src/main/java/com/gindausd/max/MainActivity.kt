@@ -16,6 +16,7 @@ import com.gindausd.max.data.AuthRepository
 import com.gindausd.max.ui.theme.MaxTheme
 import com.gindausd.max.ui.ConversationHistoryScreen
 import com.gindausd.max.ui.HomeScreen
+import com.gindausd.max.ui.MemoryScreen
 import com.gindausd.max.ui.OnboardingScreen
 import com.gindausd.max.ui.PaywallScreen
 import com.gindausd.max.ui.SettingsScreen
@@ -78,13 +79,17 @@ class MainActivity : ComponentActivity() {
                             onNavigateBack = { navController.popBackStack() },
                             onSignOut = {
                                 navController.navigate("welcome") { popUpTo(0) { inclusive = true } }
-                            }
+                            },
+                            onNavigateToMemory = { navController.navigate("memory") }
                         )
                     }
                     composable("history") {
                         ConversationHistoryScreen(
                             onNavigateBack = { navController.popBackStack() }
                         )
+                    }
+                    composable("memory") {
+                        MemoryScreen(onNavigateBack = { navController.popBackStack() })
                     }
                     composable("paywall") {
                         PaywallScreen(
