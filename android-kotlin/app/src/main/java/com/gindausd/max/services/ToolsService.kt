@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.gindausd.max.MaxApplication
 import com.gindausd.max.Note
+import com.gindausd.max.Reminder
 import com.gindausd.max.data.StorageRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,9 @@ class ToolsService private constructor() {
             "get_directions" -> handleGetDirections(context, input)
             "create_calendar_event" -> handleCreateCalendarEvent(context, input)
             "get_calendar_events" -> handleGetCalendarEvents(context, input)
+            "lookup_contact" -> handleLookupContact(context, input)
+            "call_contact" -> handleCallContact(context, input)
+            "send_sms" -> handleSendSms(context, input)
             else -> "Tool '$name' is not implemented."
         }
     }
@@ -100,17 +104,81 @@ class ToolsService private constructor() {
         val title = input["title"]?.toString() ?: "Reminder"
         val body = input["body"]?.toString() ?: ""
         val delayMinutes = (input["delay_minutes"] as? Number)?.toLong() ?: 5L
+        val reminderId = UUID.randomUUID().toString()
+        val fireDate = System.currentTimeMillis() + delayMinutes * 60_000L
+
+        val reminder = Reminder(
+            id = reminderId,
+            title = title,
+            body = body,
+            fireDate = fireDate
+        )
+        runBlocking { StorageRepository.getInstance(context).saveReminder(reminder) }
 
         val workRequest = OneTimeWorkRequestBuilder<ReminderWorker>()
             .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
             .setInputData(workDataOf(
                 "title" to title,
-                "body" to body
+                "body" to body,
+                "reminder_id" to reminderId
             ))
             .build()
 
         WorkManager.getInstance(context).enqueue(workRequest)
-        return "Reminder scheduled in $delayMinutes minute(s): $title"
+
+        val timeLabel = if (delayMinutes < 60) "$delayMinutes min" else "${delayMinutes / 60}h ${delayMinutes % 60}m"
+        return "Reminder set for $timeLabel from now: \"$title\""
+    }
+
+    private fun handleLookupContact(context: Context, input: Map<String, Any>): String {
+        val name = input["name"]?.toString() ?: return "Name required."
+        val contacts = ContactsService.getInstance().lookupByName(context, name)
+        if (contacts.isEmpty()) return "No contact found matching \"$name\"."
+        return "Found:\n" + contacts.joinToString("\n") { "• ${it.displayName}: ${it.phoneNumber}" }
+    }
+
+    private fun handleCallContact(context: Context, input: Map<String, Any>): String {
+        val name = input["name"]?.toString()
+        val providedNumber = input["phone_number"]?.toString()
+
+        val number = when {
+            !providedNumber.isNullOrBlank() -> providedNumber
+            !name.isNullOrBlank() -> {
+                ContactsService.getInstance().findBestMatch(context, name)?.phoneNumber
+                    ?: return "No contact found matching \"$name\"."
+            }
+            else -> return "Provide a contact name or phone number."
+        }
+
+        val intent = Intent(Intent.ACTION_DIAL).apply {
+            data = Uri.parse("tel:$number")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+        return "Opening dialer${if (!name.isNullOrBlank()) " for $name" else ""} ($number)."
+    }
+
+    private fun handleSendSms(context: Context, input: Map<String, Any>): String {
+        val name = input["name"]?.toString()
+        val providedNumber = input["phone_number"]?.toString()
+        val message = input["message"]?.toString() ?: ""
+
+        val number = when {
+            !providedNumber.isNullOrBlank() -> providedNumber
+            !name.isNullOrBlank() -> {
+                ContactsService.getInstance().findBestMatch(context, name)?.phoneNumber
+                    ?: return "No contact found matching \"$name\"."
+            }
+            else -> return "Provide a contact name or phone number."
+        }
+
+        val intent = Intent(Intent.ACTION_SENDTO).apply {
+            data = Uri.parse("smsto:$number")
+            putExtra("sms_body", message)
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        context.startActivity(intent)
+        return "Opening SMS composer${if (!name.isNullOrBlank()) " for $name" else " for $number"}."
     }
 
     private fun handleReadNews(context: Context): String {

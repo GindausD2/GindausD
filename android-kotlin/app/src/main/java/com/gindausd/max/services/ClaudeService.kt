@@ -277,6 +277,27 @@ If you don't have enough information to use a tool, ask for clarification.
             "Recall places the user has mentioned",
             JSONObject()))
 
+        toolList.put(tool("lookup_contact",
+            "Look up a contact by name and return their phone number",
+            JSONObject().apply {
+                put("name", stringProp("Full or partial name of the contact to look up"))
+            }, listOf("name")))
+
+        toolList.put(tool("call_contact",
+            "Call a person by name (looks up their number) or by phone number",
+            JSONObject().apply {
+                put("name", stringProp("Name of the contact to call (optional if phone_number provided)"))
+                put("phone_number", stringProp("Phone number to call directly (optional if name provided)"))
+            }))
+
+        toolList.put(tool("send_sms",
+            "Open SMS composer to message a contact by name or phone number",
+            JSONObject().apply {
+                put("name", stringProp("Name of the contact to message (optional if phone_number provided)"))
+                put("phone_number", stringProp("Phone number to message (optional if name provided)"))
+                put("message", stringProp("Message text to pre-fill (optional)"))
+            }))
+
         return toolList
     }
 

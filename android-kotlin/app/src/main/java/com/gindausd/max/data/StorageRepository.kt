@@ -11,6 +11,7 @@ import com.gindausd.max.Conversation
 import com.gindausd.max.MemoryCard
 import com.gindausd.max.Message
 import com.gindausd.max.Note
+import com.gindausd.max.Reminder
 import com.gindausd.max.UserMemory
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.serialization.encodeToString
@@ -29,6 +30,7 @@ class StorageRepository private constructor(private val context: Context) {
         val NOTES = stringPreferencesKey("notes")
         val MEMORIES = stringPreferencesKey("memories")
         val MEMORY_CARDS = stringPreferencesKey("memory_cards")
+        val REMINDERS = stringPreferencesKey("reminders")
         val PROFILE_PHOTO = stringPreferencesKey("profile_photo")
     }
 
@@ -158,6 +160,30 @@ class StorageRepository private constructor(private val context: Context) {
             json.decodeFromString(raw)
         } catch (e: Exception) {
             emptyList()
+        }
+    }
+
+    // Reminders
+
+    suspend fun saveReminder(reminder: Reminder) {
+        val existing = loadReminders().toMutableList()
+        val idx = existing.indexOfFirst { it.id == reminder.id }
+        if (idx >= 0) existing[idx] = reminder else existing.add(reminder)
+        context.dataStore.edit { prefs ->
+            prefs[Keys.REMINDERS] = json.encodeToString(existing)
+        }
+    }
+
+    suspend fun loadReminders(): List<Reminder> {
+        val prefs = context.dataStore.data.firstOrNull() ?: return emptyList()
+        val raw = prefs[Keys.REMINDERS] ?: return emptyList()
+        return try { json.decodeFromString(raw) } catch (e: Exception) { emptyList() }
+    }
+
+    suspend fun deleteReminder(id: String) {
+        val existing = loadReminders().filter { it.id != id }
+        context.dataStore.edit { prefs ->
+            prefs[Keys.REMINDERS] = json.encodeToString(existing)
         }
     }
 
