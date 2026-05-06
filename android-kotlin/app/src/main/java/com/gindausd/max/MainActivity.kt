@@ -26,16 +26,17 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        if (intent.action == "com.gindausd.max.START_LISTENING") {
-            AppEvents.emitStartListening()
+        when (intent.action) {
+            "com.gindausd.max.START_LISTENING" -> AppEvents.emitStartListening()
+            "com.gindausd.max.START_BRIEFING" -> AppEvents.emitStartBriefing()
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Handle cold-start from widget or tile
-        if (intent?.action == "com.gindausd.max.START_LISTENING") {
-            AppEvents.emitStartListening()
+        when (intent?.action) {
+            "com.gindausd.max.START_LISTENING" -> AppEvents.emitStartListening()
+            "com.gindausd.max.START_BRIEFING" -> AppEvents.emitStartBriefing()
         }
         setContent {
             MaxTheme {

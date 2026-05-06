@@ -259,7 +259,13 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startMorningBriefing() {
-        sendTextMessage("Give me my morning briefing. What do I need to know to start my day?")
+        sendTextMessage(
+            "Give me my morning briefing. Please: " +
+            "1) check today's weather and forecast, " +
+            "2) list any calendar events today, " +
+            "3) give me top news headlines, " +
+            "4) share one motivational thought. Keep it concise and upbeat."
+        )
     }
 
     fun clearHistory() {

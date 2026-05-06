@@ -23,72 +23,22 @@ class BriefingWorker(
 
     override suspend fun doWork(): Result {
         return try {
-            val calendar = Calendar.getInstance()
-            val timeStr = String.format(
-                "%02d:%02d",
-                calendar.get(Calendar.HOUR_OF_DAY),
-                calendar.get(Calendar.MINUTE)
-            )
-
             val notificationId = System.currentTimeMillis().toInt()
-            val intent = Intent(context, MainActivity::class.java).apply {
+            val tapIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-                putExtra("from_briefing", true)
+                action = "com.gindausd.max.START_BRIEFING"
             }
-            val pendingIntent = PendingIntent.getActivity(
-                context, 0, intent,
+            val tapPending = PendingIntent.getActivity(
+                context, 1, tapIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
             val notification = NotificationCompat.Builder(context, MaxApplication.CHANNEL_BRIEFING)
                 .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle("Good morning! Your Max briefing")
-                .setContentText("Tap to start your morning briefing with Max.")
-                .setStyle(NotificationCompat.BigTextStyle()
-                    .bigText("Good morning! Your daily briefing is ready. Tap to open Max and get started with your day."))
+                .setContentTitle("Good morning! ☀️")
+                .setContentText("Your Max briefing is ready — tap to hear it.")
                 .setPriority(NotificationCompat.PRIORITY_DEFAULT)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(true)
-                .build()
-
-            try {
-                NotificationManagerCompat.from(context).notify(notificationId, notification)
-            } catch (e: SecurityException) {
-                // Permission not granted
-            }
-
-            Result.success()
-        } catch (e: Exception) {
-            Result.failure()
-        }
-    }
-}
-
-class ReminderWorker(
-    private val context: Context,
-    workerParams: WorkerParameters
-) : CoroutineWorker(context, workerParams) {
-
-    override suspend fun doWork(): Result {
-        return try {
-            val title = inputData.getString("title") ?: "Reminder"
-            val body = inputData.getString("body") ?: ""
-
-            val notificationId = System.currentTimeMillis().toInt()
-            val intent = Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            }
-            val pendingIntent = PendingIntent.getActivity(
-                context, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-
-            val notification = NotificationCompat.Builder(context, MaxApplication.CHANNEL_GENERAL)
-                .setSmallIcon(android.R.drawable.ic_dialog_info)
-                .setContentTitle(title)
-                .setContentText(body)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setContentIntent(pendingIntent)
+                .setContentIntent(tapPending)
                 .setAutoCancel(true)
                 .build()
 
