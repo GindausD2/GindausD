@@ -33,6 +33,7 @@ class ToolsService private constructor() {
     fun handleToolCall(context: Context, name: String, input: Map<String, Any>): String {
         return when (name) {
             "get_datetime" -> handleGetDatetime()
+            "get_weather" -> handleGetWeather(context, input)
             "save_note" -> handleSaveNote(context, input)
             "get_notes" -> handleGetNotes(context)
             "delete_note" -> handleDeleteNote(context, input)
@@ -53,6 +54,11 @@ class ToolsService private constructor() {
             "send_sms" -> handleSendSms(context, input)
             else -> "Tool '$name' is not implemented."
         }
+    }
+
+    private fun handleGetWeather(context: Context, input: Map<String, Any>): String {
+        val location = input["location"]?.toString()
+        return runBlocking { WeatherService.getInstance().getWeather(context, location) }
     }
 
     private fun handleGetDatetime(): String {

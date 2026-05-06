@@ -30,7 +30,8 @@ class ClaudeService private constructor() {
 
     private val systemPrompt = """
 You are Max, an intelligent AI personal assistant. You are helpful, friendly, and concise.
-You have access to various tools to help users with their daily tasks.
+You have access to various tools to help users with their daily tasks including weather,
+reminders, contacts, calendar, notes, navigation, and more.
 When using tools, explain what you're doing in a natural, conversational way.
 Keep responses concise and actionable. Use a warm, professional tone.
 If you don't have enough information to use a tool, ask for clarification.
@@ -210,6 +211,12 @@ If you don't have enough information to use a tool, ask for clarification.
         toolList.put(tool("get_datetime",
             "Get the current date and time",
             JSONObject()))
+
+        toolList.put(tool("get_weather",
+            "Get current weather conditions and 7-day forecast for a location or the user's current location",
+            JSONObject().apply {
+                put("location", stringProp("City or place name (optional — omit to use device location)"))
+            }))
 
         toolList.put(tool("schedule_reminder",
             "Schedule a reminder notification",
