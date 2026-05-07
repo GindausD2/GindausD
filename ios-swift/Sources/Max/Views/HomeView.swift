@@ -2,6 +2,7 @@ import SwiftUI
 import Combine
 import UIKit
 import WidgetKit
+import Network
 
 // MARK: - HomeView
 
@@ -34,6 +35,10 @@ struct HomeView: View {
                 topBar
                 if authService.currentUser?.isDemo == true {
                     trialBanner
+                }
+                if viewModel.isOffline {
+                    offlineBanner
+                        .animation(.easeInOut(duration: 0.25), value: viewModel.isOffline)
                 }
                 transcriptArea
                     .padding(.bottom, 140) // space for dock
@@ -108,6 +113,23 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
             viewModel.handleOrbTap()
         }
+    }
+
+    // MARK: - Offline Banner
+
+    private var offlineBanner: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "wifi.slash")
+                .font(.system(size: 12, weight: .semibold))
+            Text("You're offline — Max needs a connection to respond")
+                .font(.system(size: 13, weight: .medium))
+            Spacer()
+        }
+        .foregroundStyle(Color(.secondaryLabel))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(.systemGray6))
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
 
     // MARK: - Trial Banner
@@ -456,10 +478,21 @@ final class HomeViewModel: ObservableObject {
     @Published var conversationState: ConversationState = .idle
     @Published var streamingText: String = ""
     @Published var isTranscribing: Bool = false
+    @Published var isOffline: Bool = false
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
     private let voice   = VoiceService.shared
+    private let networkMonitor = NWPathMonitor()
+
+    init() {
+        networkMonitor.pathUpdateHandler = { [weak self] path in
+            DispatchQueue.main.async {
+                self?.isOffline = path.status != .satisfied
+            }
+        }
+        networkMonitor.start(queue: DispatchQueue.global(qos: .background))
+    }
 
     private var streamingMessageId: String? = nil
     private var currentConversationId: String = UUID().uuidString
