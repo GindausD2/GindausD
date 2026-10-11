@@ -37,6 +37,8 @@
     <string>Max uses your Contacts to look up phone numbers when you ask it to call someone by name.</string>
     <key>NSCalendarsUsageDescription</key>
     <string>Max can create calendar events you ask it to schedule.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>Max reads your calendar to tell you about upcoming events when you ask.</string>
     <key>NSCalendarsWriteOnlyAccessUsageDescription</key>
     <string>Max can add events to your calendar when you ask it to schedule something.</string>
     <key>NSLocationWhenInUseUsageDescription</key>

@@ -75,7 +75,7 @@ export async function* streamMessage(
         model: 'claude-sonnet-4-6',
         max_tokens: 4096,
         system: systemPrompt,
-        tools: TOOL_DEFINITIONS as Anthropic.Tool[],
+        tools: TOOL_DEFINITIONS,
         messages: currentMessages,
       });
 
@@ -126,7 +126,7 @@ export async function* streamMessage(
       // If stop_reason is tool_use, execute tools and continue the loop
       if (stopReason === 'tool_use' && toolUses.length > 0) {
         // Add the assistant's response (with tool calls) to the conversation
-        const assistantContent: Anthropic.ContentBlock[] = [];
+        const assistantContent: Anthropic.ContentBlockParam[] = [];
         if (fullText) {
           assistantContent.push({ type: 'text', text: fullText });
         }

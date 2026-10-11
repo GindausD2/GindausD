@@ -39,15 +39,15 @@ let package = Package(
             resources: [
                 .process("Resources")
             ],
-            linkerSettings: [
-                .linkedFramework("AppIntents"),
-                .linkedFramework("WidgetKit")
-            ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals"),
                 .enableUpcomingFeature("ConciseMagicFile"),
                 .enableUpcomingFeature("ImplicitOpenExistentials"),
                 .enableUpcomingFeature("ForwardTrailingClosures")
+            ],
+            linkerSettings: [
+                .linkedFramework("AppIntents"),
+                .linkedFramework("WidgetKit")
             ]
         ),
 

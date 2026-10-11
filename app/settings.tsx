@@ -96,7 +96,7 @@ export default function SettingsScreen() {
   }, [apiKey, userName, updateSettings]);
 
   const handleToggleVoice = useCallback(
-    (val: boolean) => updateSettings({ voiceEnabled: val }),
+    async (val: boolean) => { await updateSettings({ voiceEnabled: val }); },
     [updateSettings]
   );
 

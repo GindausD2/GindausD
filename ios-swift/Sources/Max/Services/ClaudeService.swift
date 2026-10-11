@@ -382,18 +382,19 @@ final class ClaudeService {
 
         guard httpResponse.statusCode == 200 else {
             // Try to read error body
-            var errorBody = ""
+            var errorBytes = Data()
             for try await byte in asyncBytes {
-                errorBody.append(Character(UnicodeScalar(byte)))
-                if errorBody.count > 500 { break }
+                errorBytes.append(byte)
+                if errorBytes.count >= 2048 { break }
             }
+            let errorBody = String(decoding: errorBytes, as: UTF8.self)
             throw ClaudeError.apiError(httpResponse.statusCode, errorBody)
         }
 
         // SSE parsing state
         var currentEvent: String? = nil
         var currentData: String? = nil
-        var lineBuffer = ""
+        var lineBuffer = Data()
 
         // Accumulated tool calls
         var pendingToolCalls: [AccumulatedToolCall] = []
@@ -404,11 +405,11 @@ final class ClaudeService {
         var accumulatedText = ""
 
         for try await byte in asyncBytes {
-            let char = Character(UnicodeScalar(byte))
-
-            if char == "\n" {
-                let line = lineBuffer
-                lineBuffer = ""
+            // Decode a complete UTF-8 line, never individual bytes: emoji and
+            // accented text may span multiple bytes and network chunks.
+            if byte == 0x0A {
+                let line = String(decoding: lineBuffer, as: UTF8.self)
+                lineBuffer.removeAll(keepingCapacity: true)
 
                 if line.isEmpty {
                     // Empty line = dispatch event
@@ -431,8 +432,8 @@ final class ClaudeService {
                 } else if line.hasPrefix("data: ") {
                     currentData = String(line.dropFirst(6))
                 }
-            } else if char != "\r" {
-                lineBuffer.append(char)
+            } else if byte != 0x0D {
+                lineBuffer.append(byte)
             }
         }
 
