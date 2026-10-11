@@ -313,6 +313,7 @@ final class ClaudeService {
     ) {
         Task {
             do {
+                guard !apiKey.isEmpty, !apiKey.hasPrefix("YOUR_") else { throw ClaudeError.noAPIKey }
                 try await streamMessageInternal(
                     apiKey: apiKey,
                     messages: messages,
@@ -611,7 +612,7 @@ enum ClaudeError: LocalizedError {
         case .apiError(let code, let body):
             return "API error \(code): \(body)"
         case .noAPIKey:
-            return "No API key configured. Please add your API key in Settings."
+            return "Max is not connected yet. Please try again later."
         }
     }
 }

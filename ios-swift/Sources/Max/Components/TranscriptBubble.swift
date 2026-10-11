@@ -66,8 +66,8 @@ struct TranscriptBubble: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color(red: 0.58, green: 0.20, blue: 0.95),
-                                Color(red: 0.31, green: 0.12, blue: 0.88)
+                                Color(hex: "#7D8C76"),
+                                Color(hex: "#596F60")
                             ],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         )
@@ -76,7 +76,7 @@ struct TranscriptBubble: View {
             }
             .frame(width: 30, height: 30)
             .overlay(Circle().strokeBorder(.white.opacity(0.30), lineWidth: 0.75))
-            .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.40), radius: 6, x: 0, y: 2)
+            .shadow(color: Color.black.opacity(0.05), radius: 6, x: 0, y: 2)
             .offset(y: 2)
 
             ZStack(alignment: .bottomTrailing) {

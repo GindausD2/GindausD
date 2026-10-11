@@ -24,8 +24,8 @@ struct HomeView: View {
             LinearGradient(
                 stops: [
                     .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                    .init(color: Color(red: 0.97, green: 0.96, blue: 1.00), location: 0.5),
-                    .init(color: Color(red: 0.94, green: 0.91, blue: 1.00), location: 1.0)
+                    .init(color: Color(hex: "#F4F1EB"), location: 0.5),
+                    .init(color: Color(hex: "#DCE4DA"), location: 1.0)
                 ],
                 startPoint: .top, endPoint: .bottom
             ).ignoresSafeArea()
@@ -36,7 +36,7 @@ struct HomeView: View {
                     trialBanner
                 }
                 transcriptArea
-                    .padding(.bottom, 140) // space for dock
+                    .padding(.bottom, 215) // space for voice and text controls
             }
 
             // ── Image preview bar ──────────────────────────────────────────────
@@ -133,15 +133,15 @@ struct HomeView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(urgent ? Color.red : Color(hex: "#7C3AED"),
+                    .background(urgent ? Color.red : Color(hex: "#596F60"),
                                 in: Capsule())
             }
         }
-        .foregroundStyle(urgent ? Color.red : Color(hex: "#7C3AED"))
+        .foregroundStyle(urgent ? Color.red : Color(hex: "#596F60"))
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(
-            (urgent ? Color.red : Color(hex: "#7C3AED")).opacity(0.08)
+            (urgent ? Color.red : Color(hex: "#596F60")).opacity(0.08)
         )
     }
 
@@ -153,14 +153,14 @@ struct HomeView: View {
             Button { showSettings = true } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(Color(white: 0.35))
+                    .foregroundStyle(Color.secondary)
                     .frame(width: 44, height: 44)
             }
 
             Spacer()
 
             // Logo
-            MaxLogoView(color: Color(white: 0.15), width: 54)
+            MaxLogoView(color: Color.primary, width: 54)
 
             Spacer()
 
@@ -168,47 +168,15 @@ struct HomeView: View {
             Button { showHistory = true } label: {
                 Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
                     .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(Color(white: 0.35))
+                    .foregroundStyle(Color.secondary)
                     .frame(width: 44, height: 44)
             }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(
-            ZStack {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                Rectangle()
-                    .fill(Color.white.opacity(0.65))
-                // Specular top streak
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.90), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(height: 2)
-                    Spacer()
-                }
-                // Bottom hairline border
-                VStack(spacing: 0) {
-                    Spacer()
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.12), .clear],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
-                        .frame(height: 0.5)
-                }
-            }
-            .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 3)
-            .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.04), radius: 20, x: 0, y: 6)
-        )
+        .glassCard(cornerRadius: 28)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
     }
 
     // MARK: - Transcript
@@ -241,13 +209,14 @@ struct HomeView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            OrbView(state: .idle, size: 64)
-            Text("Hi! I'm Max")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(Color(white: 0.15))
-            Text("Press the orb to talk to Max\nor tap the camera to show something")
+            OrbView(state: .idle, size: 90)
+            Text("Make room for\nwhat matters.")
+                .font(.system(size: 38, weight: .regular, design: .serif))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(Color.primary)
+            Text("A thought, a plan, a little help.\nStart wherever you are.")
                 .font(.subheadline)
-                .foregroundStyle(Color(white: 0.5))
+                .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -266,6 +235,26 @@ struct HomeView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            HStack(spacing: 12) {
+                TextField("Ask Max anything…", text: $viewModel.inputText)
+                    .font(.body)
+                    .submitLabel(.send)
+                    .onSubmit { viewModel.sendTextMessage() }
+                    .disabled(viewModel.conversationState == .thinking)
+                    .accessibilityLabel("Message Max")
+                Button { viewModel.sendTextMessage() } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(Color(hex: "#292D2B"), in: Circle())
+                }
+                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.conversationState == .thinking)
+                .accessibilityLabel("Send message")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+
             // Main dock row
             HStack(spacing: 0) {
                 // Places memory
@@ -273,9 +262,12 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity)
 
                 // Orb (voice) — centre
-                OrbView(state: viewModel.orbState, size: 100)
-                    .onTapGesture { viewModel.handleOrbTap() }
-                    .frame(maxWidth: .infinity)
+                Button { viewModel.handleOrbTap() } label: {
+                    OrbView(state: viewModel.orbState, size: 84)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(viewModel.conversationState == .listening ? "Finish voice input" : "Talk to Max")
+                .frame(maxWidth: .infinity)
 
                 // Camera (vision)
                 cameraButton
@@ -285,46 +277,7 @@ struct HomeView: View {
             .padding(.top, 18)
             .padding(.bottom, 20)
         }
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 36, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 36, style: .continuous)
-                    .fill(Color.white.opacity(0.55))
-                // Specular top streak
-                VStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 36, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.85), .clear],
-                                startPoint: .top,
-                                endPoint: UnitPoint(x: 0.5, y: 0.45)
-                            )
-                        )
-                        .frame(height: 48)
-                    Spacer()
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 36, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.90), location: 0.0),
-                            .init(color: .white.opacity(0.50), location: 0.35),
-                            .init(color: .white.opacity(0.15), location: 0.70),
-                            .init(color: .clear,               location: 1.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.2
-                )
-        )
-        .shadow(color: .black.opacity(0.10), radius: 24, x: 0, y: -4)
-        .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.08), radius: 40, x: 0, y: -10)
+        .glassCard(cornerRadius: 36, depth: .regular)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.conversationState)
     }
 
@@ -354,8 +307,8 @@ struct HomeView: View {
         switch viewModel.conversationState {
         case .idle:      return .gray
         case .listening: return Color(red: 0.94, green: 0.27, blue: 0.27)
-        case .thinking:  return Color(red: 0.49, green: 0.23, blue: 0.93)
-        case .speaking:  return Color(red: 0.23, green: 0.51, blue: 0.96)
+        case .thinking:  return Color(hex: "#596F60")
+        case .speaking:  return Color(hex: "#596F60")
         }
     }
 
@@ -395,7 +348,7 @@ struct HomeView: View {
         } label: {
             Image(systemName: "mappin.and.ellipse")
                 .font(.system(size: 21, weight: .regular))
-                .foregroundStyle(Color(white: 0.35))
+                .foregroundStyle(Color.secondary)
                 .frame(width: 44, height: 44)
         }
     }
@@ -433,7 +386,7 @@ struct HomeView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(Color(hex: "#7C3AED"), in: Capsule())
+                    .background(Color(hex: "#596F60"), in: Capsule())
             }
             .buttonStyle(.plain)
         }

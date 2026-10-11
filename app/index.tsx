@@ -1,494 +1,99 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Alert,
-  Dimensions,
-  Animated,
-  ScrollView,
-} from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, Pressable, StyleSheet, ScrollView, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { router, Redirect } from 'expo-router';
-import * as Haptics from 'expo-haptics';
 import { Orb } from '@/components/Orb';
+import { GlassSurface } from '@/components/GlassSurface';
 import { useChat } from '@/hooks/useChat';
 import { useSettings } from '@/hooks/useSettings';
 import { useVoice } from '@/hooks/useVoice';
 import { useVoiceRecorder } from '@/hooks/useVoiceRecorder';
 import { useAuth } from '@/hooks/useAuth';
-import { Message } from '@/types';
+import { Colors as C } from '@/constants/colors';
 
-
-// ─── Clock ───────────────────────────────────────────────────────────────────
-
-function useClock() {
-  const [time, setTime] = useState(new Date());
-  useEffect(() => {
-    const id = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(id);
-  }, []);
-  return time;
-}
-
-function formatClock(d: Date): string {
-  const h = d.getHours().toString().padStart(2, '0');
-  const m = d.getMinutes().toString().padStart(2, '0');
-  const s = d.getSeconds().toString().padStart(2, '0');
-  return `${h}-${m}-${s}`;
-}
-
-// ─── Transcript bubble ────────────────────────────────────────────────────────
-
-function TranscriptBubble({ message, isLatest }: { message: Message; isLatest: boolean }) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(8)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: isLatest ? 1 : 0.55,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 280,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [isLatest]);
-
-  const isUser = message.role === 'user';
-
-  // Strip markdown stars/hashes for cleaner transcript display
-  const cleanText = message.content
-    .replace(/\*\*(.+?)\*\*/g, '$1')
-    .replace(/\*(.+?)\*/g, '$1')
-    .replace(/#+\s/g, '')
-    .trim();
-
-  return (
-    <Animated.View
-      style={[
-        styles.bubbleRow,
-        isUser ? styles.bubbleRowUser : styles.bubbleRowAI,
-        { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-      ]}
-    >
-      <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAI]}>
-        <Text style={[styles.bubbleText, isUser ? styles.bubbleTextUser : styles.bubbleTextAI]}>
-          {cleanText}
-        </Text>
-      </View>
-    </Animated.View>
-  );
-}
-
-// ─── Main screen ─────────────────────────────────────────────────────────────
-
+const suggestions = ['Plan my day', 'Save a thought', 'Set a reminder'];
 export default function HomeScreen() {
-  // ── All hooks unconditionally at the top (Rules of Hooks) ──────────────────
   const { user, isLoading: authLoading } = useAuth();
-
   const { settings } = useSettings();
-  const apiKey = settings?.apiKey ?? '';
-
-  const {
-    messages,
-    isLoading,
-    activeToolName,
-    sendMessage,
-    clearConversation,
-    stopStreaming,
-    error,
-  } = useChat(apiKey);
-
+  const { messages, isLoading, error, sendMessage, clearConversation, stopStreaming, activeToolName } = useChat(settings?.apiKey ?? '');
   const { speak, stop: stopSpeaking, isSpeaking } = useVoice(settings);
-  const voiceRecorder = useVoiceRecorder(settings);
-
-  const now = useClock();
-  const scrollRef = useRef<ScrollView>(null);
-  const micScale = useRef(new Animated.Value(1)).current;
-
-  // Auto-scroll transcript to bottom
+  const recorder = useVoiceRecorder(settings);
+  const [draft, setDraft] = useState('');
+  const scroll = useRef<ScrollView>(null);
+  const spoken = useRef<string | null>(null);
+  const last = messages[messages.length - 1];
   useEffect(() => {
-    const id = setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
-    return () => clearTimeout(id);
-  }, [messages.length, isLoading]);
-
-  // Auto-speak AI responses
-  useEffect(() => {
-    if (!settings?.voiceEnabled) return;
-    const last = messages[messages.length - 1];
-    if (last?.role === 'assistant' && !last.isStreaming && last.content) {
+    if (last?.role === 'assistant' && !last.isStreaming && last.content && settings?.voiceEnabled && spoken.current !== last.id) {
+      spoken.current = last.id;
       speak(last.content);
     }
-  }, [messages, speak, settings?.voiceEnabled]);
-
-  // Voice stop → transcribe → send
-  const handleVoiceToggle = useCallback(async () => {
-    if (voiceRecorder.state === 'recording') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const transcript = await voiceRecorder.stopAndTranscribe();
-      if (transcript) {
-        sendMessage(transcript);
-      } else if (voiceRecorder.errorMessage) {
-        Alert.alert('Voice Error', voiceRecorder.errorMessage);
-      }
-    } else if ((voiceRecorder.state === 'idle' || voiceRecorder.state === 'error') && !isLoading) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      await voiceRecorder.startRecording();
-    }
-  }, [voiceRecorder, isLoading, sendMessage]);
-
-  const handleStopAll = useCallback(() => {
-    stopSpeaking();
-    stopStreaming();
-    voiceRecorder.cancel();
-  }, [stopSpeaking, stopStreaming, voiceRecorder]);
-
-  const handleClear = useCallback(() => {
-    Alert.alert('New conversation', 'Start fresh with Max?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Clear',
-        style: 'destructive',
-        onPress: () => {
-          handleStopAll();
-          clearConversation();
-        },
-      },
-    ]);
-  }, [handleStopAll, clearConversation]);
-
-  // ── Auth gate (after ALL hooks including useCallback) ──────────────────────
+  }, [last, settings?.voiceEnabled, speak]);
+  const busy = isLoading || recorder.state === 'transcribing';
+  const listening = recorder.state === 'recording';
+  const state = listening ? 'listening' : busy ? 'thinking' : isSpeaking ? 'speaking' : 'idle';
+  const send = useCallback(() => { if (draft.trim()) { stopSpeaking(); void sendMessage(draft); if (settings?.apiKey) setDraft(''); } }, [draft, sendMessage, stopSpeaking, settings?.apiKey]);
+  const toggleVoice = async () => {
+    if (listening) { const text = await recorder.stopAndTranscribe(); if (text) void sendMessage(text); }
+    else { stopSpeaking(); await recorder.startRecording(); }
+  };
+  const reset = () => Alert.alert('Start a new conversation?', 'Your current conversation will be cleared.', [
+    { text: 'Cancel', style: 'cancel' }, { text: 'Start new', onPress: () => { stopStreaming(); stopSpeaking(); void recorder.cancel(); void clearConversation(); } },
+  ]);
   if (authLoading) return null;
   if (!user) return <Redirect href="/welcome" />;
-
-  // Mic button press animation
-  const animateMicPress = (pressed: boolean) => {
-    Animated.spring(micScale, {
-      toValue: pressed ? 0.88 : 1,
-      useNativeDriver: true,
-      speed: 30,
-    }).start();
-  };
-
-  // Derive orb state
-  type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking';
-  let orbState: OrbState = 'idle';
-  if (voiceRecorder.state === 'recording') orbState = 'listening';
-  else if (voiceRecorder.state === 'transcribing' || isLoading) orbState = 'thinking';
-  else if (isSpeaking) orbState = 'speaking';
-
-  // Visible transcript: last 6 non-empty messages (skip welcome-only state)
-  const allReal = messages.filter((m) => m.content.trim());
-  const transcript = allReal.length <= 1 ? [] : allReal.slice(-6);
-
-  const isRecording = voiceRecorder.state === 'recording';
-  const isTranscribing = voiceRecorder.state === 'transcribing';
-  const isBusy = isLoading || isTranscribing;
-
+  const conversation = messages.filter(m => m.content.trim() && messages.indexOf(m) !== 0);
   return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      {/* ── Top bar ─────────────────────────────────────────────────────── */}
-      <View style={styles.topBar}>
-        <Pressable onPress={handleClear} hitSlop={12} style={styles.topBtn}>
-          <Ionicons name="refresh-outline" size={22} color="#999" />
-        </Pressable>
-
-        <Text style={styles.appName}>{settings?.assistantName ?? 'Max'}</Text>
-
-        <Pressable onPress={() => router.push('/settings')} hitSlop={12} style={styles.topBtn}>
-          <Ionicons name="settings-outline" size={22} color="#999" />
-        </Pressable>
-      </View>
-
-      {/* ── Transcript area ──────────────────────────────────────────────── */}
-      <View style={styles.transcriptArea}>
-        {error ? (
-          <View style={styles.errorBox}>
-            <Ionicons name="alert-circle-outline" size={16} color="#EF4444" />
-            <Text style={styles.errorText} numberOfLines={2}>{error}</Text>
+    <View style={styles.root}>
+      <LinearGradient colors={['#F9F7F2', '#F0EEE7', '#DCE4DA']} style={StyleSheet.absoluteFill} />
+      <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+        <KeyboardAvoidingView style={styles.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.header}>
+            <Pressable accessibilityRole="button" accessibilityLabel="New conversation" onPress={reset} style={styles.iconButton}><Ionicons name="add" size={23} color={C.textPrimary} /></Pressable>
+            <Text style={styles.brand}>Max<Text style={styles.brandDot}>.</Text></Text>
+            <Pressable accessibilityRole="button" accessibilityLabel="Open settings" onPress={() => router.push('/settings')} style={styles.iconButton}><Ionicons name="options-outline" size={22} color={C.textPrimary} /></Pressable>
           </View>
-        ) : transcript.length === 0 ? (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyLine1}>
-              {isRecording ? 'Listening...' : `Hi, I'm Max`}
-            </Text>
-            <Text style={styles.emptyLine2}>
-              {isRecording ? 'Tap stop when done' : 'Tap the mic and start talking'}
-            </Text>
-          </View>
-        ) : (
-          <ScrollView
-            ref={scrollRef}
-            style={styles.scroll}
-            contentContainerStyle={styles.scrollContent}
-            showsVerticalScrollIndicator={false}
-          >
-            {transcript.map((m, i) => (
-              <TranscriptBubble
-                key={m.id}
-                message={m}
-                isLatest={i === transcript.length - 1}
-              />
-            ))}
+          <ScrollView ref={scroll} style={styles.conversation} contentContainerStyle={styles.conversationContent} keyboardShouldPersistTaps="handled" onContentSizeChange={() => { if (conversation.length > 0) scroll.current?.scrollToEnd({ animated: false }); }}>
+            {conversation.length === 0 ? <View style={styles.hero}>
+              <Text style={styles.eyebrow}>A LITTLE SPACE FOR YOUR DAY</Text>
+              <Text style={styles.title}>Make room for{ '\n' }what matters.</Text>
+              <Text style={styles.subtitle}>A thought, a plan, a little help.{ '\n' }Start wherever you are.</Text>
+              <View style={styles.pearl}><Orb state={state} size={108} /></View>
+              <Text style={styles.voiceHint}>{listening ? 'Listening · tap the mic to finish' : 'Speak naturally. Max is here.'}</Text>
+              <View style={styles.suggestions}>{suggestions.map(text => <Pressable key={text} accessibilityRole="button" onPress={() => setDraft(text)}><GlassSurface style={styles.suggestion}><Text style={styles.suggestionText}>{text}</Text><Ionicons name="arrow-up-outline" size={14} color={C.textSecondary} /></GlassSurface></Pressable>)}</View>
+            </View> : conversation.map(m => <View key={m.id} style={[styles.message, m.role === 'user' ? styles.userMessage : styles.assistantMessage]}><Text style={styles.messageLabel}>{m.role === 'user' ? 'YOU' : 'MAX'}</Text><Text selectable style={styles.messageText}>{m.content}</Text></View>)}
           </ScrollView>
-        )}
-      </View>
-
-      {/* ── Bottom canvas with gradient + orb ───────────────────────────── */}
-      <View style={styles.bottomCanvas}>
-        {/* Gradient fade */}
-        <LinearGradient
-          colors={['rgba(255,255,255,0)', 'rgba(240,240,245,1)']}
-          style={styles.gradientFade}
-          pointerEvents="none"
-        />
-
-        {/* Status row: clock + orb state label */}
-        <View style={styles.statusRow}>
-          <Text style={styles.clock}>{formatClock(now)}</Text>
-          {activeToolName && (
-            <Text style={styles.toolLabel}>
-              {activeToolName.replace(/_/g, ' ')}...
-            </Text>
-          )}
-          {isSpeaking && !activeToolName && (
-            <Text style={styles.toolLabel}>Speaking</Text>
-          )}
-          {isRecording && !activeToolName && (
-            <Text style={[styles.toolLabel, { color: '#EF4444' }]}>Recording</Text>
-          )}
-        </View>
-
-        {/* Orb row */}
-        <View style={styles.orbRow}>
-          {/* Stop / placeholder left */}
-          <Pressable
-            style={styles.sideBtn}
-            onPress={isBusy || isSpeaking ? handleStopAll : undefined}
-            hitSlop={12}
-          >
-            {(isBusy || isSpeaking) ? (
-              <Ionicons name="stop-circle-outline" size={28} color="#999" />
-            ) : (
-              <Ionicons name="chatbubble-outline" size={26} color="#ccc" />
-            )}
-          </Pressable>
-
-          {/* Central orb */}
-          <Pressable onPress={handleVoiceToggle} disabled={isBusy}>
-            <Orb state={orbState} size={128} />
-          </Pressable>
-
-          {/* Mic button */}
-          <Pressable
-            onPressIn={() => animateMicPress(true)}
-            onPressOut={() => animateMicPress(false)}
-            onPress={handleVoiceToggle}
-            disabled={isBusy}
-            hitSlop={12}
-            style={styles.sideBtn}
-          >
-            <Animated.View style={{ transform: [{ scale: micScale }] }}>
-              <Ionicons
-                name={isRecording ? 'mic' : 'mic-outline'}
-                size={30}
-                color={isRecording ? '#EF4444' : '#999'}
-              />
-            </Animated.View>
-          </Pressable>
-        </View>
-
-        {/* Blue progress / active indicator bar */}
-        <View style={styles.indicatorBar}>
-          <Animated.View
-            style={[
-              styles.indicatorFill,
-              {
-                width: isRecording || isBusy || isSpeaking ? '100%' : '0%',
-                backgroundColor: isRecording ? '#EF4444' : '#4F46E5',
-              },
-            ]}
-          />
-        </View>
-      </View>
-    </SafeAreaView>
+          {error || recorder.errorMessage ? <Text accessibilityLiveRegion="polite" style={styles.error}>{error || recorder.errorMessage}</Text> : null}
+          {state !== 'idle' ? <Text accessibilityLiveRegion="polite" style={styles.status}>{activeToolName ? activeToolName.replace(/_/g, ' ') : state === 'thinking' ? 'One moment…' : state === 'listening' ? 'Listening…' : 'Speaking…'}</Text> : null}
+          <GlassSurface style={styles.composer}>
+            <TextInput accessibilityLabel="Message Max" value={draft} onChangeText={setDraft} placeholder="Ask Max anything…" placeholderTextColor={C.textMuted} style={styles.input} onSubmitEditing={send} returnKeyType="send" editable={!busy && !listening} />
+            <Pressable accessibilityRole="button" accessibilityLabel={busy || isSpeaking ? 'Stop response' : draft.trim() ? 'Send message' : listening ? 'Finish recording' : 'Start voice input'} style={styles.sendButton} onPress={busy || isSpeaking ? () => { stopStreaming(); stopSpeaking(); void recorder.cancel(); } : draft.trim() ? send : toggleVoice}>
+              <Ionicons name={busy || isSpeaking ? 'stop' : draft.trim() ? 'arrow-up' : listening ? 'stop' : 'mic-outline'} size={21} color="#FFFFFF" />
+            </Pressable>
+          </GlassSurface>
+          <Text style={styles.footer}>Your day, a little lighter.</Text>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
-
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
-
-  // ── Top bar ─────────────────────────────────────────────────────────────
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 4,
-    paddingBottom: 12,
-  },
-  topBtn: {
-    width: 38,
-    height: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appName: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1A1A2E',
-    letterSpacing: 1.5,
-  },
-
-  // ── Transcript ───────────────────────────────────────────────────────────
-  transcriptArea: {
-    flex: 1,
-    paddingHorizontal: 16,
-  },
-  scroll: { flex: 1 },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'flex-end',
-    gap: 6,
-    paddingBottom: 12,
-    paddingTop: 8,
-  },
-  // Row wrappers control alignment
-  bubbleRow: {
-    flexDirection: 'row',
-    marginHorizontal: 4,
-  },
-  bubbleRowUser: {
-    justifyContent: 'flex-end',
-  },
-  bubbleRowAI: {
-    justifyContent: 'flex-start',
-  },
-  // The speech bubble itself
-  bubble: {
-    maxWidth: '78%',
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
-  bubbleUser: {
-    backgroundColor: '#E8E8EA',       // light gray — matches mockup
-    borderBottomRightRadius: 5,
-  },
-  bubbleAI: {
-    backgroundColor: '#FFFFFF',        // white card
-    borderBottomLeftRadius: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  bubbleText: {
-    fontSize: 15,
-    lineHeight: 22,
-  },
-  bubbleTextUser: {
-    color: '#1A1A2E',
-  },
-  bubbleTextAI: {
-    color: '#1A1A2E',
-  },
-  emptyState: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  emptyLine1: {
-    fontSize: 20,
-    fontWeight: '500',
-    color: '#1A1A2E',
-  },
-  emptyLine2: {
-    fontSize: 14,
-    color: '#999',
-  },
-  errorBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#FFF1F1',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginTop: 12,
-  },
-  errorText: {
-    flex: 1,
-    color: '#EF4444',
-    fontSize: 13,
-  },
-
-  // ── Bottom canvas ────────────────────────────────────────────────────────
-  bottomCanvas: {
-    paddingBottom: 8,
-    backgroundColor: 'transparent',
-  },
-  gradientFade: {
-    position: 'absolute',
-    top: -60,
-    left: 0,
-    right: 0,
-    height: 80,
-  },
-  statusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 28,
-    marginBottom: 4,
-  },
-  clock: {
-    fontSize: 22,
-    fontWeight: '300',
-    color: '#1A1A2E',
-    letterSpacing: 2,
-    fontVariant: ['tabular-nums'],
-  },
-  toolLabel: {
-    fontSize: 13,
-    color: '#7C3AED',
-    fontWeight: '500',
-  },
-  orbRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 32,
-  },
-  sideBtn: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // ── Indicator bar ────────────────────────────────────────────────────────
-  indicatorBar: {
-    height: 3,
-    backgroundColor: '#E5E7EB',
-    marginTop: 12,
-    overflow: 'hidden',
-  },
-  indicatorFill: {
-    height: 3,
-    borderRadius: 2,
-  },
+  root: { flex: 1, backgroundColor: C.background }, safe: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 10, paddingBottom: 20 },
+  iconButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: 'rgba(255,255,255,0.6)', borderWidth: 1, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' },
+  brand: { fontSize: 27, fontWeight: '600', letterSpacing: -1, color: C.textPrimary }, brandDot: { color: '#8B9A85' },
+  conversation: { flex: 1 }, conversationContent: { flexGrow: 1, paddingHorizontal: 24, paddingBottom: 20 },
+  hero: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 24 },
+  eyebrow: { fontSize: 10, letterSpacing: 2, color: C.textSecondary, fontWeight: '600', textAlign: 'center' },
+  title: { fontSize: 39, lineHeight: 45, fontWeight: '400', letterSpacing: -1.5, textAlign: 'center', marginTop: 23, color: C.textPrimary },
+  subtitle: { fontSize: 15, lineHeight: 24, color: C.textSecondary, textAlign: 'center', marginTop: 18 },
+  pearl: { padding: 22, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.25)', marginTop: 30, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' },
+  voiceHint: { fontSize: 12, color: C.textSecondary }, suggestions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 26 },
+  suggestion: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }, suggestionText: { fontSize: 14, color: C.textPrimary },
+  message: { padding: 18, borderRadius: 24, marginTop: 12, maxWidth: '93%' }, userMessage: { alignSelf: 'flex-end', backgroundColor: '#E3E9DF' }, assistantMessage: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.8)' },
+  messageLabel: { fontSize: 9, letterSpacing: 1.5, color: C.textSecondary, marginBottom: 8 }, messageText: { fontSize: 16, lineHeight: 25, color: C.textPrimary },
+  composer: { flexDirection: 'row', alignItems: 'center', marginHorizontal: 20, padding: 8, borderRadius: 32 }, input: { flex: 1, minHeight: 46, paddingHorizontal: 14, fontSize: 15, color: C.textPrimary },
+  sendButton: { width: 46, height: 46, borderRadius: 23, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center' }, footer: { textAlign: 'center', marginVertical: 12, fontSize: 10, color: C.textSecondary },
+  error: { marginHorizontal: 24, marginBottom: 12, fontSize: 13, lineHeight: 20, color: C.error }, status: { textAlign: 'center', marginBottom: 10, fontSize: 12, color: C.textSecondary },
 });
