@@ -22,9 +22,9 @@ export function Orb({ state, size = 96 }: OrbProps) {
   }, [state, reducedMotion, pulse]);
   return (
     <Animated.View accessible={false} style={[styles.pearl, { width: size, height: size, borderRadius: size / 2, transform: [{ scale: pulse }] }]}>
-      <LinearGradient colors={['#FFFFFF', '#E8ECE5', '#A9B5A7']} start={{ x: 0.22, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['#F2FBFF', '#C2E7F4', '#78B5CD']} start={{ x: 0.22, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
       <View style={styles.wave}>
-        {[0.28, 0.48, 0.72, 0.48, 0.28].map((height, i) => <View key={i} style={{ width: 3, height: size * height * 0.45, borderRadius: 3, backgroundColor: '#5E6A5C' }} />)}
+        {[0.28, 0.48, 0.72, 0.48, 0.28].map((height, i) => <View key={i} style={{ width: 3, height: size * height * 0.45, borderRadius: 3, backgroundColor: '#315E73' }} />)}
       </View>
     </Animated.View>
   );

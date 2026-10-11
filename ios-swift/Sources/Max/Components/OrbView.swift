@@ -10,12 +10,12 @@ struct OrbView: View {
 
     var body: some View {
         Circle()
-            .fill(LinearGradient(colors: [Color.white, Color(hex: "#E8ECE5"), Color(hex: "#A9B5A7")], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .fill(LinearGradient(colors: [Color(hex: "#F2FBFF"), Color(hex: "#C2E7F4"), Color(hex: "#78B5CD")], startPoint: .topLeading, endPoint: .bottomTrailing))
             .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1))
             .overlay {
                 Image(systemName: "waveform")
                     .font(.system(size: size * 0.28, weight: .light))
-                    .foregroundStyle(Color(hex: "#596F60"))
+                    .foregroundStyle(Color(hex: "#315E73"))
             }
             .frame(width: size, height: size)
             .scaleEffect(expanded && !reduceMotion && state != .idle ? 1.035 : 1)
