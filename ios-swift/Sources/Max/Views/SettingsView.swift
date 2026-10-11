@@ -47,9 +47,6 @@ struct SettingsView: View {
 
                         // ── QUICK ACTIONS ─────────────────────────────────────
                         ProfileSection(title: "QUICK ACTIONS") {
-                            ProfileRow(icon: "crown.fill", iconColor: Color(hex: "#F59E0B"),
-                                       title: "Subscription") { showSubscription = true }
-                            Divider().padding(.leading, 56)
                             ProfileRow(icon: "brain", iconColor: Color(hex: "#596F60"),
                                        title: "Memory") { showMemory = true }
                             Divider().padding(.leading, 56)
@@ -814,6 +811,10 @@ private struct AssistantSheet: View {
                     .tint(Color(hex: "#596F60"))
                     .onChange(of: settings.voiceEnabled) { _, _ in onSave() }
 
+                    Toggle("Continuous conversation", isOn: Binding(get: { settings.continuousConversation ?? false }, set: { settings.continuousConversation = $0; onSave() }))
+                        .tint(Color(hex: "#78B5CD"))
+                    Text("When enabled, Max listens again after a spoken reply while this app is open. Tap the stop control to end the conversation.")
+                        .font(.caption).foregroundStyle(.secondary)
                     if settings.voiceEnabled {
                         Picker(selection: $settings.preferredVoice) {
                             Text("Female").tag("female")
@@ -901,7 +902,7 @@ private struct BriefingSheet: View {
                         }
                     }
                 } footer: {
-                    Text("Max will send you a notification each morning with a summary of your calendar, emails, and top news.")
+                    Text("Max sends a morning notification. Tap it to hear your available calendar, weather, and reminder summary. This is not a system alarm. Gmail must be connected for email counts. Missed-call history is not available to Max.")
                 }
 
                 if settings.briefingEnabled {

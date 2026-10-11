@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import Supabase
 
 @MainActor
@@ -7,7 +8,9 @@ final class AuthService: ObservableObject {
 
     let supabase: SupabaseClient
 
-    @Published var currentUser: AuthUser?
+    @Published var currentUser: AuthUser? {
+        didSet { StorageService.shared.setAccountScope(currentUser?.isDemo == true ? "demo" : currentUser?.id ?? "signed-out") }
+    }
     @Published var isLoading: Bool = false
     @Published var authError: String? = nil
 
@@ -43,10 +46,14 @@ final class AuthService: ObservableObject {
             currentUser = user
         }
 
-        // Then try to restore real Supabase session
-        Task {
-            if let session = try? await supabase.auth.session {
-                currentUser = AuthUser(supabaseUser: session.user)
+        StorageService.shared.setAccountScope(currentUser?.isDemo == true ? "demo" : currentUser?.id ?? "signed-out")
+        // Then try to restore real Supabase session only after release configuration.
+        if !kSupabaseAnonKey.isEmpty {
+            Task {
+                do {
+                    let session = try await supabase.auth.session
+                    currentUser = AuthUser(supabaseUser: session.user)
+                } catch { /* Keep the local demo or signed-out state. */ }
             }
         }
 
@@ -64,6 +71,14 @@ final class AuthService: ObservableObject {
         }
     }
 
+    func managedSession() async throws -> (token: String, userID: String) {
+        guard currentUser?.isDemo != true, !kSupabaseAnonKey.isEmpty else { throw URLError(.userAuthenticationRequired) }
+        let session = try await supabase.auth.session
+        let userID = session.user.id.uuidString
+        guard userID == currentUser?.id else { throw URLError(.userAuthenticationRequired) }
+        return (session.accessToken, userID)
+    }
+
     // MARK: - Apple (native button → Supabase ID-token exchange)
 
     func signInWithApple(idToken: String, name: String?) async {
@@ -78,6 +93,7 @@ final class AuthService: ObservableObject {
                 )
             }
             currentUser = AuthUser(
+                id: session.user.id.uuidString,
                 name: name ?? session.user.userMetadata["full_name"]?.stringValue,
                 email: session.user.email,
                 isDemo: false
@@ -134,6 +150,7 @@ final class AuthService: ObservableObject {
 
 private extension AuthUser {
     init(supabaseUser user: Supabase.User) {
+        self.id = user.id.uuidString
         self.name  = user.userMetadata["full_name"]?.stringValue
         self.email = user.email
         self.isDemo = false

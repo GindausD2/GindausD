@@ -23,14 +23,14 @@ private struct ClaudeRequest: Encodable {
     let model: String
     let maxTokens: Int
     let stream: Bool
-    let system: String
+    let context: String
     let messages: [ClaudeRequestMessage]
     let tools: [ToolDefinition]
 
     enum CodingKeys: String, CodingKey {
         case model
         case maxTokens = "max_tokens"
-        case stream, system, messages, tools
+        case stream, context, messages, tools
     }
 }
 
@@ -85,21 +85,23 @@ private struct ClaudeRequestBlock: Encodable {
     let id: String?
     let name: String?
     let input: [String: AnyCodable]?
+    let text: String?
 
     enum CodingKeys: String, CodingKey {
         case type
         case toolUseId = "tool_use_id"
-        case content, id, name, input
+        case content, id, name, input, text
     }
 
     init(type: String, toolUseId: String? = nil, content: String? = nil,
-         id: String? = nil, name: String? = nil, input: [String: AnyCodable]? = nil) {
+         id: String? = nil, name: String? = nil, input: [String: AnyCodable]? = nil, text: String? = nil) {
         self.type = type
         self.toolUseId = toolUseId
         self.content = content
         self.id = id
         self.name = name
         self.input = input
+        self.text = text
     }
 }
 
@@ -116,7 +118,7 @@ private struct AccumulatedToolCall {
 final class ClaudeService {
     static let shared = ClaudeService()
 
-    private let apiURL = URL(string: "https://api.anthropic.com/v1/messages")!
+
     private let apiVersion = "2023-06-01"
     private let modelID = "claude-sonnet-4-6"
     private let maxTokens = 4096
@@ -126,7 +128,7 @@ final class ClaudeService {
     // MARK: - Tools Definition
 
     private var toolDefinitions: [ToolDefinition] {
-        [
+        let definitions: [ToolDefinition] = [
             ToolDefinition(
                 name: "get_datetime",
                 description: "Get the current date and time.",
@@ -185,9 +187,11 @@ final class ClaudeService {
                     properties: [
                         "title": PropertyDefinition(type: "string", description: "Reminder title"),
                         "body": PropertyDefinition(type: "string", description: "Reminder body text"),
-                        "minutesFromNow": PropertyDefinition(type: "string", description: "Minutes from now to fire the reminder")
+                        "fireAt": PropertyDefinition(type: "string", description: "Optional future ISO8601 date/time with timezone; use instead of minutesFromNow"),
+                    "fireAt": PropertyDefinition(type: "string", description: "Future ISO8601 timestamp with timezone; provide this or minutesFromNow"),
+                    "minutesFromNow": PropertyDefinition(type: "string", description: "Positive minutes from now; provide this or fireAt")
                     ],
-                    required: ["title", "body", "minutesFromNow"]
+                    required: ["title"]
                 )
             ),
             ToolDefinition(
@@ -301,41 +305,58 @@ final class ClaudeService {
                 )
             )
         ]
+        let v1Names: Set<String> = ["get_datetime", "save_note", "get_notes", "delete_note", "remember_fact", "recall_facts", "schedule_reminder", "get_reminders", "get_calendar_events", "recall_places"]
+        let extras = [
+            ToolDefinition(name: "save_place", description: "Manually save a named place and full address. Never infer that the user visited it.", inputSchema: InputSchema(type: "object", properties: ["name": PropertyDefinition(type: "string", description: "Unique place name"), "address": PropertyDefinition(type: "string", description: "Street, city, country")], required: ["name", "address"])),
+            ToolDefinition(name: "schedule_location_reminder", description: "Schedule one arrival reminder for an explicitly saved place.", inputSchema: InputSchema(type: "object", properties: ["title": PropertyDefinition(type: "string", description: "Reminder"), "placeName": PropertyDefinition(type: "string", description: "Exact saved place name")], required: ["title", "placeName"])),
+            ToolDefinition(name: "schedule_context_reminder", description: "Save a reminder shown when the user explicitly checks the named context in Max. No background behavior monitoring.", inputSchema: InputSchema(type: "object", properties: ["title": PropertyDefinition(type: "string", description: "Reminder"), "context": PropertyDefinition(type: "string", description: "User supplied context name")], required: ["title", "context"])),
+            ToolDefinition(name: "get_weather", description: "Get Apple Weather for a saved place. If no place name is supplied, use the most recently saved place with coordinates.", inputSchema: InputSchema(type: "object", properties: ["placeName": PropertyDefinition(type: "string", description: "Saved place name")], required: []))
+        ]
+        return definitions.filter { v1Names.contains($0.name) } + extras
     }
 
     // MARK: - Streaming API
 
     func streamMessage(
-        apiKey: String,
         messages: [Message],
         imageData: Data? = nil,     // JPEG/PNG data to send alongside the last user message
         onChunk: @escaping @Sendable (StreamChunk) -> Void
-    ) {
+    ) -> Task<Void, Never> {
         Task {
             do {
-                guard !apiKey.isEmpty, !apiKey.hasPrefix("YOUR_") else { throw ClaudeError.noAPIKey }
+                guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw ClaudeError.noAPIKey }
+                let session: (token: String, userID: String)
+                do { session = try await AuthService.shared.managedSession() }
+                catch { throw ClaudeError.signInRequired }
                 try await streamMessageInternal(
-                    apiKey: apiKey,
+                    sessionToken: session.token,
+                    accountScope: session.userID,
                     messages: messages,
                     imageData: imageData,
                     conversationHistory: [],
+                    round: 0,
                     onChunk: onChunk
                 )
             } catch {
-                onChunk(.error(error.localizedDescription))
+                if !Task.isCancelled { onChunk(.error(error.localizedDescription)) }
             }
         }
     }
 
     // Internal recursive method for tool-use agentic loop
     private func streamMessageInternal(
-        apiKey: String,
+        sessionToken: String,
+        accountScope: String,
         messages: [Message],
         imageData: Data? = nil,
-        conversationHistory: [[String: Any]],
+        conversationHistory: [ClaudeRequestMessage],
+        round: Int,
         onChunk: @escaping @Sendable (StreamChunk) -> Void
     ) async throws {
 
+        try Task.checkCancellation()
+        guard StorageService.shared.accountScope == accountScope else { throw ClaudeError.signInRequired }
+        guard round < 6 else { throw ClaudeError.tooManyActions }
         // Build messages array for API
         var apiMessages: [ClaudeRequestMessage] = []
 
@@ -357,19 +378,24 @@ final class ClaudeService {
             }
         }
 
+        if !conversationHistory.isEmpty { apiMessages = conversationHistory }
+        let facts = StorageService.shared.recallFacts().map { "\($0.key): \($0.value)" }
+        let cards = StorageService.shared.loadMemoryCards().map(\.content)
+        let remembered = String((facts + cards).joined(separator: "\n").prefix(12000))
         let request = ClaudeRequest(
             model: modelID,
             maxTokens: maxTokens,
             stream: true,
-            system: systemPrompt,
+            context: remembered,
             messages: apiMessages,
             tools: toolDefinitions
         )
 
-        var urlRequest = URLRequest(url: apiURL)
+        guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw ClaudeError.noAPIKey }
+        var urlRequest = URLRequest(url: base.appendingPathComponent("v1/messages"))
+        urlRequest.timeoutInterval = 45
         urlRequest.httpMethod = "POST"
-        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")
-        urlRequest.setValue(apiVersion, forHTTPHeaderField: "anthropic-version")
+        urlRequest.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let encoder = JSONEncoder()
@@ -388,8 +414,8 @@ final class ClaudeService {
                 errorBytes.append(byte)
                 if errorBytes.count >= 2048 { break }
             }
-            let errorBody = String(decoding: errorBytes, as: UTF8.self)
-            throw ClaudeError.apiError(httpResponse.statusCode, errorBody)
+            let serverError = (try? JSONSerialization.jsonObject(with: errorBytes) as? [String: Any])?["error"] as? String
+            throw ClaudeError.apiError(httpResponse.statusCode, serverError ?? "Max couldn't reply just now. Please try again.")
         }
 
         // SSE parsing state
@@ -406,6 +432,7 @@ final class ClaudeService {
         var accumulatedText = ""
 
         for try await byte in asyncBytes {
+            try Task.checkCancellation()
             // Decode a complete UTF-8 line, never individual bytes: emoji and
             // accented text may span multiple bytes and network chunks.
             if byte == 0x0A {
@@ -442,8 +469,11 @@ final class ClaudeService {
         if stopReason == "tool_use" && !pendingToolCalls.isEmpty {
             onChunk(.toolDone)
             try await executeToolsAndContinue(
-                apiKey: apiKey,
+                sessionToken: sessionToken,
+                accountScope: accountScope,
                 messages: messages,
+                apiMessages: apiMessages,
+                round: round,
                 accumulatedText: accumulatedText,
                 pendingToolCalls: pendingToolCalls,
                 onChunk: onChunk
@@ -510,6 +540,8 @@ final class ClaudeService {
                 stopReason = delta["stop_reason"] as? String
             }
 
+        case "error":
+            throw ClaudeError.apiError(502, "Max couldn't finish that reply. Please try again.")
         case "message_stop":
             return true
 
@@ -521,81 +553,34 @@ final class ClaudeService {
     }
 
     private func executeToolsAndContinue(
-        apiKey: String,
+        sessionToken: String,
+        accountScope: String,
         messages: [Message],
+        apiMessages: [ClaudeRequestMessage],
+        round: Int,
         accumulatedText: String,
         pendingToolCalls: [AccumulatedToolCall],
         onChunk: @escaping @Sendable (StreamChunk) -> Void
     ) async throws {
-
-        // Execute all tools
-        var toolResults: [(id: String, result: String)] = []
-
-        for toolCall in pendingToolCalls {
-            // Parse input JSON
-            var inputDict: [String: Any] = [:]
-            if let inputData = toolCall.inputJSON.data(using: .utf8),
-               let parsed = try? JSONSerialization.jsonObject(with: inputData) as? [String: Any] {
-                inputDict = parsed
-            }
-
-            let result = await ToolsService.shared.execute(name: toolCall.name, input: inputDict)
-            toolResults.append((id: toolCall.id, result: result))
+        var assistantBlocks: [ClaudeRequestBlock] = []
+        if !accumulatedText.isEmpty { assistantBlocks.append(ClaudeRequestBlock(type: "text", text: accumulatedText)) }
+        var results: [ClaudeRequestBlock] = []
+        for call in pendingToolCalls {
+            try Task.checkCancellation()
+            guard StorageService.shared.accountScope == accountScope else { throw ClaudeError.signInRequired }
+            guard toolDefinitions.contains(where: { $0.name == call.name }) else { throw ClaudeError.tooManyActions }
+            guard let data = (call.inputJSON.isEmpty ? "{}" : call.inputJSON).data(using: .utf8),
+                  let input = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ClaudeError.invalidResponse }
+            assistantBlocks.append(ClaudeRequestBlock(type: "tool_use", id: call.id, name: call.name, input: input.mapValues { AnyCodable($0) }))
+            let result = await ToolsService.shared.execute(name: call.name, input: input)
+            results.append(ClaudeRequestBlock(type: "tool_result", toolUseId: call.id, content: result))
         }
-
-        // Build updated messages including assistant turn + tool results
-        var updatedMessages = messages
-
-        // Add the assistant message with tool_use blocks
-        // We append a synthetic assistant message
-        var toolResultsBlocks: [[String: Any]] = []
-        for result in toolResults {
-            toolResultsBlocks.append([
-                "type": "tool_result",
-                "tool_use_id": result.id,
-                "content": result.result
-            ])
-        }
-
-        // Create continuation messages with tool results
-        // Build an updated message list including tool use and results
-        // We'll create new Message objects representing this exchange
-        var continuationMessages = updatedMessages
-
-        // Add assistant message (text + tool calls) as a combined message
-        // For simplicity, we rebuild as a new assistant message noting tool use happened
-        // The proper way: we need raw API messages — handled via a different path
-
-        // Simplified approach: add a continuation message that includes tool results
-        // and re-invoke the API with the full context
-        let toolSummary = toolResults.map { "Tool \($0.id): \($0.result)" }.joined(separator: "\n")
-
-        // Create synthetic messages that include tool context
-        // Assistant turn describing what tool was called
-        let assistantTurn = Message(
-            role: "assistant",
-            content: accumulatedText.isEmpty
-                ? "[Tool execution: \(pendingToolCalls.map { $0.name }.joined(separator: ", "))]"
-                : accumulatedText
-        )
-        continuationMessages.append(assistantTurn)
-
-        // User turn with tool results
-        let toolResultMessage = Message(
-            role: "user",
-            content: "Tool results:\n\(toolSummary)\n\nPlease continue based on these results."
-        )
-        continuationMessages.append(toolResultMessage)
-
-        // Continue streaming with updated context (image not re-sent on continuation)
-        try await streamMessageInternal(
-            apiKey: apiKey,
-            messages: continuationMessages,
-            imageData: nil,
-            conversationHistory: [],
-            onChunk: onChunk
-        )
+        var continuation = apiMessages
+        continuation.append(ClaudeRequestMessage(role: "assistant", content: .blocks(assistantBlocks)))
+        continuation.append(ClaudeRequestMessage(role: "user", content: .blocks(results)))
+        try await streamMessageInternal(sessionToken: sessionToken, accountScope: accountScope, messages: messages, imageData: nil, conversationHistory: continuation, round: round + 1, onChunk: onChunk)
     }
+
 }
 
 // MARK: - Errors
@@ -604,15 +589,21 @@ enum ClaudeError: LocalizedError {
     case invalidResponse
     case apiError(Int, String)
     case noAPIKey
+    case signInRequired
+    case tooManyActions
 
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
             return "Invalid response from Claude API"
         case .apiError(let code, let body):
-            return "API error \(code): \(body)"
+            return body
         case .noAPIKey:
-            return "Max is not connected yet. Please try again later."
+            return "Max is not connected yet. Notes, saved places, and reminders are still available."
+        case .signInRequired:
+            return "Sign in to talk with Max. You can still use your saved notes and reminders."
+        case .tooManyActions:
+            return "Let's take this one step at a time. Please try a simpler request."
         }
     }
 }

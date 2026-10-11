@@ -1,56 +1,56 @@
 import Foundation
 import UserNotifications
 
-// MARK: - Notification name used to trigger the briefing inside the app
-
 extension Notification.Name {
-    static let maxStartBriefing  = Notification.Name("max.start.briefing")
+    static let maxStartBriefing = Notification.Name("max.start.briefing")
     static let maxWidgetActivate = Notification.Name("max.widget.activate")
+    static let maxQuickReply = Notification.Name("max.quick.reply")
 }
-
-// MARK: - BriefingService
-
 final class BriefingService {
     static let shared = BriefingService()
     static let notificationID = "max.morning.briefing"
     static let userInfoTypeKey = "max_notification_type"
     static let briefingTypeValue = "morning_briefing"
-
-    static let briefingPrompt = """
-    Good morning! Please give me my daily briefing. \
-    First check today's date and time with get_datetime, then pull up my calendar events for today with get_calendar_events, \
-    read the top news headlines with read_news, and check my emails. \
-    Summarise everything conversationally — like a smart friend catching me up before my day starts. \
-    Keep it warm, brief, and actionable.
-    """
-
     private init() {}
 
     func schedule(hour: Int, minute: Int) {
+        guard (0...23).contains(hour), (0...59).contains(minute) else { return }
         cancel()
         let content = UNMutableNotificationContent()
         content.title = "Good morning"
-        content.body = "Your Max briefing is ready — tap to hear it."
+        content.body = "Start your day with Max — tap for your morning briefing."
         content.sound = .default
         content.userInfo = [Self.userInfoTypeKey: Self.briefingTypeValue]
-
-        var dc = DateComponents()
-        dc.hour = hour
-        dc.minute = minute
-        let trigger = UNCalendarNotificationTrigger(dateMatching: dc, repeats: true)
-        let request = UNNotificationRequest(identifier: Self.notificationID, content: content, trigger: trigger)
-        UNUserNotificationCenter.current().add(request)
+        var dc = DateComponents(); dc.hour = hour; dc.minute = minute
+        UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: Self.notificationID, content: content, trigger: UNCalendarNotificationTrigger(dateMatching: dc, repeats: true)))
     }
-
-    func cancel() {
-        UNUserNotificationCenter.current().removePendingNotificationRequests(
-            withIdentifiers: [Self.notificationID]
-        )
-    }
-
+    func cancel() { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [Self.notificationID]) }
     func rescheduleIfNeeded() {
-        let settings = StorageService.shared.loadSettings()
-        guard settings.briefingEnabled else { cancel(); return }
-        schedule(hour: settings.briefingHour, minute: settings.briefingMinute)
+        let s = StorageService.shared.loadSettings()
+        if s.briefingEnabled { schedule(hour: s.briefingHour, minute: s.briefingMinute) } else { cancel() }
+    }
+    func snapshot() async -> String {
+        let tools = ToolsService.shared
+        async let weather = tools.execute(name: "get_weather", input: [:])
+        async let calendar = tools.execute(name: "get_calendar_events", input: ["daysAhead": "1"])
+        async let reminders = tools.execute(name: "get_reminders", input: [:])
+        func parse(_ raw: String) -> [String: Any] {
+            guard let data = raw.data(using: .utf8) else { return [:] }
+            return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+        }
+        let (w, c, r) = await (parse(weather), parse(calendar), parse(reminders))
+        var lines = ["Good morning. Here's your day at a glance."]
+        if let temp = w["temperatureC"] as? Double, let place = w["place"] as? String {
+            lines.append("Weather in \(place): \(Int(temp.rounded()))°C, \(w["condition"] as? String ?? ""). Source: Apple Weather.")
+        } else { lines.append("Weather: \(w["error"] as? String ?? "unavailable").") }
+        if let events = c["events"] as? [[String: String]] {
+            lines.append(events.isEmpty ? "Calendar: no events in the next 24 hours." : "Calendar: " + events.map { "\($0["title"] ?? "Event") at \($0["start"] ?? "")" }.joined(separator: "; "))
+        } else { lines.append("Calendar: permission or connection unavailable.") }
+        if let items = r["reminders"] as? [[String: Any]] {
+            lines.append(items.isEmpty ? "Reminders: none upcoming." : "Reminders: " + items.compactMap { $0["title"] as? String }.joined(separator: "; "))
+        }
+        lines.append(await EmailMonitorService.shared.briefingSummary())
+        lines.append("Missed calls: not available to Max.")
+        return lines.joined(separator: "\n\n")
     }
 }

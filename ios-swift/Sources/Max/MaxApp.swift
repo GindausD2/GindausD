@@ -37,8 +37,15 @@ struct MaxApp: App {
                 .preferredColorScheme(resolvedScheme)
                 // Handle widget deep link: maxapp://listen
                 .onOpenURL { url in
-                    guard url.scheme == "maxapp", url.host == "listen" else { return }
-                    NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+                    guard url.scheme == "maxapp" else { return }
+                    switch url.host {
+                    case "listen":
+                        UserDefaults.standard.set(true, forKey: "max.pendingVoiceActivation")
+                        NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+                    case "briefing": NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
+                    case "quick": NotificationCenter.default.post(name: .maxQuickReply, object: "Help me plan the next hour.")
+                    default: break
+                    }
                 }
                 // Start / stop the persistent Dynamic Island session when auth changes
                 .onChange(of: authService.currentUser) { _, user in
@@ -162,7 +169,7 @@ struct RootView: View {
     }
 
     private var showHome: Bool {
-        guard let user = authService.currentUser else { return false }
-        return user.isDemo == true || store.isSubscribed
+        // The V1 beta uses authenticated server-side usage limits, not a mandatory purchase gate.
+        authService.currentUser != nil
     }
 }

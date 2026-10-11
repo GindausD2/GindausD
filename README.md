@@ -1,109 +1,23 @@
-# Max — AI Personal Assistant
+# Max — The AI Companion
 
-A mobile-first AI personal assistant powered by Claude, built with React Native + Expo.
+Max is a personal companion for conversations, daily briefings, reminders, and memories you choose to save. V1 focuses on the native iPhone app and Dynamic Island, with a premium glacier-blue glass interface. Flight/Uber booking and advanced autonomous agents are outside V1.
 
-## Features
+The native implementation uses Apple speech recognition and text-to-speech. AI generation goes through an authenticated Max backend; users do not enter provider API keys. Local notes, saved places, reminder forms, and conversation history can be used without AI generation.
 
-- **Streaming chat** — Responses appear word-by-word in real time
-- **Voice input** — Tap the mic, speak, and Max transcribes your words via Claude's audio API
-- **Voice output** — Max reads responses aloud using native text-to-speech
-- **Tool use** — Max can save notes, set reminders, remember facts, and check the time
-- **Persistent memory** — Notes and facts survive across sessions (stored locally with AsyncStorage)
-- **Reminders** — Native push notifications scheduled through the conversation
-- **Quick actions** — One-tap prompts for common tasks
-- **Beautiful dark UI** — Deep purple theme, smooth animations, markdown rendering
+## Project paths
 
-## Tech Stack
+- `ios-swift/`: native iPhone app, Dynamic Island extension, home/lock-screen widget, and XcodeGen project specification.
+- `backend/`: authenticated streaming endpoint, V1 tool allowlist, usage-quota SQL migration, and focused server tests.
+- `app/`, `components/`, `hooks/`, `services/`: Expo design preview. Its older direct-provider/auth paths are not the native V1 release path.
+- `android-kotlin/`: earlier Android prototype; not yet brought to native iPhone V1 parity.
+- `docs/V1_STATUS.md`: exact source status, required setup, limitations, and device acceptance checks.
 
-| Layer | Technology |
-|-------|-----------|
-| Framework | React Native + Expo SDK 51 |
-| AI Model | Claude claude-sonnet-4-6 (streaming + tool use) |
-| Voice Output | expo-speech |
-| Voice Input | expo-av + Claude audio transcription |
-| Storage | AsyncStorage |
-| Notifications | expo-notifications |
-| Navigation | expo-router |
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- Expo CLI (`npm install -g expo-cli`)
-- Expo Go app on your phone, or an iOS/Android simulator
-- An [Anthropic API key](https://console.anthropic.com/)
-
-### Setup
+## Validation
 
 ```bash
-# Clone and install
-git clone <repo>
-cd max-ai-assistant
-npm install
-
-# Start the dev server
-npx expo start
+node --test backend/tests/*.test.mjs
+npm ci
+npx tsc --noEmit
 ```
 
-Scan the QR code with Expo Go (Android) or the Camera app (iOS).
-
-### Adding your API key
-
-Open Max → tap the gear icon → paste your Anthropic API key → tap **Save**.
-
-Your key is stored locally on-device and never leaves your phone.
-
-## Project Structure
-
-```
-├── app/
-│   ├── _layout.tsx       # Root layout + notification setup
-│   ├── index.tsx         # Main chat screen
-│   └── settings.tsx      # Settings (API key, voice, data)
-├── components/
-│   ├── ChatBubble.tsx    # Message bubbles with markdown rendering
-│   ├── Header.tsx        # Top bar with avatar, actions
-│   ├── InputBar.tsx      # Text input + voice recording UI
-│   ├── QuickActions.tsx  # Shortcut chips for common prompts
-│   └── TypingIndicator.tsx  # Animated dots while Max thinks
-├── hooks/
-│   ├── useChat.ts        # Chat state, streaming, tool handling
-│   ├── useSettings.ts    # Settings load/save
-│   ├── useVoice.ts       # TTS (speak/stop)
-│   └── useVoiceRecorder.ts  # STT recording + transcription
-├── services/
-│   ├── claude.ts         # Anthropic SDK, streaming, agentic loop
-│   ├── storage.ts        # AsyncStorage (messages, notes, memory)
-│   ├── tools.ts          # Tool definitions + handlers
-│   └── whisper.ts        # Audio recording + transcription
-├── constants/
-│   ├── colors.ts         # Dark theme palette
-│   └── prompts.ts        # System prompt + welcome message
-└── types/
-    └── index.ts          # TypeScript interfaces
-```
-
-## Tools Max Can Use
-
-| Tool | What it does |
-|------|-------------|
-| `save_note` | Save a note locally |
-| `get_notes` | Retrieve all notes |
-| `delete_note` | Delete a specific note |
-| `remember_fact` | Store a user fact (name, preferences, etc.) |
-| `recall_facts` | Retrieve stored facts |
-| `get_datetime` | Get current date + time + timezone |
-| `schedule_reminder` | Schedule a push notification |
-| `get_reminders` | List upcoming reminders |
-
-## Example Conversations
-
-> **You:** "Remember that my partner's birthday is May 15th"
-> **Max:** Uses `remember_fact` → "Got it! I've saved that — I won't forget."
-
-> **You:** "Set a reminder in 30 minutes to drink water"
-> **Max:** Uses `schedule_reminder` → Schedules a native notification
-
-> **You:** "Save a note about my project ideas"
-> **Max:** Uses `save_note` → "Note saved! What else can I help with?"
+For native generation/build setup and the server environment, follow [V1 status and setup](docs/V1_STATUS.md). Xcode and live account/provider credentials are required to validate the release. No production-ready or always-on assistant is claimed by the prototype.

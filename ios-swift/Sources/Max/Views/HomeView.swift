@@ -11,6 +11,8 @@ struct HomeView: View {
 
     @StateObject private var viewModel = HomeViewModel()
     @State private var showSettings: Bool = false
+    @State private var showCompanion: Bool = false
+    @Environment(\.scenePhase) private var scenePhase
     @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
@@ -55,6 +57,13 @@ struct HomeView: View {
             }
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage != nil)
         }
+        .onDisappear { viewModel.endConversation() }
+        .onChange(of: authService.currentUser) { _, _ in viewModel.endConversation(); viewModel.loadMessages() }
+        .sheet(isPresented: $showCompanion) { CompanionView() }
+        .onChange(of: scenePhase) { _, phase in if phase == .background { viewModel.endConversation() } }
+        .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
+            if let prompt = notification.object as? String { viewModel.inputText = prompt; viewModel.sendTextMessage() }
+        }
         .sheet(isPresented: $showHistory) {
             ConversationHistoryView(onNewChat: {
                 showHistory = false
@@ -82,7 +91,11 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.loadMessages()
-            liveActivity.startPersistentSession() // ensure island is alive
+            liveActivity.startPersistentSession()
+            if UserDefaults.standard.bool(forKey: "max.pendingVoiceActivation") {
+                UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
+                viewModel.handleOrbTap()
+            }
         }
         // ── Dynamic Island ─────────────────────────────────────────────────────
         .onChange(of: viewModel.conversationState) { _, newState in
@@ -106,6 +119,7 @@ struct HomeView: View {
         }
         // Start listening when user taps the home screen widget
         .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
+            UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
             viewModel.handleOrbTap()
         }
     }
@@ -240,7 +254,7 @@ struct HomeView: View {
                     .font(.body)
                     .submitLabel(.send)
                     .onSubmit { viewModel.sendTextMessage() }
-                    .disabled(viewModel.conversationState == .thinking)
+                    .disabled(viewModel.conversationState != .idle)
                     .accessibilityLabel("Message Max")
                 Button { viewModel.sendTextMessage() } label: {
                     Image(systemName: "arrow.up")
@@ -249,7 +263,7 @@ struct HomeView: View {
                         .frame(width: 44, height: 44)
                         .background(Color(hex: "#292D2B"), in: Circle())
                 }
-                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.conversationState == .thinking)
+                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.conversationState != .idle)
                 .accessibilityLabel("Send message")
             }
             .padding(.horizontal, 20)
@@ -270,12 +284,25 @@ struct HomeView: View {
                 .frame(maxWidth: .infinity)
 
                 // Camera (vision)
-                cameraButton
-                    .frame(maxWidth: .infinity)
+                Button { viewModel.startMorningBriefing() } label: {
+                    Image(systemName: "sun.horizon")
+                        .font(.system(size: 22))
+                        .foregroundStyle(Color.secondary)
+                        .frame(width: 50, height: 50)
+                }
+                .accessibilityLabel("Morning briefing")
+                .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 16)
             .padding(.top, 18)
             .padding(.bottom, 20)
+        }
+        .overlay(alignment: .topTrailing) {
+            if viewModel.conversationState != .idle {
+                Button { viewModel.endConversation() } label: {
+                    Image(systemName: "stop.circle.fill").font(.system(size: 24)).foregroundStyle(Color.secondary)
+                }.accessibilityLabel("End conversation").padding(8)
+            }
         }
         .glassCard(cornerRadius: 36, depth: .regular)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.conversationState)
@@ -414,6 +441,11 @@ final class HomeViewModel: ObservableObject {
     private let claude  = ClaudeService.shared
     private let voice   = VoiceService.shared
 
+    private var streamTask: Task<Void, Never>?
+    private var turnID = UUID()
+    private var continuousActive = false
+    private var startingVoice = false
+    private var loadedScope: String?
     private var streamingMessageId: String? = nil
     private var currentConversationId: String = UUID().uuidString
     private var conversationStartedAt: Date = Date()
@@ -428,12 +460,14 @@ final class HomeViewModel: ObservableObject {
     }
 
     func loadMessages() {
+        loadedScope = storage.accountScope
         messages = storage.loadMessages()
         // If there are existing messages from a previous session, assign them a stable ID
         // so resuming an app session keeps the archive up to date.
     }
 
     func clearHistory() {
+        endConversation()
         storage.clearMessages()
         messages = []
     }
@@ -457,6 +491,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     private func archiveCurrentConversation() {
+        guard loadedScope == storage.accountScope else { return }
         let saveable = messages.filter { !$0.isStreaming && !$0.content.isEmpty }
         guard !saveable.isEmpty else { return }
         let firstUserText = saveable.first(where: { $0.role == "user" })?.content ?? "Conversation"
@@ -500,19 +535,52 @@ final class HomeViewModel: ObservableObject {
 
     func startMorningBriefing() {
         guard conversationState == .idle else { return }
-        let prompt = BriefingService.briefingPrompt
-        addUserMessage("Good morning — give me my daily briefing.")
-        streamResponse(userText: prompt, imageData: nil)
+        conversationState = .thinking
+        let briefingID = UUID(); turnID = briefingID
+        streamTask = Task {
+            let snapshot = await BriefingService.shared.snapshot()
+            guard turnID == briefingID, !Task.isCancelled else { return }
+            conversationState = .idle
+            addUserMessage("Good morning — give me my daily briefing.")
+            if kMaxAPIBaseURL.isEmpty || AuthService.shared.currentUser?.isDemo == true {
+                messages.append(Message(role: "assistant", content: snapshot))
+                storage.saveMessages(messages)
+                archiveCurrentConversation()
+                if storage.loadSettings().voiceEnabled { voice.speak(snapshot, preferredVoice: storage.loadSettings().preferredVoice) }
+            } else { streamResponse(userText: "Summarize this verified snapshot warmly. Do not invent missing sources.\n" + snapshot) }
+        }
+    }
+
+    func endConversation() {
+        continuousActive = false
+        turnID = UUID()
+        streamTask?.cancel(); streamTask = nil
+        voice.stopSpeaking(); voice.stopRecording()
+        isTranscribing = false
+        for index in messages.indices { messages[index].isStreaming = false }
+        streamingMessageId = nil
+        conversationState = .idle
+        if loadedScope == storage.accountScope { storage.saveMessages(messages) }
     }
 
     private func startListening() {
+        guard !startingVoice else { return }
+        startingVoice = true
+        let activationID = turnID
         Task {
+            defer { startingVoice = false }
             do {
-                conversationState = .listening
+                continuousActive = storage.loadSettings().continuousConversation ?? false
+                voice.onUtteranceEnd = { [weak self] in
+                    guard let self, self.continuousActive, self.conversationState == .listening else { return }
+                    self.stopListening()
+                }
                 try await voice.startRecording()
+                guard turnID == activationID else { voice.stopRecording(); return }
+                conversationState = .listening
             } catch {
                 conversationState = .idle
-                addSystemError("Microphone access denied.")
+                addSystemError(error.localizedDescription)
             }
         }
     }
@@ -521,8 +589,10 @@ final class HomeViewModel: ObservableObject {
         guard conversationState == .listening else { return }
         conversationState = .idle
         isTranscribing = true
+        let listeningID = turnID
         Task {
-            let transcription = await voice.stopAndTranscribe(apiKey: kAnthropicAPIKey)
+            let transcription = await voice.stopAndTranscribe()
+            guard turnID == listeningID else { return }
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
@@ -533,10 +603,7 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    private func stopSpeaking() {
-        voice.stopSpeaking()
-        conversationState = .idle
-    }
+    private func stopSpeaking() { endConversation() }
 
     private func addUserMessage(_ text: String) {
         let msg = Message(role: "user", content: text)
@@ -552,6 +619,7 @@ final class HomeViewModel: ObservableObject {
 
     private func streamResponse(userText: String, imageData: Data? = nil) {
         let settings = storage.loadSettings()
+        let thisTurn = UUID(); turnID = thisTurn
         conversationState = .thinking
 
         let streamId = UUID().uuidString
@@ -562,15 +630,15 @@ final class HomeViewModel: ObservableObject {
 
         // Keep the last 40 messages (20 exchanges) to stay within token limits
         let history = messages.filter { $0.id != streamId }
-        let trimmed = history.count > 40 ? Array(history.suffix(40)) : history
+        var trimmed = history.count > 40 ? Array(history.suffix(40)) : history
+        if let index = trimmed.lastIndex(where: { $0.role == "user" }) { trimmed[index].content = userText }
 
-        claude.streamMessage(
-            apiKey: kAnthropicAPIKey,
+        streamTask = claude.streamMessage(
             messages: trimmed,
             imageData: imageData
         ) { [weak self] chunk in
             Task { @MainActor [weak self] in
-                guard let self = self else { return }
+                guard let self = self, self.turnID == thisTurn else { return }
                 switch chunk {
                 case .text(let text):
                     fullText += text
@@ -605,12 +673,15 @@ final class HomeViewModel: ObservableObject {
                             while self.voice.isSpeaking {
                                 try? await Task.sleep(nanoseconds: 200_000_000)
                             }
-                            await MainActor.run { self.conversationState = .idle }
+                            guard self.turnID == thisTurn else { return }
+                            self.conversationState = .idle
+                            if self.continuousActive, UIApplication.shared.applicationState == .active { self.startListening() }
                         }
                     } else {
                         self.conversationState = .idle
                     }
                 case .error(let errText):
+                    self.continuousActive = false
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
                         if fullText.isEmpty { self.messages[idx].content = "Error: \(errText)" }
                         self.messages[idx].isStreaming = false

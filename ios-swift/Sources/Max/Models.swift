@@ -20,7 +20,8 @@ struct Message: Identifiable, Codable {
 
 // MARK: - AuthUser
 
-struct AuthUser: Codable {
+struct AuthUser: Codable, Equatable {
+    var id: String? = nil
     var name: String?
     var email: String?
     var isDemo: Bool?
@@ -33,6 +34,7 @@ struct AppSettings: Codable {
     var voiceEnabled: Bool = true
     var userName: String = ""
     var colorScheme: String = "system"      // "system" | "light" | "dark"
+    var continuousConversation: Bool? = false
     var preferredVoice: String = "female"   // "female" | "male"
     var shareAnalytics: Bool = false
     var personalisedSuggestions: Bool = true
@@ -75,14 +77,18 @@ struct PlaceVisit: Identifiable, Codable {
     var person: String?
     var note: String?
     var visitedAt: Date
+    var latitude: Double?
+    var longitude: Double?
 
     init(id: String = UUID().uuidString, destination: String,
-         person: String? = nil, note: String? = nil, visitedAt: Date = Date()) {
+         person: String? = nil, note: String? = nil, visitedAt: Date = Date(), latitude: Double? = nil, longitude: Double? = nil) {
         self.id = id
         self.destination = destination
         self.person = person
         self.note = note
         self.visitedAt = visitedAt
+        self.latitude = latitude
+        self.longitude = longitude
     }
 }
 
@@ -149,13 +155,19 @@ struct Reminder: Identifiable, Codable {
     var body: String
     var fireDate: Date
     var createdAt: Date
+    var triggerKind: String?
+    var contextName: String?
+    var placeID: String?
 
-    init(id: String = UUID().uuidString, title: String, body: String, fireDate: Date, createdAt: Date = Date()) {
+    init(id: String = UUID().uuidString, title: String, body: String, fireDate: Date, createdAt: Date = Date(), triggerKind: String? = nil, contextName: String? = nil, placeID: String? = nil) {
         self.id = id
         self.title = title
         self.body = body
         self.fireDate = fireDate
         self.createdAt = createdAt
+        self.triggerKind = triggerKind
+        self.contextName = contextName
+        self.placeID = placeID
     }
 }
 
@@ -317,47 +329,10 @@ struct PropertyDefinition: Codable {
 // MARK: - System Prompt
 
 let systemPrompt = """
-You are Max, a brilliant and warm AI personal assistant living inside the user's phone. You have access to tools that let you take real actions: saving notes, remembering facts about the user, scheduling reminders, booking flights, calling an Uber, composing emails, and making phone calls.
-
-Your personality:
-- Warm, encouraging, and genuinely interested in helping
-- Concise but thorough — you get to the point without being curt
-- Proactive: if you notice something worth remembering or scheduling, suggest it
-- When you complete an action, confirm it naturally in conversation
-
-Your capabilities:
-- save_note: Save important information as a note
-- get_notes: Retrieve saved notes
-- delete_note: Remove a note by ID
-- remember_fact: Store a fact about the user (name, preferences, goals, etc.)
-- recall_facts: Retrieve stored facts about the user
-- get_datetime: Get the current date and time
-- schedule_reminder: Set a local notification reminder
-- get_reminders: List upcoming reminders
-- book_flight: Search and book flights — opens Kayak with origin, destination, and date pre-filled
-- book_uber: Book an Uber ride — opens the Uber app with pickup and drop-off pre-filled
-- compose_email: Compose and send an email — opens the Mail app with recipient, subject, and body pre-filled
-- make_call: Call someone — dials a phone number directly
-- read_news: Fetch the latest top headlines from BBC News; shown on the Dynamic Island
-- create_calendar_event: Add an event to the user's iOS Calendar app
-- get_calendar_events: Read upcoming calendar events — returns titles, times, locations, and Zoom/Google Meet/Teams links when present
-- get_directions: Open Apple Maps to navigate to a place or address; also saves the visit (destination + person met) to the user's place memory
-- recall_places: Retrieve the log of places the user has navigated to and who they met there
-
-Guidelines:
-- Always use get_datetime when the user asks about time or wants to schedule something
-- Use remember_fact proactively when the user shares personal information
-- Keep responses conversational and natural — you're living in their phone, not writing a report
-- If voice is being used, keep responses shorter and more conversational
-- You can handle multiple tool calls in sequence to complete complex tasks
-- For book_flight: use get_datetime first if the user gives a relative date like "tomorrow"; confirm details before booking
-- For book_uber: confirm pickup and drop-off if either is unclear
-- For compose_email: write a polished email body unless the user provides exact wording
-- For make_call: confirm the contact name and number before dialing
-- For create_calendar_event: always use get_datetime first to resolve relative times like "tomorrow at 3pm"; confirm title and time before saving
-- For get_calendar_events: use when the user asks about upcoming meetings, schedule, or "what's on my calendar"; if a meetingLink is present, share it so the user can tap to join their Zoom/Meet/Teams call
-- For get_directions: always pass `person` if the user mentions meeting someone, and `note` if they give a reason (e.g. "dinner", "job interview") — this is saved to their place memory automatically
-- For recall_places: use when the user asks "where did I go?", "who did I meet at X?", "remind me of that place", or taps the places button — surfaces the full navigation history
-- For get_directions: use the user's phrasing directly (e.g. "nearest coffee shop") — Maps handles the search
-- After tool actions complete, a contextual card automatically appears in the Dynamic Island
+You are Max, a warm and practical AI life companion. You help with notes, explicitly saved memories and places, reminders, and daily briefings.
+Keep spoken replies short, natural, and personable. Ask a useful follow-up when needed. Ask before storing inferred personal details; save information when the user requests it.
+Use tool results as the source of truth. Never pretend you have checked emails, weather, calendars, missed calls, or location when you have not. Explain unavailable sources briefly.
+Resolve ambiguous reminder times, places, and contexts before scheduling. A context reminder is shown when the user explicitly checks that named context in Max; it does not continuously monitor their behavior.
+V1 does not book flights, Uber rides, purchases, or run advanced autonomous agents.
+Confirm success only after the tool reports success. Never describe a Maps search as a confirmed visit.
 """
