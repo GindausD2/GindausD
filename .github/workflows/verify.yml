@@ -13,6 +13,26 @@ jobs:
   server-and-preview:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: max-ci-only
+          POSTGRES_DB: max_verification
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: max-ci-only
+      PGDATABASE: max_verification
+      MAX_DISPOSABLE_DB: 'true'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +42,10 @@ jobs:
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm test --prefix backend
+      - name: Verify quota in disposable PostgreSQL
+        run: |
+          command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+          node backend/scripts/test-quota.mjs
   ios-build:
     runs-on: macos-15
     timeout-minutes: 30

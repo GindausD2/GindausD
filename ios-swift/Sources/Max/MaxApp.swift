@@ -42,8 +42,12 @@ struct MaxApp: App {
                     case "listen":
                         UserDefaults.standard.set(true, forKey: "max.pendingVoiceActivation")
                         NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
-                    case "briefing": NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
-                    case "quick": NotificationCenter.default.post(name: .maxQuickReply, object: "Help me plan the next hour.")
+                    case "briefing":
+                        UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
+                        NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
+                    case "quick":
+                        UserDefaults.standard.set("Help me plan the next hour.", forKey: "max.pendingQuickReply")
+                        NotificationCenter.default.post(name: .maxQuickReply, object: "Help me plan the next hour.")
                     default: break
                     }
                 }
@@ -122,6 +126,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if userInfo[BriefingService.userInfoTypeKey] as? String == BriefingService.briefingTypeValue {
             // Post to main thread so HomeView's onReceive picks it up
             DispatchQueue.main.async {
+                UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
                 NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
             }
         }

@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import Supabase
+import UserNotifications
+import WidgetKit
 
 @MainActor
 final class AuthService: ObservableObject {
@@ -9,7 +11,22 @@ final class AuthService: ObservableObject {
     let supabase: SupabaseClient
 
     @Published var currentUser: AuthUser? {
-        didSet { StorageService.shared.setAccountScope(currentUser?.isDemo == true ? "demo" : currentUser?.id ?? "signed-out") }
+        didSet {
+            let scope = currentUser?.isDemo == true ? "demo" : currentUser?.id ?? "signed-out"
+            if scope != StorageService.shared.accountScope {
+                let ids = StorageService.shared.loadReminders().map(\.id) + [BriefingService.notificationID]
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+                VoiceService.shared.stopRecording(); VoiceService.shared.stopSpeaking()
+                LiveActivityService.shared.stopPersistentSession()
+                let widget = UserDefaults(suiteName: "group.com.gindausd.max")
+                widget?.removeObject(forKey: "max:widget_last_message")
+                widget?.removeObject(forKey: "max:widget_last_message_time")
+                WidgetCenter.shared.reloadAllTimelines()
+                for key in ["max.pendingVoiceActivation", "max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            StorageService.shared.setAccountScope(scope)
+        }
     }
     @Published var isLoading: Bool = false
     @Published var authError: String? = nil
@@ -117,21 +134,22 @@ final class AuthService: ObservableObject {
         if UserDefaults.standard.object(forKey: demoStartKey) == nil {
             UserDefaults.standard.set(Date(), forKey: demoStartKey)
         }
+        currentUser = user
         var settings = StorageService.shared.loadSettings()
         settings.preferredVoice = voice
         if settings.userName.isEmpty { settings.userName = displayName }
         StorageService.shared.saveSettings(settings)
-        currentUser = user
         isLoading = false
     }
 
     // MARK: - Sign Out
 
     func signOut() {
-        if currentUser?.isDemo == true {
+        let wasDemo = currentUser?.isDemo == true
+        currentUser = nil
+        if wasDemo {
             UserDefaults.standard.removeObject(forKey: demoKey)
             UserDefaults.standard.removeObject(forKey: demoStartKey)
-            currentUser = nil
         } else {
             Task { try? await supabase.auth.signOut() }
         }

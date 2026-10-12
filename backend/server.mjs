@@ -1,8 +1,10 @@
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 import { createHandler } from './handler.mjs';
-const handle = createHandler();
-const server = createServer(async (req, res) => {
+import { pathToFileURL } from 'node:url';
+
+export function createMaxServer({ handle = createHandler() } = {}) {
+return createServer(async (req, res) => {
   const controller = new AbortController();
   res.on('close', () => { if (!res.writableEnded) controller.abort(); });
   try {
@@ -10,8 +12,18 @@ const server = createServer(async (req, res) => {
     const response = await handle(request);
     res.writeHead(response.status, Object.fromEntries(response.headers));
     if (!response.body) return res.end();
-    for await (const chunk of response.body) { if (!res.write(chunk)) await new Promise(resolve => { res.once('drain', resolve); res.once('close', resolve); }); if (controller.signal.aborted) break; }
+    for await (const chunk of response.body) {
+      if (controller.signal.aborted) break;
+      if (!res.write(chunk)) await new Promise(resolve => {
+        const finish = () => { res.off('drain', finish); res.off('close', finish); resolve(); };
+        res.once('drain', finish); res.once('close', finish);
+      });
+      if (controller.signal.aborted) break;
+    }
     res.end();
   } catch { if (!res.headersSent) res.writeHead(500); res.end(); }
 });
-server.listen(Number(process.env.PORT || 8787), '0.0.0.0', () => console.log('Max backend listening'));
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  createMaxServer().listen(Number(process.env.PORT || 8787), '0.0.0.0', () => console.log('Max backend listening'));
+}

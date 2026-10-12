@@ -20,6 +20,7 @@ final class VoiceService: NSObject, ObservableObject {
     private var recognitionID = UUID()
     var onUtteranceEnd: (() -> Void)?
     private let speechSynthesizer = AVSpeechSynthesizer()
+    private var currentUtterance: AVSpeechUtterance?
 
     private override init() {
         super.init()
@@ -31,13 +32,16 @@ final class VoiceService: NSObject, ObservableObject {
     func startRecording() async throws {
         stopSpeaking()
         stopRecording()
+        let permissionID = recognitionID
         let micAllowed = await withCheckedContinuation { continuation in
             AVAudioSession.sharedInstance().requestRecordPermission { continuation.resume(returning: $0) }
         }
+        guard recognitionID == permissionID, !Task.isCancelled else { throw CancellationError() }
         guard micAllowed else { throw VoiceError.microphoneDenied }
         let speechStatus = await withCheckedContinuation { continuation in
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
+        guard recognitionID == permissionID, !Task.isCancelled else { throw CancellationError() }
         guard speechStatus == .authorized else { throw VoiceError.speechDenied }
         guard let recognizer = SFSpeechRecognizer(locale: Locale.current), recognizer.isAvailable else { throw VoiceError.unavailable }
         guard UIApplication.shared.applicationState != .background else { throw VoiceError.unavailable }
@@ -78,12 +82,14 @@ final class VoiceService: NSObject, ObservableObject {
 
     func stopAndTranscribe() async -> String? {
         guard recognitionRequest != nil else { return nil }
+        let finishingID = recognitionID
         audioEngine.stop()
         if inputTapInstalled { audioEngine.inputNode.removeTap(onBus: 0); inputTapInstalled = false }
         recognitionRequest?.endAudio()
         isRecording = false
         // Allow the recognizer's final partial result to arrive without another API call.
         try? await Task.sleep(for: .milliseconds(250))
+        guard recognitionID == finishingID, !Task.isCancelled else { return nil }
         let result = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         stopRecording()
         return result.isEmpty ? nil : result
@@ -136,8 +142,9 @@ final class VoiceService: NSObject, ObservableObject {
         utterance.pitchMultiplier = 1.05
         utterance.volume = 1.0
 
-        speechSynthesizer.speak(utterance)
+        currentUtterance = utterance
         isSpeaking = true
+        speechSynthesizer.speak(utterance)
     }
 
     // MARK: - Markdown Stripper
@@ -163,6 +170,7 @@ final class VoiceService: NSObject, ObservableObject {
     }
 
     func stopSpeaking() {
+        currentUtterance = nil
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
@@ -175,12 +183,16 @@ final class VoiceService: NSObject, ObservableObject {
 extension VoiceService: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            guard self.currentUtterance === utterance else { return }
+            self.currentUtterance = nil
             self.isSpeaking = false
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
+            guard self.currentUtterance === utterance else { return }
+            self.currentUtterance = nil
             self.isSpeaking = false
         }
     }

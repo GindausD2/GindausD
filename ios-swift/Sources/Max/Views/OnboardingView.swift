@@ -91,7 +91,7 @@ struct OnboardingView: View {
 private struct PageLayout<Art: View>: View {
     @ViewBuilder var art: () -> Art
     let title: String
-    let body: String
+    let description: String
     var tip: String? = nil
 
     var body: some View {
@@ -107,7 +107,7 @@ private struct PageLayout<Art: View>: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
 
-            Text(body)
+            Text(description)
                 .font(.system(size: 16, weight: .regular))
                 .foregroundStyle(Color.white.opacity(0.60))
                 .multilineTextAlignment(.center)
@@ -152,7 +152,7 @@ private struct WelcomePage: View {
                 }
             },
             title: "Meet Max",
-            body: "Your AI personal assistant that lives right inside your iPhone. Talk naturally, get things done."
+            description: "Your AI personal assistant that lives right inside your iPhone. Talk naturally, get things done."
         )
     }
 }
@@ -187,7 +187,7 @@ private struct VoicePage: View {
                 .onAppear { pulse = true }
             },
             title: "Press the Orb to Talk",
-            body: "Tap the orange orb and speak. Max listens, thinks, then answers out loud. Ask anything — book a flight, check your calendar, set a reminder.",
+            description: "Tap the orange orb and speak. Max listens, thinks, then answers out loud. Ask anything — book a flight, check your calendar, set a reminder.",
             tip: "Tap again while Max is speaking to stop it."
         )
     }
@@ -236,7 +236,7 @@ private struct DynamicIslandPage: View {
                 .onAppear { glow = true }
             },
             title: "Always With You",
-            body: "Max lives in your Dynamic Island at the top of the screen. While you're using other apps, Max quietly shows what it's doing and is always one tap away.",
+            description: "Max lives in your Dynamic Island at the top of the screen. While you're using other apps, Max quietly shows what it's doing and is always one tap away.",
             tip: "Works on iPhone 14 Pro and later."
         )
     }
@@ -290,7 +290,7 @@ private struct ActionButtonPage: View {
                 }
             },
             title: "One Press to Activate",
-            body: "Set your Action Button to launch Max instantly. One press — Max starts listening right away, no unlocking needed.",
+            description: "Set your Action Button to launch Max instantly. One press — Max starts listening right away, no unlocking needed.",
             tip: "Settings → Action Button → Shortcut → \"Activate Max\""
         )
     }
@@ -347,7 +347,7 @@ private struct WidgetPage: View {
                 }
             },
             title: "Max on Your Home Screen",
-            body: "Add the Max widget and start a conversation with one tap — no unlocking, no searching.",
+            description: "Add the Max widget and start a conversation with one tap — no unlocking, no searching.",
             tip: "Long press home screen → tap + → search \"Max\""
         )
     }
@@ -382,7 +382,7 @@ private struct GetStartedPage: View {
                 .onAppear { glow = true }
             },
             title: "You're All Set",
-            body: "Press the orb and say anything. Max handles the rest."
+            description: "Press the orb and say anything. Max handles the rest."
         )
     }
 }

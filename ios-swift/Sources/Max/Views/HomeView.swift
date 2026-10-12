@@ -62,6 +62,7 @@ struct HomeView: View {
         .sheet(isPresented: $showCompanion) { CompanionView() }
         .onChange(of: scenePhase) { _, phase in if phase == .background { viewModel.endConversation() } }
         .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
+            UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
             if let prompt = notification.object as? String { viewModel.inputText = prompt; viewModel.sendTextMessage() }
         }
         .sheet(isPresented: $showHistory) {
@@ -94,7 +95,15 @@ struct HomeView: View {
             liveActivity.startPersistentSession()
             if UserDefaults.standard.bool(forKey: "max.pendingVoiceActivation") {
                 UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
-                viewModel.handleOrbTap()
+                viewModel.activateVoice()
+            }
+            if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
+                UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
+                viewModel.startMorningBriefing()
+            }
+            if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
+                UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
+                viewModel.inputText = prompt; viewModel.sendTextMessage()
             }
         }
         // ── Dynamic Island ─────────────────────────────────────────────────────
@@ -115,12 +124,13 @@ struct HomeView: View {
         }
         // Start briefing when user taps the morning notification
         .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+            UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
             viewModel.startMorningBriefing()
         }
         // Start listening when user taps the home screen widget
         .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
             UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
-            viewModel.handleOrbTap()
+            viewModel.activateVoice()
         }
     }
 
@@ -460,6 +470,10 @@ final class HomeViewModel: ObservableObject {
     }
 
     func loadMessages() {
+        if loadedScope != storage.accountScope {
+            currentConversationId = UUID().uuidString
+            conversationStartedAt = Date()
+        }
         loadedScope = storage.accountScope
         messages = storage.loadMessages()
         // If there are existing messages from a previous session, assign them a stable ID
@@ -526,6 +540,11 @@ final class HomeViewModel: ObservableObject {
 
     func handleOrbTap() { handleMicTap() }
 
+    func activateVoice() {
+        guard conversationState == .idle, !isTranscribing else { return }
+        startListening()
+    }
+
     func sendPlacesQuery() {
         guard conversationState == .idle else { return }
         let query = "What interesting places are near me right now?"
@@ -564,7 +583,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     private func startListening() {
-        guard !startingVoice else { return }
+        guard !startingVoice, !isTranscribing else { return }
         startingVoice = true
         let activationID = turnID
         Task {
@@ -579,6 +598,7 @@ final class HomeViewModel: ObservableObject {
                 guard turnID == activationID else { voice.stopRecording(); return }
                 conversationState = .listening
             } catch {
+                guard turnID == activationID, !(error is CancellationError) else { return }
                 conversationState = .idle
                 addSystemError(error.localizedDescription)
             }
@@ -638,7 +658,7 @@ final class HomeViewModel: ObservableObject {
             imageData: imageData
         ) { [weak self] chunk in
             Task { @MainActor [weak self] in
-                guard let self = self, self.turnID == thisTurn else { return }
+                guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
                 switch chunk {
                 case .text(let text):
                     fullText += text

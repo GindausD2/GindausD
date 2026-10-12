@@ -19,7 +19,12 @@ export function createHandler({ env = process.env, fetchImpl = fetch, log = cons
     if (url.pathname === '/health' && request.method === 'GET') return Response.json({ service: 'max', status: 'running' });
     if (url.pathname !== '/v1/messages') return json(404, 'Not found');
     if (request.method !== 'POST') return json(405, 'Use POST');
-    if (!env.ANTHROPIC_API_KEY || !env.SUPABASE_URL?.startsWith('https://') || !env.SUPABASE_ANON_KEY) return json(503, 'Max is not connected yet. Please try again later.');
+    let base;
+    try {
+      const authURL = new URL(env.SUPABASE_URL);
+      if (authURL.protocol !== 'https:' || authURL.username || authURL.password || authURL.search || authURL.hash || !env.ANTHROPIC_API_KEY?.trim() || !env.SUPABASE_ANON_KEY?.trim()) throw Error('Invalid configuration');
+      base = authURL.href.replace(/\/$/, '');
+    } catch { return json(503, 'Max is not connected yet. Please try again later.'); }
     const authorization = request.headers.get('authorization');
     if (!authorization?.match(/^Bearer [^\s]+$/)) return json(401, 'Sign in to talk with Max.');
     if (!request.headers.get('content-type')?.includes('application/json')) return json(415, 'Use JSON');
@@ -29,24 +34,27 @@ export function createHandler({ env = process.env, fetchImpl = fetch, log = cons
       for await (const chunk of request.body ?? []) { bytes += chunk.byteLength; if (bytes > 256000) return json(413, 'Message is too large'); chunks.push(chunk); }
       body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     } catch { return json(400, 'Invalid JSON'); }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return json(400, 'Invalid request');
     if (!Array.isArray(body.messages) || body.messages.length === 0 || body.messages.length > 60 || !body.messages.every(m => m && ['user', 'assistant'].includes(m.role) && validContent(m.content))) return json(400, 'Invalid messages');
     const tools = body.tools ?? [];
     if (!Array.isArray(tools) || tools.length > V1_TOOLS.size || !tools.every(t => t && V1_TOOLS.has(t.name) && text(t.description, 3000) && t.input_schema?.type === 'object')) return json(400, 'This action is outside Max V1.');
-    const base = env.SUPABASE_URL.replace(/\/$/, '');
     const headers = { apikey: env.SUPABASE_ANON_KEY, Authorization: authorization };
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(45000)]);
     try {
       // A decoded JWT or a client-supplied user id is not proof of identity.
-      const auth = await fetchImpl(base + '/auth/v1/user', { headers, signal: request.signal });
+      const auth = await fetchImpl(base + '/auth/v1/user', { headers, signal });
       if ([401, 403].includes(auth.status)) return json(401, 'Your session expired. Please sign in again.');
       if (!auth.ok) return json(503, 'Sign-in is temporarily unavailable.');
       const user = await auth.json();
-      if (!user?.id) return json(401, 'Please sign in again.');
+      if (!text(user?.id, 200) || !user.id.trim()) return json(401, 'Please sign in again.');
       // Database function owns the limits and derives identity from auth.uid().
-      const quota = await fetchImpl(base + '/rest/v1/rpc/consume_max_request', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{}', signal: request.signal });
+      const quota = await fetchImpl(base + '/rest/v1/rpc/consume_max_request', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{}', signal });
       if (!quota.ok) return json(503, 'Max is temporarily unavailable.');
-      if ((await quota.json()) !== true) return json(429, 'You’ve reached today’s conversation limit. Please try again later.');
+      const allowed = await quota.json();
+      if (allowed === false) return json(429, 'You’ve reached your conversation limit. Please try again later.');
+      if (allowed !== true) return json(503, 'Max is temporarily unavailable.');
       const upstream = await fetchImpl('https://api.anthropic.com/v1/messages', {
-        method: 'POST', signal: request.signal,
+        method: 'POST', signal,
         headers: { 'Content-Type': 'application/json', 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({ model: env.ANTHROPIC_MODEL || 'claude-sonnet-4-6', max_tokens: 2048, stream: true, system: SYSTEM + (text(body.context, 12000) ? '\nUser supplied remembered context:\n' + body.context : ''), messages: body.messages, tools }),
       });
