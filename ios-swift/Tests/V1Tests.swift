@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Max
 
 @MainActor
@@ -63,6 +65,44 @@ final class V1Tests: XCTestCase {
             XCTAssertEqual(model.conversationState, .idle)
             XCTAssertFalse(VoiceService.shared.isSpeaking)
             XCTAssertTrue(StorageService.shared.loadMessages().isEmpty)
+        }
+    }
+
+    func testHomeViewRendersOrbPreview() async throws {
+        try await isolated {
+            let previousOnboarding = UserDefaults.standard.object(forKey: "max:onboarding_complete")
+            UserDefaults.standard.set(true, forKey: "max:onboarding_complete")
+            let controller = UIHostingController(rootView: HomeView().environmentObject(AuthService.shared).environment(\.accessibilityReduceMotion, true))
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+            if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
+            window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+            window.rootViewController = controller
+            window.makeKeyAndVisible()
+            defer {
+                window.isHidden = true; window.rootViewController = nil
+                UserDefaults.standard.set(previousOnboarding, forKey: "max:onboarding_complete")
+            }
+            controller.view.frame = window.bounds
+            controller.view.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(500))
+            let format = UIGraphicsImageRendererFormat(); format.scale = 2
+            let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
+                window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+            }
+            let data = try XCTUnwrap(image.pngData())
+            XCTAssertEqual(image.size.width, 390)
+            XCTAssertGreaterThan(data.count, 5000)
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "Max glass orb native preview"; attachment.lifetime = .keepAlways
+            add(attachment)
+            print("MAX_ORB_SCREENSHOT_BEGIN")
+            let encoded = data.base64EncodedString()
+            for start in stride(from: 0, to: encoded.count, by: 6000) {
+                let first = encoded.index(encoded.startIndex, offsetBy: start)
+                let last = encoded.index(first, offsetBy: min(6000, encoded.count - start))
+                print("MAX_ORB_SCREENSHOT_DATA " + encoded[first..<last])
+            }
+            print("MAX_ORB_SCREENSHOT_END")
         }
     }
 
