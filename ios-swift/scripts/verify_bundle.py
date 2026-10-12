@@ -33,4 +33,6 @@ for name in sys.argv[1:]:
         with extension.open("rb") as f:
             metadata = plistlib.load(f)
         assert metadata.get("NSExtension", {}).get("NSExtensionPointIdentifier") == "com.apple.widgetkit-extension", f"Invalid embedded {target}"
-    print(f"PASS: {app.name} privacy descriptions, Live Activities, URL schemes, background registration, launch screen, expanded public settings, and both embedded extensions")
+        for key in ("CFBundleShortVersionString", "CFBundleVersion"):
+            assert metadata.get(key) == info.get(key), f"{target} {key} does not match parent app"
+    print(f"PASS: {app.name} privacy descriptions, Live Activities, URL schemes, background registration, launch screen, expanded public settings, both embedded extensions, and matching versions")
