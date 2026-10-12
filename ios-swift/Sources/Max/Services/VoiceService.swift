@@ -5,13 +5,27 @@ import Combine
 import Speech
 
 @MainActor
-final class VoiceService: NSObject, ObservableObject {
+protocol VoiceCapturing: AnyObject {
+    var transcriptUpdates: AnyPublisher<String, Never> { get }
+    var recordingUpdates: AnyPublisher<Bool, Never> { get }
+    var currentTranscript: String { get }
+    var onUtteranceEnd: (() -> Void)? { get set }
+    func startRecording() async throws
+    func stopAndTranscribe() async -> String?
+    func stopRecording()
+}
+
+@MainActor
+final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     static let shared = VoiceService()
 
     @Published var isRecording: Bool = false
     @Published var isSpeaking: Bool = false
 
     @Published private(set) var transcript: String = ""
+    var transcriptUpdates: AnyPublisher<String, Never> { $transcript.eraseToAnyPublisher() }
+    var recordingUpdates: AnyPublisher<Bool, Never> { $isRecording.eraseToAnyPublisher() }
+    var currentTranscript: String { transcript }
     private let audioEngine = AVAudioEngine()
     private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
     private var recognitionTask: SFSpeechRecognitionTask?

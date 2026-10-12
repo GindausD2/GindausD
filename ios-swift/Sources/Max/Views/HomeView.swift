@@ -9,7 +9,7 @@ struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
     @AppStorage("max:onboarding_complete") private var onboardingComplete: Bool = false
 
-    @StateObject private var viewModel = HomeViewModel()
+    @StateObject private var viewModel: HomeViewModel
     @State private var showSettings: Bool = false
     @State private var showCompanion: Bool = false
     @Environment(\.scenePhase) private var scenePhase
@@ -17,8 +17,13 @@ struct HomeView: View {
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
+    @FocusState private var composerFocused: Bool
 
     private let liveActivity = LiveActivityService.shared
+
+    init(viewModel: HomeViewModel? = nil) {
+        _viewModel = StateObject(wrappedValue: viewModel ?? HomeViewModel())
+    }
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -38,7 +43,7 @@ struct HomeView: View {
                     trialBanner
                 }
                 transcriptArea
-                    .padding(.bottom, 215) // space for voice and text controls
+                    .padding(.bottom, viewModel.isDictating ? 310 : 215)
             }
 
             // ── Image preview bar ──────────────────────────────────────────────
@@ -58,6 +63,13 @@ struct HomeView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage != nil)
         }
         .onDisappear { viewModel.endConversation() }
+        .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
+        .alert("Voice input unavailable", isPresented: Binding(
+            get: { viewModel.dictationError != nil },
+            set: { if !$0 { viewModel.dictationError = nil } }
+        )) {
+            Button("OK", role: .cancel) { viewModel.dictationError = nil }
+        } message: { Text(viewModel.dictationError ?? "Please try again.") }
         .onChange(of: authService.currentUser) { _, _ in viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
         .onChange(of: scenePhase) { _, phase in if phase == .background { viewModel.endConversation() } }
@@ -257,7 +269,21 @@ struct HomeView: View {
 
     // MARK: - Bottom Dock (liquid glass)
 
-    private var bottomDock: some View {
+    @ViewBuilder private var bottomDock: some View {
+        if viewModel.isDictating {
+            VoiceToTextPanel(
+                transcript: viewModel.liveTranscript,
+                isPreparing: viewModel.conversationState != .listening && !viewModel.isTranscribing,
+                isFinishing: viewModel.isTranscribing,
+                onCancel: viewModel.endConversation,
+                onDone: viewModel.handleMicTap
+            )
+        } else {
+            regularDock
+        }
+    }
+
+    private var regularDock: some View {
         VStack(spacing: 0) {
             // Status pill
             if viewModel.conversationState != .idle || viewModel.isTranscribing {
@@ -267,27 +293,42 @@ struct HomeView: View {
             }
 
             HStack(spacing: 12) {
-                TextField("Ask Max anything…", text: $viewModel.inputText)
+                TextField("Ask Max anything…", text: $viewModel.inputText, axis: .vertical)
                     .font(.body)
+                    .lineLimit(1...4)
+                    .focused($composerFocused)
                     .submitLabel(.send)
                     .onSubmit { viewModel.sendTextMessage() }
-                    .disabled(viewModel.conversationState != .idle)
+                    .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
                     .accessibilityLabel("Message Max")
-                Button {
-                    if viewModel.conversationState != .idle || viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { viewModel.handleMicTap() }
-                    else { viewModel.sendTextMessage() }
-                } label: {
-                    Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "mic.fill" : "arrow.up")
+                Button { viewModel.handleMicTap() } label: {
+                    Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
                         .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(Color(hex: "#315E73"))
                         .frame(width: 44, height: 44)
-                        .background(Color(hex: "#292D2B"), in: Circle())
+                        .background(Color(hex: "#C7E7F1"), in: Circle())
                 }
                 .disabled(viewModel.isTranscribing)
-                .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Talk to Max" : "Send message")
+                .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
+                .accessibilityHint("Turn your voice into editable text")
+                if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.conversationState == .idle {
+                    Button { viewModel.sendTextMessage() } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color(hex: "#292D2B"), in: Circle())
+                    }
+                    .disabled(viewModel.isTranscribing)
+                    .accessibilityLabel("Send message")
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 14)
+            if viewModel.prefersTextReplyForDraft {
+                Text("Voice draft · edit, then send")
+                    .font(.caption).foregroundStyle(Color(hex: "#315E73"))
+                    .padding(.top, 8)
+            }
 
             // Main dock row
             HStack(spacing: 0) {
@@ -457,10 +498,19 @@ final class HomeViewModel: ObservableObject {
     @Published var conversationState: ConversationState = .idle
     @Published var streamingText: String = ""
     @Published var isTranscribing: Bool = false
+    @Published private(set) var isDictating = false
+    @Published private(set) var liveTranscript = ""
+    @Published private(set) var prefersTextReplyForDraft = false
+    @Published var dictationError: String?
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
     private let voice   = VoiceService.shared
+    private let capture: any VoiceCapturing
+    private var voiceSubscriptions = Set<AnyCancellable>()
+    private var voiceInputTask: Task<Void, Never>?
+    private var dictationBaseDraft = ""
+    private var dictationScope: String?
 
     private var streamTask: Task<Void, Never>?
     private var speechCompletionTask: Task<Void, Never>?
@@ -471,6 +521,20 @@ final class HomeViewModel: ObservableObject {
     private var streamingMessageId: String? = nil
     private var currentConversationId: String = UUID().uuidString
     private var conversationStartedAt: Date = Date()
+
+    init(capture: (any VoiceCapturing)? = nil) {
+        let capture = capture ?? VoiceService.shared
+        self.capture = capture
+        capture.transcriptUpdates.sink { [weak self] text in
+            guard let self, self.isDictating, self.dictationScope == self.storage.accountScope else { return }
+            self.liveTranscript = text
+        }.store(in: &voiceSubscriptions)
+        capture.recordingUpdates.sink { [weak self] recording in
+            guard let self, !recording, self.isDictating, !self.isTranscribing, self.conversationState == .listening else { return }
+            // Recognition errors/interruptions must leave a usable draft, not a stuck microphone.
+            self.completeDictation(self.capture.currentTranscript, expectedTurn: self.turnID, scope: self.dictationScope)
+        }.store(in: &voiceSubscriptions)
+    }
 
     var orbState: OrbState {
         switch conversationState {
@@ -492,6 +556,8 @@ final class HomeViewModel: ObservableObject {
 
     func loadMessages() {
         if loadedScope != storage.accountScope {
+            inputText = ""
+            prefersTextReplyForDraft = false
             currentConversationId = UUID().uuidString
             conversationStartedAt = Date()
         }
@@ -510,6 +576,8 @@ final class HomeViewModel: ObservableObject {
     func startNewChat() {
         archiveCurrentConversation()
         clearHistory()
+        inputText = ""
+        prefersTextReplyForDraft = false
         currentConversationId = UUID().uuidString
         conversationStartedAt = Date()
     }
@@ -543,24 +611,30 @@ final class HomeViewModel: ObservableObject {
 
     func sendTextMessage(image: UIImage? = nil) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || image != nil, conversationState == .idle else { return }
+        guard !text.isEmpty || image != nil, conversationState == .idle, !isDictating, !isTranscribing, !startingVoice else { return }
+        let allowSpeech = !prefersTextReplyForDraft
         inputText = ""
+        prefersTextReplyForDraft = false
         let displayText = text.isEmpty ? "What do you see in this image?" : text
         addUserMessage(displayText)
         let imageData = image.flatMap { $0.jpegData(compressionQuality: 0.8) }
-        streamResponse(userText: displayText, imageData: imageData)
+        streamResponse(userText: displayText, imageData: imageData, allowSpeech: allowSpeech)
     }
 
     func handleMicTap() {
+        if isDictating {
+            if conversationState == .listening && !isTranscribing { finishDictation() }
+            return
+        }
         switch conversationState {
-        case .idle:                startListening()
+        case .idle:                startDictation()
         case .listening:           stopListening()
         case .thinking, .speaking: stopSpeaking()
         }
     }
 
     func handleOrbTap() {
-        guard !startingVoice, !isTranscribing else { return }
+        guard !startingVoice, !isTranscribing, !isDictating else { return }
         guard conversationState == .idle else { handleMicTap(); return }
         continuousActive = false
         turnID = UUID()
@@ -587,19 +661,19 @@ final class HomeViewModel: ObservableObject {
     }
 
     func activateVoice() {
-        guard conversationState == .idle, !isTranscribing else { return }
+        guard conversationState == .idle, !isTranscribing, !isDictating else { return }
         startListening()
     }
 
     func sendPlacesQuery() {
-        guard conversationState == .idle else { return }
+        guard conversationState == .idle, !isDictating, !startingVoice, !isTranscribing else { return }
         let query = "What interesting places are near me right now?"
         addUserMessage(query)
         streamResponse(userText: query, imageData: nil)
     }
 
     func startMorningBriefing() {
-        guard conversationState == .idle else { return }
+        guard conversationState == .idle, !isDictating, !startingVoice, !isTranscribing else { return }
         conversationState = .thinking
         let briefingID = UUID(); turnID = briefingID
         let scope = storage.accountScope
@@ -620,9 +694,13 @@ final class HomeViewModel: ObservableObject {
     func endConversation() {
         continuousActive = false
         turnID = UUID()
+        voiceInputTask?.cancel(); voiceInputTask = nil
+        isDictating = false
+        liveTranscript = ""
+        dictationScope = nil
         streamTask?.cancel(); streamTask = nil
         speechCompletionTask?.cancel(); speechCompletionTask = nil
-        voice.stopSpeaking(); voice.stopRecording()
+        voice.stopSpeaking(); capture.stopRecording()
         isTranscribing = false
         streamingText = ""
         messages.removeAll { $0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -630,6 +708,62 @@ final class HomeViewModel: ObservableObject {
         streamingMessageId = nil
         conversationState = .idle
         if loadedScope == storage.accountScope { storage.saveMessages(messages) }
+    }
+
+    private func startDictation() {
+        guard !startingVoice, !isTranscribing else { return }
+        continuousActive = false
+        capture.onUtteranceEnd = nil
+        dictationError = nil
+        dictationBaseDraft = inputText
+        dictationScope = storage.accountScope
+        liveTranscript = ""
+        isDictating = true
+        startingVoice = true
+        let activationID = UUID(); turnID = activationID
+        let scope = storage.accountScope
+        voiceInputTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.startingVoice = false }
+            do {
+                try await self.capture.startRecording()
+                guard self.turnID == activationID, self.storage.accountScope == scope, !Task.isCancelled else { self.capture.stopRecording(); return }
+                self.conversationState = .listening
+            } catch {
+                guard self.turnID == activationID, self.storage.accountScope == scope, !(error is CancellationError) else { return }
+                self.isDictating = false
+                self.liveTranscript = ""
+                self.dictationScope = nil
+                self.dictationError = error.localizedDescription
+            }
+        }
+    }
+
+    private func finishDictation() {
+        isTranscribing = true
+        let finishingID = turnID
+        let scope = dictationScope
+        voiceInputTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await self.capture.stopAndTranscribe()
+            guard !Task.isCancelled else { return }
+            self.completeDictation(result, expectedTurn: finishingID, scope: scope)
+        }
+    }
+
+    private func completeDictation(_ result: String?, expectedTurn: UUID, scope: String?) {
+        guard isDictating, turnID == expectedTurn else { return }
+        isDictating = false
+        isTranscribing = false
+        conversationState = .idle
+        liveTranscript = ""
+        dictationScope = nil
+        guard scope == storage.accountScope else { inputText = ""; prefersTextReplyForDraft = false; return }
+        let text = result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else { dictationError = "Couldn't catch that. Your draft is still here — try again."; return }
+        inputText = dictationBaseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        inputText += (inputText.isEmpty ? "" : " ") + text
+        prefersTextReplyForDraft = true
     }
 
     private func startListening() {
@@ -640,12 +774,12 @@ final class HomeViewModel: ObservableObject {
             defer { startingVoice = false }
             do {
                 continuousActive = storage.loadSettings().continuousConversation ?? false
-                voice.onUtteranceEnd = { [weak self] in
+                capture.onUtteranceEnd = { [weak self] in
                     guard let self, self.continuousActive, self.conversationState == .listening else { return }
                     self.stopListening()
                 }
-                try await voice.startRecording()
-                guard turnID == activationID else { voice.stopRecording(); return }
+                try await capture.startRecording()
+                guard turnID == activationID else { capture.stopRecording(); return }
                 conversationState = .listening
             } catch {
                 guard turnID == activationID, !(error is CancellationError) else { return }
@@ -661,7 +795,7 @@ final class HomeViewModel: ObservableObject {
         isTranscribing = true
         let listeningID = turnID
         Task {
-            let transcription = await voice.stopAndTranscribe()
+            let transcription = await capture.stopAndTranscribe()
             guard turnID == listeningID else { return }
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
@@ -687,7 +821,7 @@ final class HomeViewModel: ObservableObject {
         storage.saveMessages(messages)
     }
 
-    private func streamResponse(userText: String, imageData: Data? = nil) {
+    private func streamResponse(userText: String, imageData: Data? = nil, allowSpeech: Bool = true) {
         let settings = storage.loadSettings()
         let thisTurn = UUID(); turnID = thisTurn
         conversationState = .thinking
@@ -736,7 +870,7 @@ final class HomeViewModel: ObservableObject {
                     self.storage.saveMessages(self.messages)
                     self.archiveCurrentConversation()
                     self.pushToWidget(fullText)
-                    if settings.voiceEnabled && !fullText.isEmpty {
+                    if allowSpeech && settings.voiceEnabled && !fullText.isEmpty {
                         self.playSpeech(fullText, continueListening: true)
                     } else {
                         self.conversationState = .idle

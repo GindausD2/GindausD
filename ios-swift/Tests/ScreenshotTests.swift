@@ -21,6 +21,30 @@ final class ScreenshotTests: XCTestCase {
         let zone = try XCTUnwrap(TimeZone(identifier: "Africa/Lagos"))
         let reminder = Reminder(title: "Call David", body: "", fireDate: date)
         try await capture(ReminderConfirmationView(reminder: reminder, places: [], timeZone: zone, onDone: {}), name: "Max_Reminder_Confirmation")
+
+        let onboarding = UserDefaults.standard.object(forKey: "max:onboarding_complete")
+        UserDefaults.standard.set(true, forKey: "max:onboarding_complete")
+        defer { UserDefaults.standard.set(onboarding, forKey: "max:onboarding_complete") }
+        let voiceCapture = TestVoiceCapture()
+        let model = HomeViewModel(capture: voiceCapture)
+        model.loadMessages()
+        model.handleMicTap()
+        try await Task.sleep(for: .milliseconds(50))
+        voiceCapture.text = "Remind me to call David tomorrow at eight."
+        voiceCapture.result = voiceCapture.text
+        try await capture(HomeView(viewModel: model).environmentObject(AuthService.shared), name: "Max_Voice_To_Text")
+        model.endConversation()
+        let draftCapture = TestVoiceCapture()
+        let draftModel = HomeViewModel(capture: draftCapture)
+        draftModel.loadMessages()
+        draftModel.handleMicTap()
+        try await Task.sleep(for: .milliseconds(50))
+        draftCapture.text = "Remind me to call David tomorrow at eight."
+        draftCapture.result = draftCapture.text
+        draftModel.handleMicTap()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(draftModel.prefersTextReplyForDraft)
+        try await capture(HomeView(viewModel: draftModel).environmentObject(AuthService.shared), name: "Max_Voice_Draft")
     }
 
     private func capture<Content: View>(_ content: Content, name: String) async throws {
