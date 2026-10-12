@@ -148,27 +148,31 @@ struct SettingsView: View {
                                 }, onCompletion: { result in
                                     switch result {
                                     case .success(let auth):
-                                        let credential = auth.credential as? ASAuthorizationAppleIDCredential
-                                        let name = [credential?.fullName?.givenName,
-                                                    credential?.fullName?.familyName]
+                                        guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
+                                              let data = credential.identityToken,
+                                              let token = String(data: data, encoding: .utf8) else {
+                                            authService.authError = "Apple sign-in couldn't complete. Please try again."
+                                            return
+                                        }
+                                        let name = [credential.fullName?.givenName,
+                                                    credential.fullName?.familyName]
                                             .compactMap { $0 }.joined(separator: " ")
-                                        let email = credential?.email
                                         Task {
                                             await authService.signInWithApple(
-                                                name: name.isEmpty ? nil : name,
-                                                email: email
+                                                idToken: token,
+                                                name: name.isEmpty ? nil : name
                                             )
-                                            dismiss()
+                                            if authService.currentUser?.isDemo != true { dismiss() }
                                         }
-                                    case .failure:
-                                        break
+                                    case .failure(let error): authService.authError = error.localizedDescription
                                     }
                                 })
                                 .signInWithAppleButtonStyle(.black)
                                 .frame(height: 50)
                                 .cornerRadius(12)
 
-                                Text("Sign in to sync your data across devices.")
+                                if let error = authService.authError { Text(error).font(.footnote).foregroundStyle(.red) }
+                                Text("Sign in to talk with Max. Your notes stay on this iPhone.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)

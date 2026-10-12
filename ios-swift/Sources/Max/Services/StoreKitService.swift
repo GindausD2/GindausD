@@ -100,7 +100,7 @@ final class StoreKitService: ObservableObject {
 
     // MARK: - Verification
 
-    private func verified<T>(_ result: VerificationResult<T>) throws -> T {
+    nonisolated private func verified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified: throw StoreError.verificationFailed
         case .verified(let value): return value

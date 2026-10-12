@@ -206,7 +206,7 @@ struct PaywallView: View {
         guard let yearly = store.yearlyProduct else { return "$8.33" }
         let monthly = yearly.price / 12
         let fmt = yearly.priceFormatStyle
-        return (try? monthly.formatted(fmt)) ?? "$8.33"
+        return monthly.formatted(fmt)
     }
 
     private var ctaLabel: String {

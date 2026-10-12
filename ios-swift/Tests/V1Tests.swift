@@ -93,4 +93,19 @@ final class V1Tests: XCTestCase {
             XCTAssertTrue(result.contains("not available"))
         }
     }
+
+    func testStoppingDoesNotPersistEmptyRepliesOrStaleStreamText() async throws {
+        await isolated {
+            let model = HomeViewModel()
+            model.loadMessages()
+            model.messages = [Message(role: "user", content: "Hello"), Message(role: "assistant", content: "", isStreaming: true)]
+            model.streamingText = "Stale partial"
+            model.conversationState = .thinking
+            model.endConversation()
+            XCTAssertEqual(model.conversationState, .idle)
+            XCTAssertEqual(model.streamingText, "")
+            XCTAssertEqual(StorageService.shared.loadMessages().count, 1)
+            XCTAssertEqual(StorageService.shared.loadMessages().first?.content, "Hello")
+        }
+    }
 }

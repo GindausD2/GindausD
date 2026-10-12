@@ -577,6 +577,8 @@ final class HomeViewModel: ObservableObject {
         streamTask?.cancel(); streamTask = nil
         voice.stopSpeaking(); voice.stopRecording()
         isTranscribing = false
+        streamingText = ""
+        messages.removeAll { $0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         for index in messages.indices { messages[index].isStreaming = false }
         streamingMessageId = nil
         conversationState = .idle
@@ -650,7 +652,7 @@ final class HomeViewModel: ObservableObject {
         var fullText = ""
 
         // Keep the last 40 messages (20 exchanges) to stay within token limits
-        let history = messages.filter { $0.id != streamId }
+        let history = messages.filter { $0.id != streamId && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         var trimmed = history.count > 40 ? Array(history.suffix(40)) : history
         if let index = trimmed.lastIndex(where: { $0.role == "user" }) { trimmed[index].content = userText }
 
@@ -704,7 +706,7 @@ final class HomeViewModel: ObservableObject {
                 case .error(let errText):
                     self.continuousActive = false
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        if fullText.isEmpty { self.messages[idx].content = "Error: \(errText)" }
+                        self.messages[idx].content = fullText.isEmpty ? "Error: \(errText)" : fullText + "\n\nReply interrupted: " + errText
                         self.messages[idx].isStreaming = false
                     }
                     self.streamingMessageId = nil
