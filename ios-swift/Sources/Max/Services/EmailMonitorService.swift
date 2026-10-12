@@ -12,7 +12,7 @@ import SwiftUI
 // Setup (one-time in Settings):
 //   1. Tap "Connect Gmail" → OAuth flow via ASWebAuthenticationSession
 //   2. Approve Gmail read-only access
-//   3. Access token stored in UserDefaults; refresh token used to renew
+//   3. Account-scoped tokens stored in Keychain; refresh token used to renew
 //
 // Ongoing:
 //   checkAndNotify() is called from the BGAppRefreshTask every ~4 hours.

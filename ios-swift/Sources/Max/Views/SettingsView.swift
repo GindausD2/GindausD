@@ -200,7 +200,7 @@ struct SettingsView: View {
         .confirmationDialog("Sign out of Max?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) { authService.signOut(); dismiss() }
             Button("Cancel", role: .cancel) {}
-        }
+        } message: { Text("Signing out stops voice and cancels scheduled notifications on this iPhone. Your saved notes and conversations stay with your account.") }
         .onAppear {
             profileImage = storage.loadProfilePhoto()
         }

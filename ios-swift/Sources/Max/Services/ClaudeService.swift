@@ -495,9 +495,8 @@ final class ClaudeService {
         onChunk: @escaping @Sendable (StreamChunk) -> Void
     ) async throws -> Bool {
 
-        guard let data = event.data, data != "[DONE]" else {
-            return data == "[DONE]"
-        }
+        guard let data = event.data else { return false }
+        if data == "[DONE]" { return true }
 
         guard let jsonData = data.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
@@ -599,7 +598,7 @@ enum ClaudeError: LocalizedError {
         switch self {
         case .invalidResponse:
             return "Invalid response from Claude API"
-        case .apiError(let code, let body):
+        case .apiError(_, let body):
             return body
         case .noAPIKey:
             return "Max is not connected yet. Notes, saved places, and reminders are still available."

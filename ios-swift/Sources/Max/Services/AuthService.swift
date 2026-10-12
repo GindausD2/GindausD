@@ -76,7 +76,7 @@ final class AuthService: ObservableObject {
 
         // Listen for ongoing auth state changes
         Task {
-            for await (event, session) in await supabase.auth.authStateChanges {
+            for await (event, session) in supabase.auth.authStateChanges {
                 switch event {
                 case .signedIn, .tokenRefreshed, .userUpdated:
                     if let session { currentUser = AuthUser(supabaseUser: session.user) }
@@ -105,7 +105,7 @@ final class AuthService: ObservableObject {
                 credentials: .init(provider: .apple, idToken: idToken)
             )
             if let name, !name.isEmpty {
-                try? await supabase.auth.update(
+                _ = try? await supabase.auth.update(
                     user: UserAttributes(data: ["full_name": .string(name)])
                 )
             }
