@@ -72,7 +72,7 @@ final class V1Tests: XCTestCase {
         try await isolated {
             let previousOnboarding = UserDefaults.standard.object(forKey: "max:onboarding_complete")
             UserDefaults.standard.set(true, forKey: "max:onboarding_complete")
-            let controller = UIHostingController(rootView: HomeView().environmentObject(AuthService.shared).environment(\.accessibilityReduceMotion, true))
+            let controller = UIHostingController(rootView: HomeView().environmentObject(AuthService.shared))
             let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
             if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
             window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
