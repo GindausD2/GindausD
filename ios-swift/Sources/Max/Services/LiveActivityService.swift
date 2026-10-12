@@ -106,7 +106,7 @@ final class LiveActivityService {
     }
 
     func keepAlive() {
-        guard let activity = currentActivity else {
+        guard currentActivity != nil else {
             startPersistentSession()
             return
         }

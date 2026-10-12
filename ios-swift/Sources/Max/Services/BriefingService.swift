@@ -9,9 +9,9 @@ extension Notification.Name {
 @MainActor
 final class BriefingService {
     static let shared = BriefingService()
-    static let notificationID = "max.morning.briefing"
-    static let userInfoTypeKey = "max_notification_type"
-    static let briefingTypeValue = "morning_briefing"
+    nonisolated static let notificationID = "max.morning.briefing"
+    nonisolated static let userInfoTypeKey = "max_notification_type"
+    nonisolated static let briefingTypeValue = "morning_briefing"
     private init() {}
 
     func schedule(hour: Int, minute: Int) {

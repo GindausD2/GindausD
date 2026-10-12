@@ -14,7 +14,10 @@ final class ToolsService {
 
     // MARK: - Tool Executor
 
-    func execute(name: String, input: [String: Any]) async -> String {
+    func execute(name: String, input: [String: Any], accountScope: String? = nil) async -> String {
+        guard !Task.isCancelled, accountScope == nil || accountScope == StorageService.shared.accountScope else {
+            return encodeResult(["error": "Your session changed. Please try again."])
+        }
         switch name {
         case "get_datetime":
             return getDatetime()

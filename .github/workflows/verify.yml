@@ -70,12 +70,21 @@ jobs:
           xcodebuild -project Max.xcodeproj -scheme Max -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee build.log
+      - name: Build unsigned iPhone app and extensions with device SDK
+        run: |
+          set -o pipefail
+          xcodebuild -project Max.xcodeproj -scheme Max -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            -derivedDataPath device-build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
       - name: Save build evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-build-evidence
-          path: ios-swift/build.log
+          path: |
+            ios-swift/build.log
+            ios-swift/device-build.log
           if-no-files-found: ignore
       - name: Run native V1 regression tests on simulator
         run: |

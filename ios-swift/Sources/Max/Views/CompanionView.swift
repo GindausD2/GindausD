@@ -152,7 +152,9 @@ private struct CompanionAddSheet: View {
     }
     private func save() {
         saving = true; error = nil
+        let scope = StorageService.shared.accountScope
         Task { @MainActor in
+            guard StorageService.shared.accountScope == scope else { saving = false; return }
             if section == "Notes" {
                 guard !details.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { error = "Write something to save."; saving = false; return }
                 StorageService.shared.saveNote(title: title, content: details)
@@ -164,7 +166,8 @@ private struct CompanionAddSheet: View {
             else if kind == "location" { name = "schedule_location_reminder"; input = ["title": title, "placeName": placeName] }
             else if kind == "context" { name = "schedule_context_reminder"; input = ["title": title, "context": context] }
             else { name = "schedule_reminder"; input = ["title": title, "fireAt": ISO8601DateFormatter().string(from: fireAt)] }
-            let result = await ToolsService.shared.execute(name: name, input: input)
+            let result = await ToolsService.shared.execute(name: name, input: input, accountScope: scope)
+            guard StorageService.shared.accountScope == scope else { saving = false; return }
             if let data = result.data(using: .utf8), let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any], json["success"] as? Bool == true {
                 onSave(); dismiss()
             } else {

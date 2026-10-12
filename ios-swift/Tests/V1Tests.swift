@@ -108,4 +108,12 @@ final class V1Tests: XCTestCase {
             XCTAssertEqual(StorageService.shared.loadMessages().first?.content, "Hello")
         }
     }
+
+    func testStaleToolCallCannotWriteToAnotherAccount() async throws {
+        await isolated {
+            let result = await ToolsService.shared.execute(name: "save_note", input: ["title": "Private", "content": "Previous account"], accountScope: "previous-account")
+            XCTAssertTrue(result.contains("session changed"))
+            XCTAssertTrue(StorageService.shared.loadNotes().isEmpty)
+        }
+    }
 }

@@ -574,7 +574,7 @@ final class ClaudeService {
             guard let data = (call.inputJSON.isEmpty ? "{}" : call.inputJSON).data(using: .utf8),
                   let input = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ClaudeError.invalidResponse }
             assistantBlocks.append(ClaudeRequestBlock(type: "tool_use", id: call.id, name: call.name, input: input.mapValues { AnyCodable($0) }))
-            let result = await ToolsService.shared.execute(name: call.name, input: input)
+            let result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope)
             results.append(ClaudeRequestBlock(type: "tool_result", toolUseId: call.id, content: result))
         }
         var continuation = apiMessages

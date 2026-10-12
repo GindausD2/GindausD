@@ -154,6 +154,7 @@ struct RootView: View {
         Group {
             if showHome {
                 HomeView()
+                    .id(authService.currentUser?.isDemo == true ? "demo" : authService.currentUser?.id ?? "signed-out")
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
