@@ -39,7 +39,7 @@ final class VoiceToTextTests: XCTestCase {
             capture.result = "remind me to call David"
             model.sendTextMessage() // Sending while recording must do nothing.
             XCTAssertTrue(model.messages.isEmpty)
-            model.handleMicTap()
+            model.handleOrbTap() // The orb's Finish voice input action also creates a draft.
             await settle { !model.isDictating }
             XCTAssertEqual(model.inputText, "Please remind me to call David")
             XCTAssertTrue(model.prefersTextReplyForDraft)

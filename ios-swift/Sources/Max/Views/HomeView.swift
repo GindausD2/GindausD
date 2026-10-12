@@ -250,7 +250,7 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
-            .accessibilityHint("Tap to hear Max. Use the microphone to talk.")
+            .accessibilityHint(viewModel.orbAccessibilityHint)
             Text("Make room for\nwhat matters.")
                 .font(.system(size: 38, weight: .regular, design: .serif))
                 .multilineTextAlignment(.center)
@@ -342,7 +342,7 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(viewModel.orbAccessibilityLabel)
-                .accessibilityHint("Tap to hear Max. Tap again to stop.")
+                .accessibilityHint(viewModel.orbAccessibilityHint)
                 .frame(maxWidth: .infinity)
 
                 // Camera (vision)
@@ -554,6 +554,11 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    var orbAccessibilityHint: String {
+        if isDictating { return "Finish dictation and review your message before sending" }
+        return conversationState == .idle ? "Tap to hear Max. Use the microphone to dictate." : "Tap to stop"
+    }
+
     func loadMessages() {
         if loadedScope != storage.accountScope {
             inputText = ""
@@ -634,7 +639,8 @@ final class HomeViewModel: ObservableObject {
     }
 
     func handleOrbTap() {
-        guard !startingVoice, !isTranscribing, !isDictating else { return }
+        if isDictating { handleMicTap(); return }
+        guard !startingVoice, !isTranscribing else { return }
         guard conversationState == .idle else { handleMicTap(); return }
         continuousActive = false
         turnID = UUID()
