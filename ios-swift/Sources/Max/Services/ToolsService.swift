@@ -121,7 +121,7 @@ final class ToolsService {
         guard let id = input["id"] as? String else {
             return encodeResult(["error": "Missing note ID"])
         }
-        StorageService.shared.deleteNote(id: id)
+        guard StorageService.shared.deleteNote(id: id) else { return encodeResult(["error": "That note is no longer saved."]) }
         return encodeResult(["success": true, "message": "Note deleted successfully"])
     }
 
@@ -202,7 +202,7 @@ final class ToolsService {
                 LiveActivityService.shared.showToolCard(ToolCard(
                     kind: .reminder,
                     line1: title,
-                    line2: "Reminder in \(Int(ceil(delay / 60))) min",
+                    line2: reminder.triggerSummary(),
                     iconName: "bell.fill"
                 ))
             }
@@ -210,7 +210,11 @@ final class ToolsService {
             return encodeResult([
                 "success": true,
                 "id": id,
-                "message": "Reminder set for \(Int(ceil(delay / 60))) minute(s) from now"
+                "title": title,
+                "triggerKind": "time",
+                "fireAt": ISO8601DateFormatter().string(from: fireDate),
+                "timeZone": TimeZone.current.identifier,
+                "message": "Saved ‘\(title)’. \(reminder.triggerSummary())"
             ])
         } catch {
             return encodeResult(["error": "Failed to schedule reminder: \(error.localizedDescription)"])
@@ -637,7 +641,7 @@ final class ToolsService {
                 return encodeResult(["error": "Your session changed. Please try again."])
             }
             StorageService.shared.saveReminder(Reminder(id: id, title: title, body: content.body, fireDate: .distantFuture, triggerKind: "location", placeID: place.id), scope: scope)
-            return encodeResult(["success": true, "message": "I'll remind you when iOS detects your arrival at \(name). Location accuracy and device settings affect delivery."])
+            return encodeResult(["success": true, "id": id, "title": title, "triggerKind": "location", "placeName": place.destination, "address": place.note ?? "", "message": "I'll remind you when iOS detects your arrival at \(place.destination). Location accuracy and device settings affect delivery."])
         } catch { return encodeResult(["error": "Couldn't save that arrival reminder."]) }
     }
 
@@ -646,8 +650,9 @@ final class ToolsService {
               let title = input["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return encodeResult(["error": "Provide a named context and a reminder."])
         }
-        StorageService.shared.saveReminder(Reminder(title: title, body: "When you check \(context) in Max", fireDate: .distantFuture, triggerKind: "context", contextName: context))
-        return encodeResult(["success": true, "message": "Saved. This reminder appears when you explicitly check \(context) in Max; it does not monitor your activity."])
+        let reminder = Reminder(title: title, body: "When you check \(context) in Max", fireDate: .distantFuture, triggerKind: "context", contextName: context)
+        StorageService.shared.saveReminder(reminder)
+        return encodeResult(["success": true, "id": reminder.id, "title": title, "triggerKind": "context", "context": context, "message": "Saved ‘\(title)’. \(reminder.triggerSummary()); it does not monitor your activity."])
     }
 
     private func getWeather(input: [String: Any]) async -> String {

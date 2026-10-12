@@ -160,6 +160,19 @@ struct Reminder: Identifiable, Codable {
     var contextName: String?
     var placeID: String?
 
+    func triggerSummary(place: PlaceVisit? = nil, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+        if triggerKind == "location" {
+            let prefix = "Arriving at "
+            let fallback = body.hasPrefix(prefix) ? String(body.dropFirst(prefix.count)) : "your saved place"
+            return "When iOS detects arrival at \(place?.destination ?? fallback)"
+        }
+        if triggerKind == "context" { return "When you check \(contextName ?? "this context") in Max" }
+        let formatter = DateFormatter()
+        formatter.locale = locale; formatter.timeZone = timeZone
+        formatter.setLocalizedDateFormatFromTemplate("yMMMdjmmz")
+        return "At \(formatter.string(from: fireDate))"
+    }
+
     init(id: String = UUID().uuidString, title: String, body: String, fireDate: Date, createdAt: Date = Date(), triggerKind: String? = nil, contextName: String? = nil, placeID: String? = nil) {
         self.id = id
         self.title = title
@@ -335,5 +348,5 @@ Keep spoken replies short, natural, and personable. Ask a useful follow-up when 
 Use tool results as the source of truth. Never pretend you have checked emails, weather, calendars, missed calls, or location when you have not. Explain unavailable sources briefly.
 Resolve ambiguous reminder times, places, and contexts before scheduling. A context reminder is shown when the user explicitly checks that named context in Max; it does not continuously monitor their behavior.
 V1 does not book flights, Uber rides, purchases, or run advanced autonomous agents.
-Confirm success only after the tool reports success. Never describe a Maps search as a confirmed visit.
+Confirm success only after the tool reports success. Include the exact confirmed reminder date/time and time zone, saved arrival place, or explicit context from the tool result. Never describe a Maps search as a confirmed visit.
 """

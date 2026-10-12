@@ -95,6 +95,7 @@ final class V1Tests: XCTestCase {
             let attachment = XCTAttachment(image: image)
             attachment.name = "Max glass orb native preview"; attachment.lifetime = .keepAlways
             add(attachment)
+            guard ProcessInfo.processInfo.environment["MAX_EXPORT_SCREENSHOT"] == "1" else { return }
             print("MAX_ORB_SCREENSHOT_BEGIN")
             let encoded = data.base64EncodedString()
             for start in stride(from: 0, to: encoded.count, by: 6000) {
@@ -142,6 +143,9 @@ final class V1Tests: XCTestCase {
             XCTAssertTrue(result.contains("success"))
             let reminder = StorageService.shared.loadReminders().first
             XCTAssertEqual(reminder?.triggerKind, "context"); XCTAssertEqual(reminder?.contextName, "Work")
+            let fields = (try? JSONSerialization.jsonObject(with: Data(result.utf8))) as? [String: Any]
+            XCTAssertEqual(fields?["id"] as? String, reminder?.id)
+            XCTAssertEqual(fields?["triggerKind"] as? String, "context")
         }
     }
 
@@ -173,5 +177,87 @@ final class V1Tests: XCTestCase {
             XCTAssertTrue(result.contains("session changed"))
             XCTAssertTrue(StorageService.shared.loadNotes().isEmpty)
         }
+    }
+
+    func testEditingSavedMemoryPreservesIdentityAndOtherItems() async throws {
+        await isolated {
+            let store = StorageService.shared
+            let scope = store.accountScope
+            let note = store.saveNote(title: "Original", content: "First draft")
+            let storedNoteDate = store.loadNotes().first { $0.id == note.id }?.createdAt
+            store.saveNote(title: "Keep", content: "Unrelated note")
+            XCTAssertTrue(store.updateNote(id: note.id, title: "Updated", content: "New draft", accountScope: scope))
+            let updated = store.loadNotes().first { $0.id == note.id }
+            XCTAssertEqual(updated?.createdAt, storedNoteDate)
+            XCTAssertEqual(updated?.content, "New draft")
+            XCTAssertEqual(store.loadNotes().count, 2)
+            XCTAssertFalse(store.updateNote(id: note.id, content: "  ", accountScope: scope))
+            store.rememberFact(key: "Favorite drink", value: "Coffee")
+            XCTAssertTrue(store.updateFact(key: "favorite drink", value: "Tea", accountScope: scope))
+            XCTAssertEqual(store.recallFacts().first?.key, "Favorite drink")
+            XCTAssertEqual(store.recallFacts().first?.value, "Tea")
+            let card = MemoryCard(category: .personal, content: "Original detail")
+            XCTAssertTrue(store.saveMemoryCard(card, accountScope: scope))
+            let storedCardDate = store.loadMemoryCards().first?.createdAt
+            XCTAssertTrue(store.updateMemoryCard(id: card.id, content: "Edited detail", category: .goals, accountScope: scope))
+            XCTAssertEqual(store.loadMemoryCards().first?.id, card.id)
+            XCTAssertEqual(store.loadMemoryCards().first?.createdAt, storedCardDate)
+            XCTAssertEqual(store.loadMemoryCards().first?.category, .goals)
+        }
+    }
+
+    func testForgottenItemsAreNotRevivedByAnOldEditor() async throws {
+        await isolated {
+            let store = StorageService.shared
+            let scope = store.accountScope
+            let note = store.saveNote(title: "Forget", content: "Draft")
+            XCTAssertTrue(store.deleteNote(id: note.id, accountScope: scope))
+            XCTAssertFalse(store.updateNote(id: note.id, content: "Old editor", accountScope: scope))
+            store.rememberFact(key: "Favorite", value: "Blue")
+            store.rememberFact(key: "Keep", value: "Separate fact")
+            XCTAssertTrue(store.forgetFact(key: "FAVORITE", accountScope: scope))
+            XCTAssertFalse(store.updateFact(key: "Favorite", value: "Old value", accountScope: scope))
+            XCTAssertEqual(store.recallFacts().map(\.key), ["Keep"])
+            let card = MemoryCard(category: .other, content: "Forget this")
+            XCTAssertTrue(store.saveMemoryCard(card, accountScope: scope))
+            XCTAssertTrue(store.deleteMemoryCard(id: card.id, accountScope: scope))
+            XCTAssertFalse(store.updateMemoryCard(id: card.id, content: "Old editor", category: .other, accountScope: scope))
+            XCTAssertTrue(store.loadNotes().isEmpty); XCTAssertTrue(store.loadMemoryCards().isEmpty)
+        }
+    }
+
+    func testOldMemoryEditorCannotChangeAnotherAccountsMatchingItems() async throws {
+        await isolated {
+            let store = StorageService.shared
+            let previousAccount = "previous-account"
+            let note = store.saveNote(title: "Current account", content: "Private")
+            store.rememberFact(key: "Favorite", value: "Keep this")
+            let card = MemoryCard(category: .other, content: "Private card")
+            XCTAssertTrue(store.saveMemoryCard(card, accountScope: store.accountScope))
+            XCTAssertFalse(store.updateNote(id: note.id, content: "Wrong account", accountScope: previousAccount))
+            XCTAssertFalse(store.deleteNote(id: note.id, accountScope: previousAccount))
+            XCTAssertFalse(store.updateFact(key: "Favorite", value: "Wrong account", accountScope: previousAccount))
+            XCTAssertFalse(store.forgetFact(key: "Favorite", accountScope: previousAccount))
+            XCTAssertFalse(store.updateMemoryCard(id: card.id, content: "Wrong account", category: .people, accountScope: previousAccount))
+            XCTAssertFalse(store.deleteMemoryCard(id: card.id, accountScope: previousAccount))
+            XCTAssertFalse(store.saveMemoryCard(MemoryCard(category: .other, content: "Wrong account"), accountScope: previousAccount))
+            XCTAssertEqual(store.loadNotes().first?.content, "Private")
+            XCTAssertEqual(store.recallFacts().first?.value, "Keep this")
+            XCTAssertEqual(store.loadMemoryCards().first?.content, "Private card")
+        }
+    }
+
+    func testReminderConfirmationUsesLocalDatePlaceAndExplicitContext() async throws {
+        let date = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-12T23:30:00Z"))
+        let zone = try XCTUnwrap(TimeZone(identifier: "Africa/Lagos"))
+        let time = Reminder(title: "Call David", body: "", fireDate: date)
+        let summary = time.triggerSummary(locale: Locale(identifier: "en_GB"), timeZone: zone)
+        XCTAssertTrue(summary.contains("13 Oct 2026"), summary)
+        XCTAssertTrue(summary.contains("00:30"), summary)
+        let place = PlaceVisit(destination: "Office", note: "Bauchi", latitude: 10.3, longitude: 9.8)
+        let arrival = Reminder(title: "Call", body: "Arriving at Office", fireDate: .distantFuture, triggerKind: "location", placeID: place.id)
+        XCTAssertEqual(arrival.triggerSummary(place: place), "When iOS detects arrival at Office")
+        let context = Reminder(title: "Review", body: "", fireDate: .distantFuture, triggerKind: "context", contextName: "Work")
+        XCTAssertEqual(context.triggerSummary(), "When you check Work in Max")
     }
 }

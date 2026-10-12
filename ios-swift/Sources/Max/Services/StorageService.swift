@@ -101,20 +101,28 @@ final class StorageService {
         return note
     }
 
-    func deleteNote(id: String) {
+    @discardableResult
+    func deleteNote(id: String, accountScope expectedScope: String? = nil) -> Bool {
+        guard expectedScope == nil || expectedScope == accountScope else { return false }
         var notes = loadNotes()
+        guard notes.contains(where: { $0.id == id }) else { return false }
         notes.removeAll { $0.id == id }
         saveNotes(notes)
+        return true
     }
 
-    func updateNote(id: String, title: String? = nil, content: String? = nil) {
+    @discardableResult
+    func updateNote(id: String, title: String? = nil, content: String? = nil, accountScope expectedScope: String? = nil) -> Bool {
+        guard expectedScope == nil || expectedScope == accountScope else { return false }
+        if let title, title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+        if let content, content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
         var notes = loadNotes()
-        if let idx = notes.firstIndex(where: { $0.id == id }) {
-            if let title = title { notes[idx].title = title }
-            if let content = content { notes[idx].content = content }
-            notes[idx].updatedAt = Date()
-        }
+        guard let idx = notes.firstIndex(where: { $0.id == id }) else { return false }
+        if let title { notes[idx].title = title.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let content { notes[idx].content = content.trimmingCharacters(in: .whitespacesAndNewlines) }
+        notes[idx].updatedAt = Date()
         saveNotes(notes)
+        return true
     }
 
     // MARK: - Memories
@@ -142,6 +150,28 @@ final class StorageService {
         removeData(for: memoriesKey)
     }
 
+    @discardableResult
+    func updateFact(key: String, value: String, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope else { return false }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        var facts = recallFacts()
+        guard !trimmed.isEmpty, let index = facts.firstIndex(where: { $0.key.caseInsensitiveCompare(key) == .orderedSame }) else { return false }
+        facts[index].value = trimmed; facts[index].updatedAt = Date()
+        guard let data = try? encoder.encode(facts) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
+        return true
+    }
+
+    @discardableResult
+    func forgetFact(key: String, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope else { return false }
+        let facts = recallFacts()
+        let remaining = facts.filter { $0.key.caseInsensitiveCompare(key) != .orderedSame }
+        guard remaining.count != facts.count, let data = try? encoder.encode(remaining) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
+        return true
+    }
+
     // MARK: - MemoryCards
 
     func loadMemoryCards() -> [MemoryCard] {
@@ -157,10 +187,34 @@ final class StorageService {
         }
     }
 
-    func deleteMemoryCard(id: String) {
+    @discardableResult
+    func saveMemoryCard(_ card: MemoryCard, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope, !card.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         var cards = loadMemoryCards()
+        guard !cards.contains(where: { $0.id == card.id }) else { return false }
+        cards.append(card); saveMemoryCards(cards)
+        return true
+    }
+
+    @discardableResult
+    func updateMemoryCard(id: String, content: String, category: MemoryCategory, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope else { return false }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cards = loadMemoryCards()
+        guard !trimmed.isEmpty, let index = cards.firstIndex(where: { $0.id == id }) else { return false }
+        cards[index].content = trimmed; cards[index].category = category
+        saveMemoryCards(cards)
+        return true
+    }
+
+    @discardableResult
+    func deleteMemoryCard(id: String, accountScope expectedScope: String? = nil) -> Bool {
+        guard expectedScope == nil || expectedScope == accountScope else { return false }
+        var cards = loadMemoryCards()
+        guard cards.contains(where: { $0.id == id }) else { return false }
         cards.removeAll { $0.id == id }
         saveMemoryCards(cards)
+        return true
     }
 
     // MARK: - Place Visits
