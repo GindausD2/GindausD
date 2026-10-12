@@ -6,6 +6,7 @@ import Foundation
 import UIKit
 import UserNotifications
 
+@MainActor
 final class ToolsService {
     static let shared = ToolsService()
 
@@ -153,15 +154,23 @@ final class ToolsService {
         let minutesStr = input["minutesFromNow"] as? String ?? ""
         let minutes = Double(minutesStr) ?? .nan
         let absoluteDate = (input["fireAt"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+        guard !(input["fireAt"] != nil && input["minutesFromNow"] != nil), input["fireAt"] == nil || absoluteDate != nil else {
+            return encodeResult(["error": "Choose one valid time: fireAt or minutesFromNow."])
+        }
         let delay = absoluteDate.map { $0.timeIntervalSinceNow } ?? minutes * 60
         guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, delay.isFinite, delay > 0, delay <= 365 * 86400 else {
             return encodeResult(["error": "Please choose a valid future reminder time within a year."])
         }
 
+        let fireDate = absoluteDate ?? Date().addingTimeInterval(delay)
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         guard granted else {
             return encodeResult(["error": "Notification permission denied"])
+        }
+        let remaining = fireDate.timeIntervalSinceNow
+        guard remaining > 0, !Task.isCancelled, StorageService.shared.accountScope == scope else {
+            return encodeResult(["error": "That time has passed or your session changed. Please choose a new reminder time."])
         }
 
         let content = UNMutableNotificationContent()
@@ -169,9 +178,8 @@ final class ToolsService {
         content.body = body
         content.sound = .default
 
-        let fireDate = Date().addingTimeInterval(delay)
         let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: max(1, delay),
+            timeInterval: max(1, remaining),
             repeats: false
         )
 

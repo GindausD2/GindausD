@@ -115,6 +115,7 @@ private struct AccumulatedToolCall {
 
 // MARK: - Claude Service
 
+@MainActor
 final class ClaudeService {
     static let shared = ClaudeService()
 
@@ -371,58 +372,241 @@ final class ClaudeService {
                 if !msg.content.isEmpty {
                     parts.append(.text(msg.content))
                 }
-                apiMessages.append(ClaudeRequestMessag…12096 tokens truncated…t
-                        self.messages[idx].isStreaming = true
-                    }
-                case .toolStart(let name):
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText + (fullText.isEmpty ? "" : "\n") + "_Using \(name)…_"
-                        self.messages[idx].isStreaming = true
-                    }
-                case .toolDone:
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                    }
-                case .done:
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                        self.messages[idx].isStreaming = false
-                    }
-                    self.streamingMessageId = nil
-                    self.streamingText = ""
-                    self.storage.saveMessages(self.messages)
-                    self.archiveCurrentConversation()
-                    self.pushToWidget(fullText)
-                    if settings.voiceEnabled && !fullText.isEmpty {
-                        self.conversationState = .speaking
-                        self.voice.speak(fullText, preferredVoice: settings.preferredVoice)
-                        Task {
-                            while self.voice.isSpeaking {
-                                try? await Task.sleep(nanoseconds: 200_000_000)
-                            }
-                            guard self.turnID == thisTurn else { return }
-                            self.conversationState = .idle
-                            if self.continuousActive, UIApplication.shared.applicationState == .active { self.startListening() }
-                        }
-                    } else {
-                        self.conversationState = .idle
-                    }
-                case .error(let errText):
-                    self.continuousActive = false
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        if fullText.isEmpty { self.messages[idx].content = "Error: \(errText)" }
-                        self.messages[idx].isStreaming = false
-                    }
-                    self.streamingMessageId = nil
-                    self.streamingText = ""
-                    self.conversationState = .idle
-                    self.storage.saveMessages(self.messages)
-                }
+                apiMessages.append(ClaudeRequestMessage(role: msg.role, content: .parts(parts)))
+            } else {
+                apiMessages.append(ClaudeRequestMessage(role: msg.role, content: .string(msg.content)))
             }
         }
+
+        if !conversationHistory.isEmpty { apiMessages = conversationHistory }
+        let facts = StorageService.shared.recallFacts().map { "\($0.key): \($0.value)" }
+        let cards = StorageService.shared.loadMemoryCards().map(\.content)
+        let remembered = String((facts + cards).joined(separator: "\n").prefix(12000))
+        let request = ClaudeRequest(
+            model: modelID,
+            maxTokens: maxTokens,
+            stream: true,
+            context: remembered,
+            messages: apiMessages,
+            tools: toolDefinitions
+        )
+
+        guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw ClaudeError.noAPIKey }
+        var urlRequest = URLRequest(url: base.appendingPathComponent("v1/messages"))
+        urlRequest.timeoutInterval = 45
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let encoder = JSONEncoder()
+        urlRequest.httpBody = try encoder.encode(request)
+
+        let (asyncBytes, response) = try await URLSession.shared.bytes(for: urlRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ClaudeError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            // Try to read error body
+            var errorBytes = Data()
+            for try await byte in asyncBytes {
+                errorBytes.append(byte)
+                if errorBytes.count >= 2048 { break }
+            }
+            let serverError = (try? JSONSerialization.jsonObject(with: errorBytes) as? [String: Any])?["error"] as? String
+            throw ClaudeError.apiError(httpResponse.statusCode, serverError ?? "Max couldn't reply just now. Please try again.")
+        }
+
+        // SSE parsing state
+        var currentEvent: String? = nil
+        var currentData: String? = nil
+        var lineBuffer = Data()
+
+        // Accumulated tool calls
+        var pendingToolCalls: [AccumulatedToolCall] = []
+        var currentToolCallIndex: Int? = nil
+        var stopReason: String? = nil
+
+        // Accumulated text for building final message
+        var accumulatedText = ""
+        var receivedStop = false
+
+        for try await byte in asyncBytes {
+            try Task.checkCancellation()
+            // Decode a complete UTF-8 line, never individual bytes: emoji and
+            // accented text may span multiple bytes and network chunks.
+            if byte == 0x0A {
+                let line = String(decoding: lineBuffer, as: UTF8.self)
+                lineBuffer.removeAll(keepingCapacity: true)
+
+                if line.isEmpty {
+                    // Empty line = dispatch event
+                    if let data = currentData, !data.isEmpty {
+                        let event = SSEEvent(event: currentEvent, data: data)
+                        let shouldStop = try await processSSEEvent(
+                            event: event,
+                            pendingToolCalls: &pendingToolCalls,
+                            currentToolCallIndex: &currentToolCallIndex,
+                            stopReason: &stopReason,
+                            accumulatedText: &accumulatedText,
+                            onChunk: onChunk
+                        )
+                        if shouldStop { receivedStop = true; break }
+                    }
+                    currentEvent = nil
+                    currentData = nil
+                } else if line.hasPrefix("event: ") {
+                    currentEvent = String(line.dropFirst(7))
+                } else if line.hasPrefix("data: ") {
+                    currentData = String(line.dropFirst(6))
+                }
+            } else if byte != 0x0D {
+                lineBuffer.append(byte)
+            }
+        }
+
+        // A broken connection must never confirm a partial reply or execute partial tools.
+        guard receivedStop else { throw ClaudeError.invalidResponse }
+        // Handle any pending tool calls
+        if stopReason == "tool_use" && !pendingToolCalls.isEmpty {
+            onChunk(.toolDone)
+            try await executeToolsAndContinue(
+                sessionToken: sessionToken,
+                accountScope: accountScope,
+                messages: messages,
+                apiMessages: apiMessages,
+                round: round,
+                accumulatedText: accumulatedText,
+                pendingToolCalls: pendingToolCalls,
+                onChunk: onChunk
+            )
+        } else {
+            onChunk(.done)
+        }
     }
+
+    private func processSSEEvent(
+        event: SSEEvent,
+        pendingToolCalls: inout [AccumulatedToolCall],
+        currentToolCallIndex: inout Int?,
+        stopReason: inout String?,
+        accumulatedText: inout String,
+        onChunk: @escaping @Sendable (StreamChunk) -> Void
+    ) async throws -> Bool {
+
+        guard let data = event.data, data != "[DONE]" else {
+            return data == "[DONE]"
+        }
+
+        guard let jsonData = data.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any]
+        else { return false }
+
+        let eventType = event.event ?? (json["type"] as? String ?? "")
+
+        switch eventType {
+        case "content_block_start":
+            if let contentBlock = json["content_block"] as? [String: Any] {
+                let blockType = contentBlock["type"] as? String ?? ""
+                let index = json["index"] as? Int ?? 0
+
+                if blockType == "tool_use" {
+                    let toolName = contentBlock["name"] as? String ?? ""
+                    let toolId = contentBlock["id"] as? String ?? UUID().uuidString
+                    let toolCall = AccumulatedToolCall(id: toolId, name: toolName)
+                    pendingToolCalls.append(toolCall)
+                    currentToolCallIndex = index
+                    onChunk(.toolStart(toolName))
+                }
+            }
+
+        case "content_block_delta":
+            if let delta = json["delta"] as? [String: Any] {
+                let deltaType = delta["type"] as? String ?? ""
+
+                if deltaType == "text_delta" {
+                    let text = delta["text"] as? String ?? ""
+                    accumulatedText += text
+                    onChunk(.text(text))
+                } else if deltaType == "input_json_delta" {
+                    let partialJSON = delta["partial_json"] as? String ?? ""
+                    // Append to the last tool call's input
+                    if !pendingToolCalls.isEmpty {
+                        pendingToolCalls[pendingToolCalls.count - 1].inputJSON += partialJSON
+                    }
+                }
+            }
+
+        case "message_delta":
+            if let delta = json["delta"] as? [String: Any] {
+                stopReason = delta["stop_reason"] as? String
+            }
+
+        case "error":
+            throw ClaudeError.apiError(502, "Max couldn't finish that reply. Please try again.")
+        case "message_stop":
+            return true
+
+        default:
+            break
+        }
+
+        return false
+    }
+
+    private func executeToolsAndContinue(
+        sessionToken: String,
+        accountScope: String,
+        messages: [Message],
+        apiMessages: [ClaudeRequestMessage],
+        round: Int,
+        accumulatedText: String,
+        pendingToolCalls: [AccumulatedToolCall],
+        onChunk: @escaping @Sendable (StreamChunk) -> Void
+    ) async throws {
+        var assistantBlocks: [ClaudeRequestBlock] = []
+        if !accumulatedText.isEmpty { assistantBlocks.append(ClaudeRequestBlock(type: "text", text: accumulatedText)) }
+        var results: [ClaudeRequestBlock] = []
+        for call in pendingToolCalls {
+            try Task.checkCancellation()
+            guard StorageService.shared.accountScope == accountScope else { throw ClaudeError.signInRequired }
+            guard toolDefinitions.contains(where: { $0.name == call.name }) else { throw ClaudeError.tooManyActions }
+            guard let data = (call.inputJSON.isEmpty ? "{}" : call.inputJSON).data(using: .utf8),
+                  let input = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ClaudeError.invalidResponse }
+            assistantBlocks.append(ClaudeRequestBlock(type: "tool_use", id: call.id, name: call.name, input: input.mapValues { AnyCodable($0) }))
+            let result = await ToolsService.shared.execute(name: call.name, input: input)
+            results.append(ClaudeRequestBlock(type: "tool_result", toolUseId: call.id, content: result))
+        }
+        var continuation = apiMessages
+        continuation.append(ClaudeRequestMessage(role: "assistant", content: .blocks(assistantBlocks)))
+        continuation.append(ClaudeRequestMessage(role: "user", content: .blocks(results)))
+        try await streamMessageInternal(sessionToken: sessionToken, accountScope: accountScope, messages: messages, imageData: nil, conversationHistory: continuation, round: round + 1, onChunk: onChunk)
+    }
+
 }
 
-#Preview {
-    HomeView().environmentObject(AuthService.shared)
+// MARK: - Errors
+
+enum ClaudeError: LocalizedError {
+    case invalidResponse
+    case apiError(Int, String)
+    case noAPIKey
+    case signInRequired
+    case tooManyActions
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidResponse:
+            return "Invalid response from Claude API"
+        case .apiError(let code, let body):
+            return body
+        case .noAPIKey:
+            return "Max is not connected yet. Notes, saved places, and reminders are still available."
+        case .signInRequired:
+            return "Sign in to talk with Max. You can still use your saved notes and reminders."
+        case .tooManyActions:
+            return "Let's take this one step at a time. Please try a simpler request."
+        }
+    }
 }

@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 
+@MainActor
 final class StorageService {
     static let shared = StorageService()
 

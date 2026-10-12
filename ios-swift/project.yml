@@ -78,8 +78,20 @@ targets:
         SKIP_INSTALL: YES
     entitlements:
       path: Configuration/Widget.entitlements
+  MaxTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Max
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.tests
+        GENERATE_INFOPLIST_FILE: YES
 schemes:
   Max:
     build:
       targets:
         Max: all
+    test:
+      targets: [MaxTests]

@@ -24,6 +24,8 @@ final class LiveActivityService {
     private init() {}
 
     private var currentActivity: Activity<MaxActivityAttributes>?
+    private var retiredIDs = Set<String>()
+    private var generation = UUID()
 
     // MARK: - Persistent system-managed session
 
@@ -32,9 +34,11 @@ final class LiveActivityService {
     func startPersistentSession() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        if let existing = Activity<MaxActivityAttributes>.activities.first {
+        if let existing = Activity<MaxActivityAttributes>.activities.first(where: { !retiredIDs.contains($0.id) }) {
             currentActivity = existing
+            let version = generation
             Task {
+                guard generation == version, currentActivity?.id == existing.id else { return }
                 await existing.update(.init(
                     state: MaxActivityAttributes.ContentState(phase: .idle, snippet: ""),
                     staleDate: Date().addingTimeInterval(8 * 3600)
@@ -141,22 +145,24 @@ final class LiveActivityService {
     // MARK: - Stop (sign-out / explicit dismiss)
 
     func stopPersistentSession() {
-        Task { await endAll() }
+        let activities = Activity<MaxActivityAttributes>.activities
+        retiredIDs.formUnion(activities.map(\.id))
+        generation = UUID()
+        currentActivity = nil
+        Task {
+            for activity in activities { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
     }
 
     // MARK: - Private
 
     private func push(_ state: MaxActivityAttributes.ContentState) {
         guard let activity = currentActivity else { return }
+        let version = generation
         Task {
+            guard generation == version, currentActivity?.id == activity.id else { return }
             await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(8 * 3600)))
         }
     }
 
-    private func endAll() async {
-        for activity in Activity<MaxActivityAttributes>.activities {
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
-        currentActivity = nil
-    }
 }

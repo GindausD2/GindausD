@@ -187,7 +187,7 @@ private struct VoicePage: View {
                 .onAppear { pulse = true }
             },
             title: "Press the Orb to Talk",
-            description: "Tap the orange orb and speak. Max listens, thinks, then answers out loud. Ask anything — book a flight, check your calendar, set a reminder.",
+            description: "Tap the glacier-blue orb and speak. Max listens, thinks, then answers out loud. Save an idea, check your calendar, or set a reminder.",
             tip: "Tap again while Max is speaking to stop it."
         )
     }
@@ -236,7 +236,7 @@ private struct DynamicIslandPage: View {
                 .onAppear { glow = true }
             },
             title: "Always With You",
-            description: "Max lives in your Dynamic Island at the top of the screen. While you're using other apps, Max quietly shows what it's doing and is always one tap away.",
+            description: "Max's Live Activity gives you a quick way back to your companion. Tap to talk, start your briefing, or plan your next hour. Your iPhone controls how long it stays visible.",
             tip: "Works on iPhone 14 Pro and later."
         )
     }

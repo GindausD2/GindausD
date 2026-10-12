@@ -1,7 +1,7 @@
 name: Verify Max V1
 on:
   push:
-    branches: [main, codex/max-build-streaming-fixes]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
@@ -76,4 +76,20 @@ jobs:
         with:
           name: ios-build-evidence
           path: ios-swift/build.log
+          if-no-files-found: ignore
+      - name: Run native V1 regression tests on simulator
+        run: |
+          set -o pipefail
+          xcodebuild -project Max.xcodeproj -scheme Max -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath build -resultBundlePath V1Tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO test | tee tests.log
+      - name: Save native test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-evidence
+          path: |
+            ios-swift/tests.log
+            ios-swift/V1Tests.xcresult
           if-no-files-found: ignore

@@ -556,9 +556,10 @@ final class HomeViewModel: ObservableObject {
         guard conversationState == .idle else { return }
         conversationState = .thinking
         let briefingID = UUID(); turnID = briefingID
+        let scope = storage.accountScope
         streamTask = Task {
             let snapshot = await BriefingService.shared.snapshot()
-            guard turnID == briefingID, !Task.isCancelled else { return }
+            guard turnID == briefingID, !Task.isCancelled, storage.accountScope == scope else { return }
             conversationState = .idle
             addUserMessage("Good morning — give me my daily briefing.")
             if kMaxAPIBaseURL.isEmpty || AuthService.shared.currentUser?.isDemo == true {

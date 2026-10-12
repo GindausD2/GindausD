@@ -6,6 +6,7 @@ extension Notification.Name {
     static let maxWidgetActivate = Notification.Name("max.widget.activate")
     static let maxQuickReply = Notification.Name("max.quick.reply")
 }
+@MainActor
 final class BriefingService {
     static let shared = BriefingService()
     static let notificationID = "max.morning.briefing"

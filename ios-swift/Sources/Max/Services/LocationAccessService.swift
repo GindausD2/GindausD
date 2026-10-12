@@ -7,6 +7,7 @@ final class LocationAccessService: NSObject, CLLocationManagerDelegate {
     private var waiter: CheckedContinuation<Bool, Never>?
     private override init() { super.init(); manager.delegate = self }
     func authorize() async -> Bool {
+        guard CLLocationManager.locationServicesEnabled() else { return false }
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse: return true
         case .notDetermined:
@@ -18,9 +19,12 @@ final class LocationAccessService: NSObject, CLLocationManagerDelegate {
         default: return false
         }
     }
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        guard manager.authorizationStatus != .notDetermined else { return }
-        let allowed = manager.authorizationStatus == .authorizedAlways || manager.authorizationStatus == .authorizedWhenInUse
-        waiter?.resume(returning: allowed); waiter = nil
+    nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        Task { @MainActor [weak self] in
+            guard let self, self.manager.authorizationStatus != .notDetermined else { return }
+            let status = self.manager.authorizationStatus
+            self.waiter?.resume(returning: status == .authorizedAlways || status == .authorizedWhenInUse)
+            self.waiter = nil
+        }
     }
 }

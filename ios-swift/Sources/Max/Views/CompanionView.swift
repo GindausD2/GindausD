@@ -90,7 +90,18 @@ struct CompanionView: View {
             .alert("Your reminders", isPresented: $showNotice) { Button("Done", role: .cancel) {} } message: { Text(notice) }
         }
     }
-    private func reload() { notes = storage.loadNotes(); places = storage.loadPlaceVisits(); reminders = storage.loadReminders().filter { $0.fireDate > Date() }.sorted { $0.fireDate < $1.fireDate } }
+    private func reload() {
+        notes = storage.loadNotes(); places = storage.loadPlaceVisits()
+        let scope = storage.accountScope
+        Task { @MainActor in
+            let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
+            guard storage.accountScope == scope else { return }
+            let ids = Set(pending.map(\.identifier))
+            reminders = storage.loadReminders().filter {
+                $0.triggerKind == "context" || ($0.fireDate > Date() && ids.contains($0.id))
+            }.sorted { $0.fireDate < $1.fireDate }
+        }
+    }
 }
 
 private struct CompanionAddSheet: View {
