@@ -93,6 +93,8 @@ jobs:
             build/Build/Products/Debug-iphonesimulator/Max.app \
             device-build/Build/Products/Release-iphoneos/Max.app
       - name: Run native V1 regression tests on simulator
+        env:
+          TEST_RUNNER_MAX_EXPORT_UPDATED_UI: '1'
         run: |
           set -o pipefail
           xcodebuild -project Max.xcodeproj -scheme Max -configuration Debug \

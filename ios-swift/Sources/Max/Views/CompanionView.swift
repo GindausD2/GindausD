@@ -153,30 +153,19 @@ private struct CompanionAddSheet: View {
     @State private var error: String?
     @State private var savedReminder: Reminder?
     var body: some View {
-        NavigationStack {
-            Form {
-                if let savedReminder {
-                    Section("Reminder saved") {
-                        Label(savedReminder.title, systemImage: "checkmark.circle.fill").font(.headline).foregroundStyle(Color(hex: "#315E73"))
-                        Text(savedReminder.triggerSummary(place: places.first { $0.id == savedReminder.placeID }))
-                        if savedReminder.triggerKind == "location", let address = places.first(where: { $0.id == savedReminder.placeID })?.note {
-                            Text(address).font(.subheadline).foregroundStyle(.secondary)
-                        }
-                        if savedReminder.triggerKind != "location", savedReminder.triggerKind != "context" {
-                            Text("Time zone: \(TimeZone.current.identifier)").font(.caption).foregroundStyle(.secondary)
+        if let savedReminder {
+            ReminderConfirmationView(reminder: savedReminder, places: places, onDone: { dismiss() })
+        } else {
+            NavigationStack {
+                Form { creationFields }
+                    .navigationTitle("Add \(section == "Places" ? "place" : section == "Notes" ? "note" : "reminder")")
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(saving ? "Saving…" : "Save") { save() }
+                                .disabled(saving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }
                     }
-                } else {
-                    creationFields
-                }
-            }
-            .navigationTitle(savedReminder != nil ? "Reminder saved" : "Add \(section == "Places" ? "place" : section == "Notes" ? "note" : "reminder")")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { if savedReminder == nil { Button("Cancel") { dismiss() }.disabled(saving) } }
-                ToolbarItem(placement: .confirmationAction) {
-                    if savedReminder != nil { Button("Done") { dismiss() } }
-                    else { Button(saving ? "Saving…" : "Save") { save() }.disabled(saving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) }
-                }
             }
         }
     }
