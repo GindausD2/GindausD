@@ -64,6 +64,7 @@ jobs:
         run: |
           cp Configuration/Public.example.xcconfig Configuration/Public.xcconfig
           xcodegen generate
+          git diff --exit-code -- Info.plist Configuration/Max.entitlements Configuration/Widget.entitlements
       - name: Build simulator app and extensions without credentials
         run: |
           set -o pipefail

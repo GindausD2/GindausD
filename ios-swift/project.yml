@@ -22,13 +22,12 @@ targets:
     configFiles:
       Debug: Configuration/Public.xcconfig
       Release: Configuration/Public.xcconfig
-    entitlements:
-      path: Configuration/Max.entitlements
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max
         INFOPLIST_FILE: Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Configuration/Max.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     dependencies:
       - package: Supabase
@@ -51,10 +50,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.liveactivity
+        CODE_SIGN_ENTITLEMENTS: Configuration/Widget.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
-    entitlements:
-      path: Configuration/Widget.entitlements
   MaxWidget:
     type: app-extension
     platform: iOS
@@ -69,10 +67,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.widget
+        CODE_SIGN_ENTITLEMENTS: Configuration/Widget.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
-    entitlements:
-      path: Configuration/Widget.entitlements
   MaxTests:
     type: bundle.unit-test
     platform: iOS

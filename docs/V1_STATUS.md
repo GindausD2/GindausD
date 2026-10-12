@@ -39,7 +39,7 @@ The [Verify Max V1 workflow](https://github.com/GindausD2/GindausD/actions/workf
 - PostgreSQL 16 in a disposable CI database: 40 concurrent requests accept exactly 20; daily limits, account counters, anonymous denial, and denied direct table access pass. The auth schema/session identity is a test fixture, not a real Supabase login.
 - Expo: TypeScript check passes.
 - Xcode 26.2: simulator Debug and unsigned iPhone Release builds pass for Max and both extensions; nine native tests pass on the iPhone simulator.
-- Packaged-app checks validate privacy strings, Live Activity support, deep-link/OAuth schemes, background registration, compiled launch screen, expanded public configuration, and both extensions. The main target uses the existing Info.plist; XcodeGen must not replace it with a partial generated plist.
+- Packaged-app checks validate privacy strings, Live Activity support, deep-link/OAuth schemes, background registration, compiled launch screen, expanded public configuration, and both extensions. Generation checks preserve the source Info.plist and App Group / Apple sign-in / WeatherKit entitlement files. Real signed entitlements still require Apple provisioning.
 
 These checks do not exercise a real provider, production Supabase authentication, Google OAuth, WeatherKit signing, microphone input, location-trigger delivery, or physical Dynamic Island interaction. Local backend environment and native public release settings are absent. Hosting inspection returned HTTP 403 for the project scope, so the live server configuration was not inspected.
 

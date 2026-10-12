@@ -3,6 +3,16 @@ import plistlib
 import sys
 from pathlib import Path
 
+with Path("Configuration/Max.entitlements").open("rb") as f:
+    app_entitlements = plistlib.load(f)
+with Path("Configuration/Widget.entitlements").open("rb") as f:
+    widget_entitlements = plistlib.load(f)
+assert app_entitlements.get("com.apple.security.application-groups") == ["group.com.gindausd.max"]
+assert app_entitlements.get("com.apple.developer.applesignin") == ["Default"]
+assert app_entitlements.get("com.apple.developer.weatherkit") is True
+assert widget_entitlements.get("com.apple.security.application-groups") == ["group.com.gindausd.max"]
+print("PASS: App Group, Sign in with Apple, and WeatherKit entitlement declarations preserved; real signing still required")
+
 for name in sys.argv[1:]:
     app = Path(name)
     with (app / "Info.plist").open("rb") as f:
