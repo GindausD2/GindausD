@@ -259,7 +259,7 @@ struct HomeView: View {
                 .font(.subheadline)
                 .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
-            Text(viewModel.conversationState == .speaking ? "Max is speaking · tap to stop" : "Tap the orb to hear Max")
+            Text(viewModel.orbCaption)
                 .font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
@@ -557,6 +557,14 @@ final class HomeViewModel: ObservableObject {
     var orbAccessibilityHint: String {
         if isDictating { return "Finish dictation and review your message before sending" }
         return conversationState == .idle ? "Tap to hear Max. Use the microphone to dictate." : "Tap to stop"
+    }
+
+    var orbCaption: String {
+        if isDictating {
+            if isTranscribing { return "Finishing your voice draft…" }
+            return conversationState == .listening ? "Tap the orb to finish your draft" : "Getting the microphone ready…"
+        }
+        return conversationState == .speaking ? "Max is speaking · tap to stop" : "Tap the orb to hear Max"
     }
 
     func loadMessages() {
