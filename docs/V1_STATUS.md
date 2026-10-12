@@ -8,13 +8,13 @@ Keep the premium glacier-blue glass design. Priorities are speed, personality, a
 
 | Area | Implemented in source | Verification / remaining setup |
 | --- | --- | --- |
-| Voice | Native microphone/speech permissions, partial speech recognition, native spoken replies, voice selection, optional silence-ended continuous conversation while app is open, explicit stop and cancellation | Needs Xcode build and real-device testing. On-device recognition is preferred; Apple recognition may use its servers when unavailable locally. Not an always-listening background assistant. |
-| Dynamic Island | Compact/expanded Live Activity views, glacier-blue accents, Talk / Briefing / Plan links opening Max, activation shortcut, lock-screen fallback | Needs extension build/signing and device testing. The system controls activity lifetime; this is not a permanent overlay across arbitrary apps. |
+| Voice | Native microphone/speech permissions, partial speech recognition, native spoken replies, voice selection, optional silence-ended continuous conversation while app is open, explicit stop and cancellation | Xcode simulator and unsigned iPhone Release builds have passed. Microphone, recognition, audio interruptions, and continuous handoff still require physical-device testing. On-device recognition is preferred; Apple recognition may use its servers when unavailable locally. Not an always-listening background assistant. |
+| Dynamic Island | Compact/expanded Live Activity views, glacier-blue accents, Talk / Briefing / Plan links opening Max, activation shortcut, lock-screen fallback | Both extensions compile in simulator and unsigned iPhone builds. Signing and physical-device interaction remain unverified. The system controls activity lifetime; this is not a permanent overlay across arbitrary apps. |
 | Morning briefing | Scheduled local notification; on tap, builds a calendar / saved-place weather / pending-reminder snapshot; adds unread-important Gmail count when connected; local spoken fallback without AI | Not a system alarm or automatic background voice wake-up. WeatherKit capability and Gmail OAuth configuration are needed. Missed-call history is not supplied. Remote live pushes while closed are not configured. |
 | Reminders | Future time validation, OS local notifications, arrival trigger at a manually saved place, context reminders surfaced when explicitly checked, manual creation/deletion | Geofencing accuracy/delivery and notification permissions require device testing. Signing out/account switching cancels old scheduled notifications and clears widget text; saved records remain account-scoped, but cancelled time/arrival reminders need scheduling again. Context reminders do not monitor behavior in other apps. |
-| Memory | Local notes, explicit facts/cards, manually saved addresses, conversation archive/timeline, per-account local storage scopes | Simulator regression tests cover native persistence/account scopes and older saved-data decoding; see verification evidence below. Real account sign-in/sign-out and device tests still needed. Legacy unscoped data stays in local demo only. Navigation searches must not be represented as confirmed visits. |
+| Memory | Local notes, explicit facts/cards, manually saved addresses, conversation archive/timeline, per-account local storage scopes | Nine native simulator regression tests pass, covering memory isolation/restoration, older settings/place decoding, context reminders, invalid times, ambiguous places, V1 exclusions, stopped replies, and stale account tool calls; see verification evidence below. Real account sign-in/sign-out and device tests still needed. Legacy unscoped data stays in local demo only. Navigation searches must not be represented as confirmed visits. |
 | Managed AI | Native calls `/v1/messages` with an authenticated Supabase session; provider key stays on server; bounded native tool loop; standard tool-use/result protocol; cancellation; V1 allowlist; database-enforced usage quota | 17 server tests pass, including the real HTTP adapter, split-Unicode streaming, validation, and disconnect cancellation with stubbed auth/provider responses. Disposable PostgreSQL 16 checks pass for concurrent minute caps, daily caps, account separation, and denied table/anonymous access. Live backend deployment, production SQL migration, authentication config, and real provider streaming remain unverified. |
-| UI | Glacier-blue assistant control, warm glass surfaces, text input, Your day hub, Settings without API/client-ID entry, reduced-motion/transparency support | Expo builds were verified previously. Native Liquid Glass/layout/device interactions remain unverified. |
+| UI | Glacier-blue assistant control, warm glass surfaces, text input, Your day hub, Settings without API/client-ID entry, reduced-motion/transparency support | Expo builds were verified previously. Native compilation is verified; Liquid Glass/layout/accessibility/device interactions still need visual/device acceptance testing. |
 
 ## Configure the native release
 
@@ -30,6 +30,18 @@ Keep the premium glacier-blue glass design. Priorities are speed, personality, a
 2. Set server-only `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL` (optional), `SUPABASE_URL`, and `SUPABASE_ANON_KEY`. The anon/publishable key identifies the Supabase project; the customer's bearer token authenticates requests. A service-role key is not needed.
 3. Run `npm start` from `backend` on Node 22+ and expose it behind HTTPS. No CORS/browser session integration is provided: this backend currently targets the native iPhone client.
 4. Check `/health`, then verify real sign-in → authenticated `/v1/messages` → quota RPC → provider SSE → native text → spoken reply. Missing server configuration or quota installation fails closed.
+
+## Verification evidence
+
+The [Verify Max V1 workflow](https://github.com/GindausD2/GindausD/actions/workflows/verify.yml) records the source commit, full logs, and build/test artifacts. Check the latest completed run for the current PR commit.
+
+- Node 22: 17 passing server tests, including real HTTP transport with stubbed authentication/provider responses.
+- PostgreSQL 16 in a disposable CI database: 40 concurrent requests accept exactly 20; daily limits, account counters, anonymous denial, and denied direct table access pass. The auth schema/session identity is a test fixture, not a real Supabase login.
+- Expo: TypeScript check passes.
+- Xcode 26.2: simulator Debug and unsigned iPhone Release builds pass for Max and both extensions; nine native tests pass on the iPhone simulator.
+- Packaged-app checks validate privacy strings, Live Activity support, deep-link/OAuth schemes, background registration, compiled launch screen, expanded public configuration, and both extensions. The main target uses the existing Info.plist; XcodeGen must not replace it with a partial generated plist.
+
+These checks do not exercise a real provider, production Supabase authentication, Google OAuth, WeatherKit signing, microphone input, location-trigger delivery, or physical Dynamic Island interaction. Local backend environment and native public release settings are absent. Hosting inspection returned HTTP 403 for the project scope, so the live server configuration was not inspected.
 
 ## Device acceptance checks
 

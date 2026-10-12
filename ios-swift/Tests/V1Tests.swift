@@ -15,7 +15,7 @@ final class V1Tests: XCTestCase {
     }
 
     func testMemoryIsIsolatedAndRestoredByAccount() async throws {
-        try await isolated {
+        await isolated {
             let store = StorageService.shared
             let a = store.accountScope
             store.saveNote(title: "Private idea", content: "Glacier ❄️")
