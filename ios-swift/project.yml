@@ -48,7 +48,6 @@ targets:
     sources:
       - Sources/MaxLiveActivity
       - Sources/Max/LiveActivity/MaxActivityAttributes.swift
-      - Sources/Max/Components/MaxLogoView.swift
     info:
       path: Configuration/LiveActivity-Info.plist
       properties:

@@ -187,9 +187,8 @@ final class ClaudeService {
                     properties: [
                         "title": PropertyDefinition(type: "string", description: "Reminder title"),
                         "body": PropertyDefinition(type: "string", description: "Reminder body text"),
-                        "fireAt": PropertyDefinition(type: "string", description: "Optional future ISO8601 date/time with timezone; use instead of minutesFromNow"),
-                    "fireAt": PropertyDefinition(type: "string", description: "Future ISO8601 timestamp with timezone; provide this or minutesFromNow"),
-                    "minutesFromNow": PropertyDefinition(type: "string", description: "Positive minutes from now; provide this or fireAt")
+                        "fireAt": PropertyDefinition(type: "string", description: "Future ISO8601 timestamp with timezone; provide this or minutesFromNow"),
+                        "minutesFromNow": PropertyDefinition(type: "string", description: "Positive minutes from now; provide this or fireAt")
                     ],
                     required: ["title"]
                 )
