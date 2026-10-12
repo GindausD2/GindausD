@@ -815,6 +815,11 @@ private struct AssistantSheet: View {
                     .tint(Color(hex: "#596F60"))
                     .onChange(of: settings.voiceEnabled) { _, _ in onSave() }
 
+                    Toggle("Speaking haptics", isOn: Binding(get: { settings.speakingHapticsEnabled ?? true }, set: { settings.speakingHapticsEnabled = $0; onSave() }))
+                        .tint(Color(hex: "#78B5CD"))
+                    Text("Gentle pulses while Max speaks. Tap the orb to hear Max, and tap again to stop.")
+                        .font(.caption).foregroundStyle(.secondary)
+
                     Toggle("Continuous conversation", isOn: Binding(get: { settings.continuousConversation ?? false }, set: { settings.continuousConversation = $0; onSave() }))
                         .tint(Color(hex: "#78B5CD"))
                     Text("When enabled, Max listens again after a spoken reply while this app is open. Tap the stop control to end the conversation.")

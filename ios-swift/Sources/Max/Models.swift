@@ -32,6 +32,7 @@ struct AuthUser: Codable, Equatable {
 struct AppSettings: Codable {
     var assistantName: String = "Max"
     var voiceEnabled: Bool = true
+    var speakingHapticsEnabled: Bool? = true
     var userName: String = ""
     var colorScheme: String = "system"      // "system" | "light" | "dark"
     var continuousConversation: Bool? = false

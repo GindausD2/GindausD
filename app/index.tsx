@@ -25,6 +25,9 @@ export default function HomeScreen() {
   const spoken = useRef<string | null>(null);
   const last = messages[messages.length - 1];
   useEffect(() => {
+    if (!last) return;
+    // Loaded history stays quiet; only new replies speak automatically.
+    if (spoken.current === null) { spoken.current = last.id; return; }
     if (last?.role === 'assistant' && !last.isStreaming && last.content && settings?.voiceEnabled && spoken.current !== last.id) {
       spoken.current = last.id;
       speak(last.content);
@@ -37,6 +40,13 @@ export default function HomeScreen() {
   const toggleVoice = async () => {
     if (listening) { const text = await recorder.stopAndTranscribe(); if (text) void sendMessage(text); }
     else { stopSpeaking(); await recorder.startRecording(); }
+  };
+  const tapOrb = () => {
+    if (busy) { stopStreaming(); stopSpeaking(); void recorder.cancel(); return; }
+    if (listening) { void toggleVoice(); return; }
+    if (isSpeaking) { stopSpeaking(); return; }
+    const reply = [...messages.slice(1)].reverse().find(message => message.role === 'assistant' && !message.isStreaming && message.content.trim());
+    speak(reply?.content ?? "Hi, I'm Max. I'm here. What's on your mind?", { manual: true });
   };
   const reset = () => Alert.alert('Start a new conversation?', 'Your current conversation will be cleared.', [
     { text: 'Cancel', style: 'cancel' }, { text: 'Start new', onPress: () => { stopStreaming(); stopSpeaking(); void recorder.cancel(); void clearConversation(); } },
@@ -59,11 +69,12 @@ export default function HomeScreen() {
               <Text style={styles.eyebrow}>A LITTLE SPACE FOR YOUR DAY</Text>
               <Text style={styles.title}>Make room for{ '\n' }what matters.</Text>
               <Text style={styles.subtitle}>A thought, a plan, a little help.{ '\n' }Start wherever you are.</Text>
-              <View style={styles.pearl}><Orb state={state} size={108} /></View>
-              <Text style={styles.voiceHint}>{listening ? 'Listening · tap the mic to finish' : 'Speak naturally. Max is here.'}</Text>
+              <Pressable accessibilityRole="button" accessibilityLabel={isSpeaking ? 'Stop Max speaking' : busy ? 'Stop response' : listening ? 'Finish voice input' : 'Hear Max'} accessibilityHint="Tap to hear Max. Use the microphone to talk." onPress={tapOrb} style={styles.pearl}><Orb state={state} size={124} /></Pressable>
+              <Text accessibilityLiveRegion="polite" style={styles.voiceHint}>{listening ? 'Listening · tap to finish' : isSpeaking ? 'Max is speaking · tap to stop' : busy ? 'One moment · tap to stop' : 'Tap to hear Max. Use the mic to talk.'}</Text>
               <View style={styles.suggestions}>{suggestions.map(text => <Pressable key={text} accessibilityRole="button" onPress={() => setDraft(text)}><GlassSurface style={styles.suggestion}><Text style={styles.suggestionText}>{text}</Text><Ionicons name="arrow-up-outline" size={14} color={C.textSecondary} /></GlassSurface></Pressable>)}</View>
             </View> : conversation.map(m => <View key={m.id} style={[styles.message, m.role === 'user' ? styles.userMessage : styles.assistantMessage]}><Text style={styles.messageLabel}>{m.role === 'user' ? 'YOU' : 'MAX'}</Text><Text selectable style={styles.messageText}>{m.content}</Text></View>)}
           </ScrollView>
+          {conversation.length > 0 ? <Pressable accessibilityRole="button" accessibilityLabel={isSpeaking ? 'Stop Max speaking' : busy ? 'Stop response' : listening ? 'Finish voice input' : 'Hear Max'} onPress={tapOrb} style={styles.replyOrb}><Orb state={state} size={56} /></Pressable> : null}
           {error || recorder.errorMessage ? <Text accessibilityLiveRegion="polite" style={styles.error}>{error || recorder.errorMessage}</Text> : null}
           {state !== 'idle' ? <Text accessibilityLiveRegion="polite" style={styles.status}>{activeToolName ? activeToolName.replace(/_/g, ' ') : state === 'thinking' ? 'One moment…' : state === 'listening' ? 'Listening…' : 'Speaking…'}</Text> : null}
           <GlassSurface style={styles.composer}>
@@ -88,7 +99,8 @@ const styles = StyleSheet.create({
   eyebrow: { fontSize: 10, letterSpacing: 2, color: C.textSecondary, fontWeight: '600', textAlign: 'center' },
   title: { fontSize: 39, lineHeight: 45, fontWeight: '400', letterSpacing: -1.5, textAlign: 'center', marginTop: 23, color: C.textPrimary },
   subtitle: { fontSize: 15, lineHeight: 24, color: C.textSecondary, textAlign: 'center', marginTop: 18 },
-  pearl: { padding: 22, borderRadius: 100, backgroundColor: 'rgba(255,255,255,0.25)', marginTop: 30, marginBottom: 20, borderWidth: 1, borderColor: 'rgba(255,255,255,0.7)' },
+  pearl: { borderRadius: 100, marginTop: 24, marginBottom: 16 },
+  replyOrb: { alignSelf: 'center', borderRadius: 50, marginBottom: 8 },
   voiceHint: { fontSize: 12, color: C.textSecondary }, suggestions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 26 },
   suggestion: { borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 10 }, suggestionText: { fontSize: 14, color: C.textPrimary },
   message: { padding: 18, borderRadius: 24, marginTop: 12, maxWidth: '93%' }, userMessage: { alignSelf: 'flex-end', backgroundColor: '#E3E9DF' }, assistantMessage: { alignSelf: 'flex-start', backgroundColor: 'rgba(255,255,255,0.8)' },

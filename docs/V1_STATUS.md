@@ -6,6 +6,8 @@ The native V1 beta is available after sign-in without a mandatory StoreKit purch
 
 Keep the premium glacier-blue glass design. Priorities are speed, personality, a useful daily ritual, and memory the user controls. Booking rides/flights, purchases, and advanced autonomous agents are excluded.
 
+The glass orb is an explicit speech control: tap to hear Max's greeting or replay the latest completed reply, and tap again to stop. Use the separate microphone to talk. While speaking, its rings pulse and waveform moves; reduced-motion settings keep it still. Native speech-word callbacks request soft, throttled iPhone haptics while the app is active. The optional Speaking haptics preference disables these pulses, including on older saved settings. Speech and haptics stop when the conversation ends or the app leaves the foreground. The Expo web app previews this appearance and tap/stop interaction; browser audio and iPhone haptic delivery still need real-device acceptance testing.
+
 | Area | Implemented in source | Verification / remaining setup |
 | --- | --- | --- |
 | Voice | Native microphone/speech permissions, partial speech recognition, native spoken replies, voice selection, optional silence-ended continuous conversation while app is open, explicit stop and cancellation | Xcode simulator and unsigned iPhone Release builds have passed. Microphone, recognition, audio interruptions, and continuous handoff still require physical-device testing. On-device recognition is preferred; Apple recognition may use its servers when unavailable locally. Not an always-listening background assistant. |
@@ -45,6 +47,7 @@ These checks do not exercise a real provider, production Supabase authentication
 
 ## Device acceptance checks
 
+- Orb tap starts spoken greeting/replay without opening the microphone; second tap stops speech and haptics. Verify pulses during speech, the Speaking haptics switch, reduced motion, and background/interruption cleanup on a real iPhone.
 - First microphone/speech permission, denied permission, speech unavailable, interrupted recording, backgrounding, explicit stop, and continuous turn handoff; no microphone starts automatically on an ordinary launch.
 - Island links and activation shortcut from cold/warm launches, devices without Dynamic Island, activity ending under system control, and no stale/cross-account snippets after sign-out.
 - Time reminders at the selected local time, ambiguous/past times rejected, arrival reminders at a uniquely named saved address, duplicate place names rejected, context check consumes the matching reminders, and deletion cancels notification delivery.

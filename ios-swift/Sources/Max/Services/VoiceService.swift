@@ -21,6 +21,8 @@ final class VoiceService: NSObject, ObservableObject {
     var onUtteranceEnd: (() -> Void)?
     private let speechSynthesizer = AVSpeechSynthesizer()
     private var currentUtterance: AVSpeechUtterance?
+    private let speakingFeedback = UIImpactFeedbackGenerator(style: .soft)
+    private var lastHapticAt: TimeInterval = 0
 
     private override init() {
         super.init()
@@ -141,6 +143,8 @@ final class VoiceService: NSObject, ObservableObject {
         utterance.volume = 1.0
 
         currentUtterance = utterance
+        lastHapticAt = 0
+        speakingFeedback.prepare()
         isSpeaking = true
         speechSynthesizer.speak(utterance)
     }
@@ -179,6 +183,19 @@ final class VoiceService: NSObject, ObservableObject {
 // MARK: - AVSpeechSynthesizerDelegate
 
 extension VoiceService: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            guard self.currentUtterance === utterance, self.isSpeaking,
+                  UIApplication.shared.applicationState == .active,
+                  StorageService.shared.loadSettings().speakingHapticsEnabled ?? true else { return }
+            let now = ProcessInfo.processInfo.systemUptime
+            guard now - self.lastHapticAt >= 0.65 else { return }
+            self.lastHapticAt = now
+            self.speakingFeedback.impactOccurred(intensity: 0.35)
+            self.speakingFeedback.prepare()
+        }
+    }
+
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
             guard self.currentUtterance === utterance else { return }

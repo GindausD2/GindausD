@@ -43,9 +43,27 @@ final class V1Tests: XCTestCase {
     func testOldSettingsDecodeWithoutContinuousConversation() async throws {
         var fields = try JSONSerialization.jsonObject(with: JSONEncoder().encode(AppSettings())) as! [String: Any]
         fields.removeValue(forKey: "continuousConversation")
+        fields.removeValue(forKey: "speakingHapticsEnabled")
         let restored = try JSONDecoder().decode(AppSettings.self, from: JSONSerialization.data(withJSONObject: fields))
         XCTAssertNil(restored.continuousConversation)
         XCTAssertTrue(restored.voiceEnabled)
+        XCTAssertNil(restored.speakingHapticsEnabled)
+    }
+
+    func testOrbTapSpeaksAndSecondTapStopsWithoutSavingGreeting() async throws {
+        await isolated {
+            let model = HomeViewModel()
+            model.loadMessages()
+            model.handleOrbTap()
+            XCTAssertEqual(model.conversationState, .speaking)
+            XCTAssertTrue(VoiceService.shared.isSpeaking)
+            XCTAssertFalse(VoiceService.shared.isRecording)
+            XCTAssertTrue(model.messages.isEmpty)
+            model.handleOrbTap()
+            XCTAssertEqual(model.conversationState, .idle)
+            XCTAssertFalse(VoiceService.shared.isSpeaking)
+            XCTAssertTrue(StorageService.shared.loadMessages().isEmpty)
+        }
     }
 
     func testOldPlacesDecodeWithoutCoordinates() async throws {

@@ -233,7 +233,12 @@ struct HomeView: View {
 
     private var emptyState: some View {
         VStack(spacing: 14) {
-            OrbView(state: .idle, size: 90)
+            Button { viewModel.handleOrbTap() } label: {
+                OrbView(state: viewModel.orbState, size: 112)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(viewModel.orbAccessibilityLabel)
+            .accessibilityHint("Tap to hear Max. Use the microphone to talk.")
             Text("Make room for\nwhat matters.")
                 .font(.system(size: 38, weight: .regular, design: .serif))
                 .multilineTextAlignment(.center)
@@ -242,6 +247,8 @@ struct HomeView: View {
                 .font(.subheadline)
                 .foregroundStyle(Color.secondary)
                 .multilineTextAlignment(.center)
+            Text(viewModel.conversationState == .speaking ? "Max is speaking · tap to stop" : "Tap the orb to hear Max")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 80)
@@ -266,15 +273,18 @@ struct HomeView: View {
                     .onSubmit { viewModel.sendTextMessage() }
                     .disabled(viewModel.conversationState != .idle)
                     .accessibilityLabel("Message Max")
-                Button { viewModel.sendTextMessage() } label: {
-                    Image(systemName: "arrow.up")
+                Button {
+                    if viewModel.conversationState != .idle || viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { viewModel.handleMicTap() }
+                    else { viewModel.sendTextMessage() }
+                } label: {
+                    Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "mic.fill" : "arrow.up")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
                         .background(Color(hex: "#292D2B"), in: Circle())
                 }
-                .disabled(viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || viewModel.conversationState != .idle)
-                .accessibilityLabel("Send message")
+                .disabled(viewModel.isTranscribing)
+                .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Talk to Max" : "Send message")
             }
             .padding(.horizontal, 20)
             .padding(.top, 14)
@@ -285,12 +295,13 @@ struct HomeView: View {
                 placesButton
                     .frame(maxWidth: .infinity)
 
-                // Orb (voice) — centre
+                // Orb speaks on tap; the composer microphone starts voice input.
                 Button { viewModel.handleOrbTap() } label: {
                     OrbView(state: viewModel.orbState, size: 84)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(viewModel.conversationState == .listening ? "Finish voice input" : "Talk to Max")
+                .accessibilityLabel(viewModel.orbAccessibilityLabel)
+                .accessibilityHint("Tap to hear Max. Tap again to stop.")
                 .frame(maxWidth: .infinity)
 
                 // Camera (vision)
@@ -452,6 +463,7 @@ final class HomeViewModel: ObservableObject {
     private let voice   = VoiceService.shared
 
     private var streamTask: Task<Void, Never>?
+    private var speechCompletionTask: Task<Void, Never>?
     private var turnID = UUID()
     private var continuousActive = false
     private var startingVoice = false
@@ -466,6 +478,15 @@ final class HomeViewModel: ObservableObject {
         case .listening: return .listening
         case .thinking:  return .thinking
         case .speaking:  return .speaking
+        }
+    }
+
+    var orbAccessibilityLabel: String {
+        switch conversationState {
+        case .idle: return "Hear Max"
+        case .listening: return "Finish voice input"
+        case .thinking: return "Stop response"
+        case .speaking: return "Stop Max speaking"
         }
     }
 
@@ -538,7 +559,32 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    func handleOrbTap() { handleMicTap() }
+    func handleOrbTap() {
+        guard !startingVoice, !isTranscribing else { return }
+        guard conversationState == .idle else { handleMicTap(); return }
+        continuousActive = false
+        turnID = UUID()
+        let reply = messages.last(where: { $0.role == "assistant" && !$0.isStreaming && !$0.content.isEmpty && !$0.content.hasPrefix("⚠️") && !$0.content.hasPrefix("Error:") })?.content
+        playSpeech(reply ?? "Hi, I'm Max. I'm here. What's on your mind?")
+    }
+
+    private func playSpeech(_ text: String, continueListening: Bool = false) {
+        speechCompletionTask?.cancel()
+        let speechID = turnID
+        let speechScope = storage.accountScope
+        voice.speak(text, preferredVoice: storage.loadSettings().preferredVoice)
+        guard voice.isSpeaking else { conversationState = .idle; return }
+        conversationState = .speaking
+        speechCompletionTask = Task { [weak self] in
+            guard let self else { return }
+            while self.voice.isSpeaking {
+                do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+            }
+            guard self.turnID == speechID, self.storage.accountScope == speechScope, !Task.isCancelled else { return }
+            self.conversationState = .idle
+            if continueListening, self.continuousActive, UIApplication.shared.applicationState == .active { self.startListening() }
+        }
+    }
 
     func activateVoice() {
         guard conversationState == .idle, !isTranscribing else { return }
@@ -566,7 +612,7 @@ final class HomeViewModel: ObservableObject {
                 messages.append(Message(role: "assistant", content: snapshot))
                 storage.saveMessages(messages)
                 archiveCurrentConversation()
-                if storage.loadSettings().voiceEnabled { voice.speak(snapshot, preferredVoice: storage.loadSettings().preferredVoice) }
+                if storage.loadSettings().voiceEnabled { playSpeech(snapshot) }
             } else { streamResponse(userText: "Summarize this verified snapshot warmly. Do not invent missing sources.\n" + snapshot) }
         }
     }
@@ -575,6 +621,7 @@ final class HomeViewModel: ObservableObject {
         continuousActive = false
         turnID = UUID()
         streamTask?.cancel(); streamTask = nil
+        speechCompletionTask?.cancel(); speechCompletionTask = nil
         voice.stopSpeaking(); voice.stopRecording()
         isTranscribing = false
         streamingText = ""
@@ -690,16 +737,7 @@ final class HomeViewModel: ObservableObject {
                     self.archiveCurrentConversation()
                     self.pushToWidget(fullText)
                     if settings.voiceEnabled && !fullText.isEmpty {
-                        self.conversationState = .speaking
-                        self.voice.speak(fullText, preferredVoice: settings.preferredVoice)
-                        Task {
-                            while self.voice.isSpeaking {
-                                try? await Task.sleep(nanoseconds: 200_000_000)
-                            }
-                            guard self.turnID == thisTurn else { return }
-                            self.conversationState = .idle
-                            if self.continuousActive, UIApplication.shared.applicationState == .active { self.startListening() }
-                        }
+                        self.playSpeech(fullText, continueListening: true)
                     } else {
                         self.conversationState = .idle
                     }
