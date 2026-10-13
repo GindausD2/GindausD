@@ -25,6 +25,8 @@ final class ScreenshotTests: XCTestCase {
         let onboarding = UserDefaults.standard.object(forKey: "max:onboarding_complete")
         UserDefaults.standard.set(true, forKey: "max:onboarding_complete")
         defer { UserDefaults.standard.set(onboarding, forKey: "max:onboarding_complete") }
+        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Video_Inspired_Home")
+        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Video_Inspired_Dark", style: .dark)
         let voiceCapture = TestVoiceCapture()
         let model = HomeViewModel(capture: voiceCapture)
         model.loadMessages()
@@ -32,7 +34,7 @@ final class ScreenshotTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         voiceCapture.text = "Remind me to call David tomorrow at eight."
         voiceCapture.result = voiceCapture.text
-        try await capture(HomeView(viewModel: model).environmentObject(AuthService.shared), name: "Max_Voice_To_Text")
+        try await capture(HomeView(viewModel: model).environmentObject(AuthService.shared), name: "Max_Video_Inspired_Voice")
         model.endConversation()
         let draftCapture = TestVoiceCapture()
         let draftModel = HomeViewModel(capture: draftCapture)
@@ -44,15 +46,15 @@ final class ScreenshotTests: XCTestCase {
         draftModel.handleMicTap()
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertTrue(draftModel.prefersTextReplyForDraft)
-        try await capture(HomeView(viewModel: draftModel).environmentObject(AuthService.shared), name: "Max_Voice_Draft")
+        try await capture(HomeView(viewModel: draftModel).environmentObject(AuthService.shared), name: "Max_Video_Inspired_Draft")
     }
 
-    private func capture<Content: View>(_ content: Content, name: String) async throws {
+    private func capture<Content: View>(_ content: Content, name: String, style: UIUserInterfaceStyle = .light) async throws {
         let controller = UIHostingController(rootView: content)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
         window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
-        window.overrideUserInterfaceStyle = .light
+        window.overrideUserInterfaceStyle = style
         window.rootViewController = controller
         window.makeKeyAndVisible()
         defer { window.isHidden = true; window.rootViewController = nil }

@@ -10,6 +10,7 @@ struct GlassCardModifier: ViewModifier {
     var cornerRadius: CGFloat = 24
     var depth: GlassDepth = .thin
     var padding: EdgeInsets?
+    var interactive = false
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @ViewBuilder func body(content: Content) -> some View {
         let padded = content.if(padding != nil) { $0.padding(padding!) }
@@ -19,7 +20,7 @@ struct GlassCardModifier: ViewModifier {
             // Older SDKs and iOS versions retain a quiet material fallback.
             #if compiler(>=6.2)
             if #available(iOS 26.0, *) {
-                padded.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                padded.glassEffect(.regular.interactive(interactive), in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             } else {
                 fallback(padded)
             }
@@ -36,8 +37,8 @@ struct GlassCardModifier: ViewModifier {
     }
 }
 extension View {
-    func glassCard(cornerRadius: CGFloat = 24, depth: GlassDepth = .thin, borderOpacity: CGFloat = 0.25, shadowRadius: CGFloat = 16, shadowOpacity: CGFloat = 0.25, padding: EdgeInsets? = nil) -> some View {
-        modifier(GlassCardModifier(cornerRadius: cornerRadius, depth: depth, padding: padding))
+    func glassCard(cornerRadius: CGFloat = 24, depth: GlassDepth = .thin, borderOpacity: CGFloat = 0.25, shadowRadius: CGFloat = 16, shadowOpacity: CGFloat = 0.25, padding: EdgeInsets? = nil, interactive: Bool = false) -> some View {
+        modifier(GlassCardModifier(cornerRadius: cornerRadius, depth: depth, padding: padding, interactive: interactive))
     }
     @ViewBuilder func `if`<T: View>(_ condition: Bool, transform: (Self) -> T) -> some View {
         if condition { transform(self) } else { self }

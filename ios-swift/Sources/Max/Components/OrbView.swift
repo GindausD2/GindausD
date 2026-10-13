@@ -29,34 +29,41 @@ private struct OrbFrame: View {
         return CGFloat((sin(time * frequency) + 1) / 2)
     }
     var body: some View {
-        ZStack { halo; glassRing; sphere }
+        ZStack { halo; sphere }
             .frame(width: size * 1.42, height: size * 1.42)
     }
     private var halo: some View {
-        Circle().fill(Color(hex: "#C2E7F4").opacity(0.12))
-            .overlay(Circle().strokeBorder(.white.opacity(0.65), lineWidth: 1))
+        Circle().fill(RadialGradient(colors: [Color(hex: "#B9E5F3").opacity(0.34), Color(hex: "#C2E7F4").opacity(0)], center: .center, startRadius: size * 0.25, endRadius: size * 0.71))
             .frame(width: size * 1.42, height: size * 1.42)
             .scaleEffect(0.94 + pulse * 0.1)
     }
-    private var glassRing: some View {
-        Circle().fill(.white.opacity(0.18))
-            .overlay(Circle().strokeBorder(.white.opacity(0.8), lineWidth: 1))
-            .frame(width: size * 1.21, height: size * 1.21)
-    }
     private var sphere: some View {
-        Circle().fill(LinearGradient(colors: [Color(hex: "#F0FBFF"), Color(hex: "#BDE5F4"), Color(hex: "#79B9D4"), Color(hex: "#538FAA")], startPoint: .topLeading, endPoint: .bottomTrailing))
+        Circle().fill(RadialGradient(colors: [Color(hex: "#EDFAFF"), Color(hex: "#BCE8F5"), Color(hex: "#78BED9"), Color(hex: "#4F96B5")], center: .init(x: 0.28, y: 0.20), startRadius: 0, endRadius: size * 0.9))
+            .overlay { refraction }
             .overlay(alignment: .topLeading) { reflection }
-            .overlay { waveform }
-            .overlay(Circle().strokeBorder(.white.opacity(0.95), lineWidth: 1))
+            .overlay {
+                if state == .speaking || state == .listening { waveform }
+                if state == .thinking { ProgressView().tint(Color(hex: "#315E73")) }
+            }
+            .overlay(Circle().strokeBorder(.white.opacity(0.7), lineWidth: 0.75))
+            .clipShape(Circle())
             .frame(width: size, height: size)
             .scaleEffect(1 + pulse * (state == .speaking ? 0.035 : 0.018))
-            .shadow(color: Color(hex: "#467B94").opacity(0.2), radius: 20, x: 0, y: 10)
+            .shadow(color: Color(hex: "#6CAEC8").opacity(0.22), radius: size * 0.20, x: 0, y: size * 0.10)
+    }
+    private var refraction: some View {
+        Ellipse()
+            .fill(LinearGradient(colors: [.white.opacity(0), .white.opacity(0.32), Color(hex: "#DAF5FC").opacity(0.15)], startPoint: .topLeading, endPoint: .bottomTrailing))
+            .frame(width: size * 0.88, height: size * 0.67)
+            .rotationEffect(.degrees(-36 + Double(pulse) * 8))
+            .offset(x: size * 0.24, y: size * 0.27)
+            .blur(radius: size * 0.035)
     }
     private var reflection: some View {
         Ellipse().fill(LinearGradient(colors: [.white.opacity(0.85), .white.opacity(0)], startPoint: .top, endPoint: .bottom))
-            .frame(width: size * 0.66, height: size * 0.30)
-            .rotationEffect(.degrees(-22))
-            .offset(x: size * 0.13, y: size * 0.08)
+            .frame(width: size * 0.48, height: size * 0.30)
+            .rotationEffect(.degrees(-35 + Double(pulse) * 5))
+            .offset(x: size * 0.12, y: size * 0.09)
     }
     private var waveform: some View {
         HStack(spacing: size * 0.033) {

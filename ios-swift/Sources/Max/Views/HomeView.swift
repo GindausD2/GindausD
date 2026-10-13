@@ -13,6 +13,8 @@ struct HomeView: View {
     @State private var showSettings: Bool = false
     @State private var showCompanion: Bool = false
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
@@ -26,14 +28,11 @@ struct HomeView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // ── Liquid glass background ───────────────────────────────────────
+        ZStack {
             LinearGradient(
-                stops: [
-                    .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                    .init(color: Color(hex: "#F4F1EB"), location: 0.5),
-                    .init(color: Color(hex: "#DCE4DA"), location: 1.0)
-                ],
+                colors: colorScheme == .dark
+                    ? [Color(hex: "#141C21"), Color(hex: "#1F2B32"), Color(hex: "#26343A")]
+                    : [.white, Color(hex: "#FAF9F5"), Color(hex: "#EEF3F1")],
                 startPoint: .top, endPoint: .bottom
             ).ignoresSafeArea()
 
@@ -43,24 +42,22 @@ struct HomeView: View {
                     trialBanner
                 }
                 transcriptArea
-                    .padding(.bottom, viewModel.isDictating ? 310 : 215)
             }
-
-            // ── Image preview bar ──────────────────────────────────────────────
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
-                Spacer()
                 if let img = pendingImage {
                     imagePendingBar(img: img)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                // ── Floating glass dock ────────────────────────────────────────
                 bottomDock
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage != nil)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
         }
         .onDisappear { viewModel.endConversation() }
         .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
@@ -185,60 +182,65 @@ struct HomeView: View {
 
     private var topBar: some View {
         HStack {
-            // Settings
-            Button { showSettings = true } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(Color.secondary)
+            Button {
+                pendingImage = nil
+                viewModel.startNewChat()
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 18, weight: .regular))
                     .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
             }
+            .accessibilityLabel("New conversation")
 
             Spacer()
-
-            // Logo
-            MaxLogoView(color: Color.primary, width: 54)
-
+            MaxLogoView(color: Color.primary, width: 42)
+                .accessibilityLabel("Max")
             Spacer()
 
-            // Conversation history
-            Button { showHistory = true } label: {
-                Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(Color.secondary)
+            Button { viewModel.endConversation(); showSettings = true } label: {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 18, weight: .regular))
                     .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
             }
+            .accessibilityLabel("Settings")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .glassCard(cornerRadius: 28)
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 22)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Transcript
 
     private var transcriptArea: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    if viewModel.messages.isEmpty {
-                        emptyState.id("empty")
-                    } else {
-                        ForEach(viewModel.messages) { msg in
-                            TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
-                                .id(msg.id)
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        if viewModel.messages.isEmpty {
+                            emptyState
+                                .frame(minHeight: max(0, geometry.size.height - 24))
+                                .id("empty")
+                        } else {
+                            ForEach(viewModel.messages) { msg in
+                                TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
+                                    .id(msg.id)
+                            }
                         }
                     }
+                    .padding(.vertical, 12)
                 }
-                .padding(.vertical, 14)
-            }
-            .onChange(of: viewModel.messages.count) { _, _ in
-                if let last = viewModel.messages.last {
-                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                .onChange(of: viewModel.messages.count) { _, _ in
+                    if let last = viewModel.messages.last {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
                 }
-            }
-            .onChange(of: viewModel.streamingText) { _, _ in
-                if let last = viewModel.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                .onChange(of: viewModel.streamingText) { _, _ in
+                    if let last = viewModel.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
             }
         }
     }
@@ -246,25 +248,27 @@ struct HomeView: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: 112)
+                OrbView(state: viewModel.orbState, size: 132)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
-            Text("Make room for\nwhat matters.")
-                .font(.system(size: 38, weight: .regular, design: .serif))
-                .multilineTextAlignment(.center)
-                .foregroundStyle(Color.primary)
-            Text("A thought, a plan, a little help.\nStart wherever you are.")
+            Text("Max")
+                .font(.system(size: 30, weight: .semibold, design: .rounded))
+                .tracking(-0.6)
+                .foregroundStyle(.primary)
+            Text("Your day, a little lighter.")
                 .font(.subheadline)
-                .foregroundStyle(Color.secondary)
-                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
             Text(viewModel.orbCaption)
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 80)
-        .padding(.horizontal, 40)
+        .padding(.vertical, 28)
+        .padding(.horizontal, 28)
     }
 
     // MARK: - Bottom Dock (liquid glass)
@@ -284,90 +288,112 @@ struct HomeView: View {
     }
 
     private var regularDock: some View {
-        VStack(spacing: 0) {
-            // Status pill
+        VStack(spacing: 14) {
             if viewModel.conversationState != .idle || viewModel.isTranscribing {
                 statusPill
-                    .padding(.bottom, 10)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(.opacity)
             }
-
-            HStack(spacing: 12) {
-                TextField("Ask Max anything…", text: $viewModel.inputText, axis: .vertical)
-                    .font(.body)
-                    .lineLimit(1...4)
-                    .focused($composerFocused)
-                    .submitLabel(.send)
-                    .onSubmit { viewModel.sendTextMessage() }
-                    .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
-                    .accessibilityLabel("Message Max")
-                Button { viewModel.handleMicTap() } label: {
-                    Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color(hex: "#315E73"))
-                        .frame(width: 44, height: 44)
-                        .background(Color(hex: "#C7E7F1"), in: Circle())
-                }
-                .disabled(viewModel.isTranscribing)
-                .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
-                .accessibilityHint("Turn your voice into editable text")
-                if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.conversationState == .idle {
-                    Button { viewModel.sendTextMessage() } label: {
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+            VStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    TextField("Ask Max anything…", text: $viewModel.inputText, axis: .vertical)
+                        .font(.body)
+                        .lineLimit(1...4)
+                        .focused($composerFocused)
+                        .submitLabel(.send)
+                        .onSubmit { viewModel.sendTextMessage() }
+                        .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
+                        .accessibilityLabel("Message Max")
+                    Button { viewModel.handleMicTap() } label: {
+                        Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Color(hex: "#315E73"))
                             .frame(width: 44, height: 44)
-                            .background(Color(hex: "#292D2B"), in: Circle())
+                            .background(Color(hex: "#C7E7F1"), in: Circle())
                     }
                     .disabled(viewModel.isTranscribing)
-                    .accessibilityLabel("Send message")
+                    .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
+                    .accessibilityHint("Turn your voice into editable text")
+                    if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.conversationState == .idle {
+                        Button { viewModel.sendTextMessage() } label: {
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .background(Color(hex: "#315E73"), in: Circle())
+                        }
+                        .disabled(viewModel.isTranscribing)
+                        .accessibilityLabel("Send message")
+                    }
+                }
+                if viewModel.prefersTextReplyForDraft {
+                    Text("Voice draft · edit, then send")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 14)
-            if viewModel.prefersTextReplyForDraft {
-                Text("Voice draft · edit, then send")
-                    .font(.caption).foregroundStyle(Color(hex: "#315E73"))
-                    .padding(.top, 8)
-            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 14)
+            .glassCard(cornerRadius: 30, depth: .regular)
 
-            // Main dock row
-            HStack(spacing: 0) {
-                // Places memory
-                placesButton
-                    .frame(maxWidth: .infinity)
-
-                // Orb speaks on tap; the composer microphone starts voice input.
-                Button { viewModel.handleOrbTap() } label: {
-                    OrbView(state: viewModel.orbState, size: 84)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(viewModel.orbAccessibilityLabel)
-                .accessibilityHint(viewModel.orbAccessibilityHint)
-                .frame(maxWidth: .infinity)
-
-                // Camera (vision)
-                Button { viewModel.startMorningBriefing() } label: {
-                    Image(systemName: "sun.horizon")
-                        .font(.system(size: 22))
-                        .foregroundStyle(Color.secondary)
-                        .frame(width: 50, height: 50)
-                }
-                .accessibilityLabel("Morning briefing")
-                .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 18)
-            .padding(.bottom, 20)
+            floatingShortcuts
         }
-        .overlay(alignment: .topTrailing) {
-            if viewModel.conversationState != .idle {
-                Button { viewModel.endConversation() } label: {
-                    Image(systemName: "stop.circle.fill").font(.system(size: 24)).foregroundStyle(Color.secondary)
-                }.accessibilityLabel("End conversation").padding(8)
-            }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.conversationState)
+    }
+
+    @ViewBuilder private var floatingShortcuts: some View {
+        #if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 12) { shortcutRow }
+        } else {
+            shortcutRow
         }
-        .glassCard(cornerRadius: 36, depth: .regular)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.conversationState)
+        #else
+        shortcutRow
+        #endif
+    }
+
+    private var shortcutRow: some View {
+        HStack(spacing: 12) {
+            shortcut("Your day", icon: "square.grid.2x2") { viewModel.endConversation(); showCompanion = true }
+            shortcut(speechShortcutTitle, icon: speechShortcutIcon) {
+                viewModel.handleOrbTap()
+            }
+            .accessibilityLabel(viewModel.orbAccessibilityLabel)
+            .accessibilityHint(viewModel.orbAccessibilityHint)
+            shortcut("History", icon: "clock.arrow.circlepath") { viewModel.endConversation(); showHistory = true }
+            shortcut("Briefing", icon: "sun.horizon") { viewModel.startMorningBriefing() }
+        }
+    }
+
+    private var speechShortcutTitle: String {
+        switch viewModel.conversationState {
+        case .idle: return "Hear Max"
+        case .listening: return "Done"
+        case .thinking, .speaking: return "Stop"
+        }
+    }
+
+    private var speechShortcutIcon: String {
+        switch viewModel.conversationState {
+        case .idle: return "speaker.wave.2"
+        case .listening: return "checkmark"
+        case .thinking, .speaking: return "stop.fill"
+        }
+    }
+
+    private func shortcut(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 17, weight: .regular))
+                Text(title).font(.system(.caption2, design: .rounded).weight(.medium))
+                    .lineLimit(2).multilineTextAlignment(.center)
+            }
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .padding(.horizontal, 3)
+            .glassCard(cornerRadius: 20, interactive: true)
+        }
+        .accessibilityLabel(title)
     }
 
     // MARK: - Status Pill
@@ -392,12 +418,13 @@ struct HomeView: View {
     }
 
     private var statusColor: Color {
-        if viewModel.isTranscribing { return Color(red: 0.95, green: 0.60, blue: 0.11) }
+        if colorScheme == .dark { return Color(hex: "#B8E3F0") }
+        if viewModel.isTranscribing { return Color(hex: "#315E73") }
         switch viewModel.conversationState {
         case .idle:      return .gray
-        case .listening: return Color(red: 0.94, green: 0.27, blue: 0.27)
-        case .thinking:  return Color(hex: "#596F60")
-        case .speaking:  return Color(hex: "#596F60")
+        case .listening: return Color(hex: "#315E73")
+        case .thinking:  return Color(hex: "#315E73")
+        case .speaking:  return Color(hex: "#315E73")
         }
     }
 
@@ -426,19 +453,6 @@ struct HomeView: View {
                     .font(.system(size: 18, weight: .medium))
                     .foregroundStyle(Color(white: 0.30))
             }
-        }
-    }
-
-    // MARK: - Places Button
-
-    private var placesButton: some View {
-        Button {
-            viewModel.sendPlacesQuery()
-        } label: {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 21, weight: .regular))
-                .foregroundStyle(Color.secondary)
-                .frame(width: 44, height: 44)
         }
     }
 
