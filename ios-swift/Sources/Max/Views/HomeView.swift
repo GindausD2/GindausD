@@ -3,6 +3,8 @@ import Combine
 import UIKit
 import WidgetKit
 
+enum HomePage: String, CaseIterable { case home = "Home", profile = "Profile" }
+
 // MARK: - HomeView
 
 struct HomeView: View {
@@ -12,6 +14,10 @@ struct HomeView: View {
     @StateObject private var viewModel: HomeViewModel
     @State private var showSettings: Bool = false
     @State private var showCompanion: Bool = false
+    @State private var showMemory = false
+    @State private var showIsland = false
+    @State private var selectedPage: HomePage
+    @State private var profileRefreshID = UUID()
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,29 +29,36 @@ struct HomeView: View {
 
     private let liveActivity = LiveActivityService.shared
 
-    init(viewModel: HomeViewModel? = nil) {
+    init(viewModel: HomeViewModel? = nil, initialPage: HomePage = .home) {
         _viewModel = StateObject(wrappedValue: viewModel ?? HomeViewModel())
+        _selectedPage = State(initialValue: initialPage)
     }
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: colorScheme == .dark
-                    ? [Color(hex: "#141C21"), Color(hex: "#1F2B32"), Color(hex: "#26343A")]
-                    : [.white, Color(hex: "#FAF9F5"), Color(hex: "#EEF3F1")],
-                startPoint: .top, endPoint: .bottom
-            ).ignoresSafeArea()
+            CompanionCanvas()
 
             VStack(spacing: 0) {
                 topBar
+                pageSwitcher
                 if authService.currentUser?.isDemo == true {
                     trialBanner
                 }
-                transcriptArea
+                TabView(selection: $selectedPage) {
+                    transcriptArea.tag(HomePage.home)
+                    ProfileHubView(
+                        onYourDay: { showCompanion = true },
+                        onIsland: { showIsland = true },
+                        onMemory: { showMemory = true },
+                        onSettings: { showSettings = true },
+                        refreshID: profileRefreshID
+                    ).tag(HomePage.profile)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
+            if selectedPage == .home { VStack(spacing: 0) {
                 if let img = pendingImage {
                     imagePendingBar(img: img)
                         .padding(.horizontal, 16)
@@ -58,8 +71,13 @@ struct HomeView: View {
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
+            }
         }
         .onDisappear { viewModel.endConversation() }
+        .onChange(of: selectedPage) { _, page in
+            composerFocused = false
+            if page == .profile { viewModel.endConversation() }
+        }
         .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
         .alert("Voice input unavailable", isPresented: Binding(
             get: { viewModel.dictationError != nil },
@@ -67,12 +85,14 @@ struct HomeView: View {
         )) {
             Button("OK", role: .cancel) { viewModel.dictationError = nil }
         } message: { Text(viewModel.dictationError ?? "Please try again.") }
-        .onChange(of: authService.currentUser) { _, _ in viewModel.endConversation(); viewModel.loadMessages() }
+        .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
+        .sheet(isPresented: $showMemory) { MemoryView() }
+        .sheet(isPresented: $showIsland) { IslandOverviewView() }
         .onChange(of: scenePhase) { _, phase in if phase == .background { viewModel.endConversation() } }
         .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
             UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
-            if let prompt = notification.object as? String { viewModel.inputText = prompt; viewModel.sendTextMessage() }
+            if let prompt = notification.object as? String { selectedPage = .home; viewModel.inputText = prompt; viewModel.sendTextMessage() }
         }
         .sheet(isPresented: $showHistory) {
             ConversationHistoryView(onNewChat: {
@@ -89,7 +109,7 @@ struct HomeView: View {
             pendingImage = img
             capturedImage = nil
         }
-        .sheet(isPresented: $showSettings) {
+        .sheet(isPresented: $showSettings, onDismiss: { profileRefreshID = UUID() }) {
             SettingsView(onClearHistory: viewModel.clearHistory)
                 .environmentObject(authService)
         }
@@ -101,16 +121,20 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.loadMessages()
+            if selectedPage == .profile { viewModel.endConversation() }
             liveActivity.startPersistentSession()
             if UserDefaults.standard.bool(forKey: "max.pendingVoiceActivation") {
+                selectedPage = .home
                 UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
                 viewModel.activateVoice()
             }
             if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
+                selectedPage = .home
                 UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
                 viewModel.startMorningBriefing()
             }
             if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
+                selectedPage = .home
                 UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
                 viewModel.inputText = prompt; viewModel.sendTextMessage()
             }
@@ -133,11 +157,13 @@ struct HomeView: View {
         }
         // Start briefing when user taps the morning notification
         .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+            selectedPage = .home
             UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
             viewModel.startMorningBriefing()
         }
         // Start listening when user taps the home screen widget
         .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
+            selectedPage = .home
             UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
             viewModel.activateVoice()
         }
@@ -184,6 +210,7 @@ struct HomeView: View {
         HStack {
             Button {
                 pendingImage = nil
+                selectedPage = .home
                 viewModel.startNewChat()
             } label: {
                 Image(systemName: "square.and.pencil")
@@ -211,6 +238,32 @@ struct HomeView: View {
         .padding(.horizontal, 22)
         .padding(.top, 10)
         .padding(.bottom, 8)
+    }
+
+    private var pageSwitcher: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 7) {
+                ForEach(HomePage.allCases, id: \.self) { page in
+                    Circle().fill(page == selectedPage ? Color.primary : Color.secondary.opacity(0.3))
+                        .frame(width: 5, height: 5)
+                }
+            }.accessibilityHidden(true)
+            HStack(spacing: 10) {
+                ForEach(HomePage.allCases, id: \.self) { page in
+                    Button {
+                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) { selectedPage = page }
+                    } label: {
+                        Text(page.rawValue).font(.caption.weight(page == selectedPage ? .semibold : .regular))
+                            .foregroundStyle(page == selectedPage ? Color.primary : Color.secondary)
+                            .padding(.horizontal, 18).padding(.vertical, 9)
+                            .frame(minHeight: 44)
+                            .glassCard(cornerRadius: 22, interactive: true)
+                    }.buttonStyle(.plain)
+                        .accessibilityLabel("Show \(page.rawValue)")
+                        .accessibilityValue(page == selectedPage ? "Selected" : "")
+                }
+            }
+        }.padding(.vertical, 10)
     }
 
     // MARK: - Transcript

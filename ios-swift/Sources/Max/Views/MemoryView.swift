@@ -1,7 +1,9 @@
 import SwiftUI
+import UIKit
 
 struct MemoryView: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var authService = AuthService.shared
     @State private var selectedCategory: MemoryCategory = .personal
     @State private var cards: [MemoryCard] = []
     @State private var accountScope = ""
@@ -10,42 +12,75 @@ struct MemoryView: View {
     private let storage = StorageService.shared
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    Picker("Category", selection: $selectedCategory) {
-                        ForEach(MemoryCategory.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }
-                } footer: { Text("Keep the details you want Max to remember. Edit or forget them whenever you need.") }
-                Section(selectedCategory.label) {
-                    if filteredCards.isEmpty { Text(selectedCategory.emptySubtitle).foregroundStyle(.secondary) }
-                    ForEach(filteredCards) { card in
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(card.content).textSelection(.enabled)
-                            HStack {
-                                Text(card.createdAt, style: .date).font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                                Button { editing = .card(card) } label: { Label("Edit", systemImage: "pencil") }
-                                    .buttonStyle(.borderless)
-                                    .accessibilityLabel("Edit memory: \(String(card.content.prefix(70)))")
+        ZStack {
+            CompanionCanvas()
+            VStack(spacing: 0) {
+                CompanionSheetHeader(title: "Memory", onClose: { dismiss() }, onAdd: { adding = true })
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(MemoryCategory.allCases, id: \.self) { category in
+                            Button { selectedCategory = category } label: {
+                                Label(category.label, systemImage: category.iconName)
+                                    .font(.caption.weight(.medium))
+                                    .padding(.horizontal, 15).padding(.vertical, 11)
+                                    .frame(minHeight: 44)
+                                    .foregroundStyle(selectedCategory == category ? Color(UIColor.systemBackground) : Color.primary)
+                                    .background(selectedCategory == category ? Color.primary : Color.clear, in: Capsule())
+                                    .glassCard(cornerRadius: 24, interactive: true)
+                            }.buttonStyle(.plain)
+                                .accessibilityValue(selectedCategory == category ? "Selected" : "")
+                        }
+                    }.padding(.horizontal, 20)
+                }.padding(.vertical, 8)
+                GeometryReader { geometry in
+                    ScrollView {
+                        if filteredCards.isEmpty {
+                            VStack(spacing: 18) {
+                                Image(systemName: selectedCategory.iconName)
+                                    .font(.system(size: 34, weight: .regular)).foregroundStyle(.secondary)
+                                Text("Nothing saved here yet.").font(.title3.weight(.semibold))
+                                Text(selectedCategory.emptySubtitle)
+                                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                                Button { adding = true } label: {
+                                    Label("Add \(selectedCategory.label)", systemImage: "plus")
+                                        .font(.subheadline.weight(.semibold))
+                                        .padding(.horizontal, 24).padding(.vertical, 14)
+                                        .foregroundStyle(Color(UIColor.systemBackground))
+                                        .background(Color.primary, in: Capsule())
+                                }.buttonStyle(.plain).padding(.top, 6)
                             }
-                        }.padding(.vertical, 6)
+                            .padding(.horizontal, 30).padding(.vertical, 30)
+                            .frame(maxWidth: .infinity, minHeight: geometry.size.height)
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 14) {
+                                Text("Keep what matters. Edit or forget it anytime.")
+                                    .font(.caption).foregroundStyle(.secondary).padding(.bottom, 4)
+                                ForEach(filteredCards) { card in
+                                    VStack(alignment: .leading, spacing: 16) {
+                                        Text(card.content).font(.body).textSelection(.enabled)
+                                        HStack {
+                                            Text(card.createdAt, style: .date).font(.caption).foregroundStyle(.secondary)
+                                            Spacer()
+                                            Button { editing = .card(card) } label: { Label("Edit", systemImage: "pencil") }
+                                                .font(.caption.weight(.semibold))
+                                                .accessibilityLabel("Edit memory: \(String(card.content.prefix(70)))")
+                                        }
+                                    }
+                                    .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+                                    .glassCard(cornerRadius: 26)
+                                }
+                            }.padding(20)
+                        }
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(LinearGradient(colors: [Color(hex: "#F9F7F2"), Color(hex: "#DCE4DA")], startPoint: .top, endPoint: .bottom))
-            .tint(Color(hex: "#315E73"))
-            .navigationTitle("Memory")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) { Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add saved memory") }
-            }
-            .onAppear { if accountScope.isEmpty { accountScope = storage.accountScope }; reload() }
-            .sheet(isPresented: $adding) { AddMemorySheet(category: selectedCategory, accountScope: accountScope, onSave: reload) }
-            .sheet(item: $editing) { SavedMemoryEditor(target: $0, accountScope: accountScope, onSave: reload) }
         }
+        .tint(Color(hex: "#315E73"))
+        .presentationCornerRadius(34).presentationDragIndicator(.hidden)
+        .onAppear { if accountScope.isEmpty { accountScope = storage.accountScope }; reload() }
+        .onChange(of: authService.currentUser) { _, _ in reload() }
+        .sheet(isPresented: $adding) { AddMemorySheet(category: selectedCategory, accountScope: accountScope, onSave: reload) }
+        .sheet(item: $editing) { SavedMemoryEditor(target: $0, accountScope: accountScope, onSave: reload) }
     }
     private var filteredCards: [MemoryCard] {
         cards.filter { $0.category == selectedCategory }.sorted { $0.createdAt > $1.createdAt }

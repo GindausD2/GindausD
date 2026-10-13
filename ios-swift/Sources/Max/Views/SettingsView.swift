@@ -34,7 +34,7 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            LinearGradient(colors: [Color(UIColor.systemGroupedBackground), Color(hex: "#DCE4DA").opacity(0.3)], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
+            CompanionCanvas()
 
             VStack(spacing: 0) {
                 // ── Handle + header ───────────────────────────────────────────
@@ -47,7 +47,7 @@ struct SettingsView: View {
 
                         // ── QUICK ACTIONS ─────────────────────────────────────
                         ProfileSection(title: "QUICK ACTIONS") {
-                            ProfileRow(icon: "brain", iconColor: Color(hex: "#596F60"),
+                            ProfileRow(icon: "brain", iconColor: Color(hex: "#315E73"),
                                        title: "Memory") { showMemory = true }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.fill", iconColor: Color(hex: "#6B7280"),
@@ -59,22 +59,22 @@ struct SettingsView: View {
                             ProfileRow(icon: "sun.horizon.fill", iconColor: Color(hex: "#F59E0B"),
                                        title: "Morning Briefing") { showBriefing = true }
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#596F60"),
+                            ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#315E73"),
                                        title: "Email Reminders") { showEmailConfig = true }
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "person.fill", iconColor: Color(hex: "#596F60"),
+                            ProfileRow(icon: "person.fill", iconColor: Color(hex: "#315E73"),
                                        title: "Assistant") { showAssistant = true }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "circle.lefthalf.filled", iconColor: Color(hex: "#6B7280"),
                                        title: "Appearance") { showAppearance = true }
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "link", iconColor: Color(hex: "#596F60"),
+                            ProfileRow(icon: "link", iconColor: Color(hex: "#315E73"),
                                        title: "Device Link") { showDeviceLink = true }
                         }
 
                         // ── ABOUT ─────────────────────────────────────────────
                         ProfileSection(title: "ABOUT") {
-                            ProfileRow(icon: "questionmark.circle.fill", iconColor: Color(hex: "#596F60"),
+                            ProfileRow(icon: "questionmark.circle.fill", iconColor: Color(hex: "#315E73"),
                                        title: "Help Center") {
                                 UIApplication.shared.open(URL(string: "mailto:support@getmax.app")!)
                             }
@@ -187,6 +187,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .presentationCornerRadius(34).presentationDragIndicator(.hidden)
         // ── Destination sheets ────────────────────────────────────────────────
         .sheet(isPresented: $showSubscription) { SubscriptionSheet() }
         .sheet(isPresented: $showMemory)       { MemoryView() }
@@ -213,49 +214,7 @@ struct SettingsView: View {
     // MARK: - Sheet Header
 
     private var sheetHeader: some View {
-        ZStack {
-            // Handle
-            VStack {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, 10)
-                Spacer()
-            }
-
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color(UIColor.tertiarySystemFill))
-                            .frame(width: 30, height: 30)
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.top, 4)
-
-                Spacer()
-
-                Text("Settings")
-                    .font(.headline.weight(.semibold))
-                    .padding(.top, 4)
-
-                Spacer()
-
-                // Balance the X button
-                Color.clear
-                    .frame(width: 30, height: 30)
-                    .padding(.trailing, 16)
-                    .padding(.top, 4)
-            }
-        }
-        .frame(height: 50)
-        .background(Color(UIColor.systemGroupedBackground))
+        CompanionSheetHeader(title: "Settings", onClose: { dismiss() })
     }
 
     // MARK: - Profile Header
@@ -307,7 +266,7 @@ struct SettingsView: View {
 
             // Name
             Text(displayName)
-                .font(.system(size: 28, weight: .medium, design: .serif))
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(.primary)
 
             // Plan badge
@@ -330,7 +289,7 @@ struct SettingsView: View {
         if !settings.userName.isEmpty { return settings.userName }
         if let name = authService.currentUser?.name, !name.isEmpty { return name }
         if authService.currentUser?.isDemo == true { return "Guest" }
-        return "Max User"
+        return "Guest"
     }
 
     private func saveSettings() {
@@ -400,7 +359,7 @@ private struct SubscriptionSheet: View {
 
     @State private var selectedPlan: String = StoreKitService.yearlyID
 
-    private let violet = Color(hex: "#596F60")
+    private let violet = Color(hex: "#315E73")
     private let amber  = Color(hex: "#F59E0B")
 
     private let features: [(icon: String, title: String, detail: String)] = [
@@ -659,10 +618,10 @@ private struct PrivacySheet: View {
             List {
                 Section {
                     Toggle("Share analytics", isOn: $settings.shareAnalytics)
-                        .tint(Color(hex: "#596F60"))
+                        .tint(Color(hex: "#315E73"))
                         .onChange(of: settings.shareAnalytics) { _, _ in onSave() }
                     Toggle("Personalised suggestions", isOn: $settings.personalisedSuggestions)
-                        .tint(Color(hex: "#596F60"))
+                        .tint(Color(hex: "#315E73"))
                         .onChange(of: settings.personalisedSuggestions) { _, _ in onSave() }
                 } header: { Text("Data Usage") }
                 Section {
@@ -712,7 +671,7 @@ private struct IslandDebugSheet: View {
                     )
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(hex: "#596F60"))
+                .tint(Color(hex: "#315E73"))
 
                 Button("Clear Email Alert") {
                     LiveActivityService.shared.clearEmailAlert()
@@ -806,13 +765,13 @@ private struct AssistantSheet: View {
                         TextField("Name", text: $settings.userName)
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.secondary)
-                            .tint(Color(hex: "#596F60"))
+                            .tint(Color(hex: "#315E73"))
                             .onChange(of: settings.userName) { _, _ in onSave() }
                     }
                     Toggle(isOn: $settings.voiceEnabled) {
                         Label("Voice Responses", systemImage: "speaker.wave.2.fill")
                     }
-                    .tint(Color(hex: "#596F60"))
+                    .tint(Color(hex: "#315E73"))
                     .onChange(of: settings.voiceEnabled) { _, _ in onSave() }
 
                     Toggle("Speaking haptics", isOn: Binding(get: { settings.speakingHapticsEnabled ?? true }, set: { settings.speakingHapticsEnabled = $0; onSave() }))
@@ -831,7 +790,7 @@ private struct AssistantSheet: View {
                         } label: {
                             Label("Voice", systemImage: "waveform")
                         }
-                        .tint(Color(hex: "#596F60"))
+                        .tint(Color(hex: "#315E73"))
                         .onChange(of: settings.preferredVoice) { _, _ in onSave() }
                     }
                 } header: { Text("Preferences") }

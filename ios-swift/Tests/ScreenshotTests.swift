@@ -25,8 +25,13 @@ final class ScreenshotTests: XCTestCase {
         let onboarding = UserDefaults.standard.object(forKey: "max:onboarding_complete")
         UserDefaults.standard.set(true, forKey: "max:onboarding_complete")
         defer { UserDefaults.standard.set(onboarding, forKey: "max:onboarding_complete") }
-        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Video_Inspired_Home")
-        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Video_Inspired_Dark", style: .dark)
+        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Profile_Design_Home")
+        try await capture(HomeView(initialPage: .profile).environmentObject(AuthService.shared), name: "Max_Profile_Design_Profile")
+        try await capture(MemoryView(), name: "Max_Profile_Design_Memory_Empty")
+        XCTAssertTrue(StorageService.shared.saveMemoryCard(MemoryCard(category: .personal, content: "I like quiet mornings, a cup of tea, and a little time to plan my day."), accountScope: scope))
+        try await capture(MemoryView(), name: "Max_Profile_Design_Memory_Saved")
+        try await capture(SettingsView().environmentObject(AuthService.shared), name: "Max_Profile_Design_Settings")
+        try await capture(IslandOverviewView(), name: "Max_Profile_Design_Island")
         let voiceCapture = TestVoiceCapture()
         let model = HomeViewModel(capture: voiceCapture)
         model.loadMessages()
@@ -34,7 +39,7 @@ final class ScreenshotTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         voiceCapture.text = "Remind me to call David tomorrow at eight."
         voiceCapture.result = voiceCapture.text
-        try await capture(HomeView(viewModel: model).environmentObject(AuthService.shared), name: "Max_Video_Inspired_Voice")
+        try await capture(HomeView(viewModel: model).environmentObject(AuthService.shared), name: "Max_Profile_Design_Voice")
         model.endConversation()
         let draftCapture = TestVoiceCapture()
         let draftModel = HomeViewModel(capture: draftCapture)
@@ -46,7 +51,7 @@ final class ScreenshotTests: XCTestCase {
         draftModel.handleMicTap()
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertTrue(draftModel.prefersTextReplyForDraft)
-        try await capture(HomeView(viewModel: draftModel).environmentObject(AuthService.shared), name: "Max_Video_Inspired_Draft")
+        try await capture(HomeView(viewModel: draftModel).environmentObject(AuthService.shared), name: "Max_Profile_Design_Draft")
     }
 
     private func capture<Content: View>(_ content: Content, name: String, style: UIUserInterfaceStyle = .light) async throws {
