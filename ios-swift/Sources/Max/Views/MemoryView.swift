@@ -26,7 +26,7 @@ struct MemoryView: View {
                                     .frame(minHeight: 44)
                                     .foregroundStyle(selectedCategory == category ? Color(UIColor.systemBackground) : Color.primary)
                                     .background(selectedCategory == category ? Color.primary : Color.clear, in: Capsule())
-                                    .glassCard(cornerRadius: 24, interactive: true)
+                                    .if(selectedCategory != category) { $0.glassCard(cornerRadius: 24, interactive: true) }
                             }.buttonStyle(.plain)
                                 .accessibilityValue(selectedCategory == category ? "Selected" : "")
                         }

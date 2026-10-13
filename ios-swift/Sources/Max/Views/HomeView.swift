@@ -301,7 +301,7 @@ struct HomeView: View {
     private var emptyState: some View {
         VStack(spacing: 14) {
             Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: 132)
+                OrbView(state: viewModel.orbState, size: viewModel.isDictating ? 92 : 132)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
@@ -320,7 +320,7 @@ struct HomeView: View {
                 .padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 28)
+        .padding(.vertical, viewModel.isDictating ? 12 : 28)
         .padding(.horizontal, 28)
     }
 
@@ -351,6 +351,7 @@ struct HomeView: View {
                     TextField("Ask Max anything…", text: $viewModel.inputText, axis: .vertical)
                         .font(.body)
                         .lineLimit(1...4)
+                        .fixedSize(horizontal: false, vertical: true)
                         .focused($composerFocused)
                         .submitLabel(.send)
                         .onSubmit { viewModel.sendTextMessage() }
