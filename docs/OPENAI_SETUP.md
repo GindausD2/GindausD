@@ -11,7 +11,7 @@ Max now uses OpenAI Chat Completions through the `max-api` Supabase Edge Functio
 
 On October 14, 2026, function version 2 was deployed and its live health endpoint returned HTTP 200 with `provider: openai`, `authConfigured: true` and `aiConfigured: false`. Conversation requests returned the expected HTTP 503 while the OpenAI secret was absent. This verifies deployment and missing-secret protection, not a real model response.
 
-## One server secret still required
+## Server secret configuration
 
 1. Create a project API key in [OpenAI's API dashboard](https://platform.openai.com/api-keys), with API billing/model access enabled for that project.
 2. Open [Supabase Edge Function secrets](https://supabase.com/dashboard/project/omcboajliacdnhrroijb/functions/secrets).
@@ -20,7 +20,9 @@ On October 14, 2026, function version 2 was deployed and its live health endpoin
 
 Supabase supplies `SUPABASE_URL` and its publishable-key map to Edge Functions; the entrypoint falls back to the injected legacy anon key on older runtimes. `MAX_SUPABASE_PUBLIC_KEY` can optionally override the latter with a modern publishable key. The shared Node server instead reads `OPENAI_API_KEY`, `OPENAI_MODEL`, `SUPABASE_URL`, and `SUPABASE_ANON_KEY` from its server environment; use `backend/.env.example` for an independent Node 22+ deployment.
 
-After saving the secret, check health again. `aiConfigured: true` indicates a nonempty key is present, not that billing or model access is valid. The final acceptance test must use a real Apple/Supabase user session: authenticated request → quota RPC → OpenAI → streamed native text → successful reminder/memory tool continuation. Real microphone, spoken replies and haptics still require an iPhone test.
+The user saved `OPENAI_API_KEY` on October 14, 2026. A fresh live check returned HTTP 200 with `aiConfigured: true` and `authConfigured: true`. A temporary, random-token-protected server-side check called OpenAI’s model-retrieval endpoint with the configured credential: OpenAI returned HTTP 200 and the configured model ID matched. The credential stayed inside Supabase. The temporary check was removed, the original function source was restored exactly (version 14), and normal health was verified again. This establishes credential acceptance and model lookup access, not Chat Completions permissions, available generation quota/billing, streaming or an authenticated native conversation.
+
+For later secret changes, check health again. `aiConfigured: true` indicates a nonempty key is present, not that billing or model access is valid. The final acceptance test must use a real Apple/Supabase user session: authenticated request → quota RPC → OpenAI → streamed native text → successful reminder/memory tool continuation. Real microphone, spoken replies and haptics still require an iPhone test.
 
 ## Protocol and authentication
 
@@ -38,4 +40,5 @@ Deployment source consists of `backend/supabase-index.ts`, `backend/edge.mjs`, `
 - Expo TypeScript check passes.
 - Supabase function deploy/bundle and live health/missing-secret smoke checks pass.
 - Native provider labels/data text were updated. `ClaudeService` retains its internal legacy name to preserve the native wire parser; it calls the Max server, never Anthropic. The separate Expo/Android prototypes remain outside this native migration.
-- Real OpenAI responses, signed Apple login, billing/model availability and physical iPhone behavior remain unverified until the secret and signed app are available.
+- Live secret presence, OpenAI credential acceptance and configured-model lookup are verified. Unsigned conversation requests return HTTP 401.
+- Real generated OpenAI responses, signed Apple login, generation permissions/billing/quota and physical iPhone behavior remain unverified until a signed app is tested with a real user session.

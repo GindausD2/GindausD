@@ -45,7 +45,7 @@ cp Configuration/Public.supabase.example.xcconfig Configuration/Public.xcconfig
 
 This project's URL and public key are already populated. Set `DEVELOPMENT_TEAM` for your Apple Developer team. `MAX_API_BASE_URL` now points to the deployed Max.ai Edge Function. `Public.xcconfig` is ignored by Git. The workspace copy has been prepared; committed source contains the reusable public template.
 
-For the backend, set `SUPABASE_URL` to the API URL above and `SUPABASE_ANON_KEY` to the same publishable key. The variable retains its compatibility name but accepts the modern publishable key. No service-role key is needed. The backend now uses OpenAI and is deployed to the max-api Edge Function. Its OpenAI secret still needs to be entered; see [OpenAI setup](OPENAI_SETUP.md).
+For the backend, set `SUPABASE_URL` to the API URL above and `SUPABASE_ANON_KEY` to the same publishable key. The variable retains its compatibility name but accepts the modern publishable key. No service-role key is needed. The backend now uses OpenAI and is deployed to the max-api Edge Function. Its OpenAI secret is now present; OpenAI accepted the credential and returned the configured model from its model-retrieval endpoint. Generation permissions/billing/quota and authenticated native streaming remain unverified; see [OpenAI setup](OPENAI_SETUP.md).
 
 ## Apple sign-in is enabled; signed-device testing remains
 
@@ -56,4 +56,4 @@ The connected Supabase tools expose database/project operations but not Auth-pro
 3. The app uses native Apple Authentication Services and exchanges the identity token with Supabase. Native-only Apple sign-in does not require the web OAuth Services ID, client secret or `.p8` setup. See [Supabase's native Swift configuration](https://supabase.com/docs/guides/auth/social-login/auth-apple?platform=swift).
 4. Build a signed app and test first sign-in, returning sign-in, cancelled sign-in, session restoration and sign-out on an iPhone. Then test the backend with that real session.
 
-Real Apple sign-in, authenticated HTTP quota calls, OpenAI responses and physical-device features remain unverified. Backend hosting and missing-secret protection are verified. Memory and conversation content remain account-scoped local storage; this setup does not add cloud memory sync.
+Real Apple sign-in, authenticated HTTP quota calls, OpenAI responses and physical-device features remain unverified. Backend hosting, missing-secret protection, current secret presence, OpenAI credential acceptance/model lookup, and HTTP 401 rejection of unsigned conversation requests are verified. Apple provider enablement was rechecked and remains enabled. Memory and conversation content remain account-scoped local storage; this setup does not add cloud memory sync.
