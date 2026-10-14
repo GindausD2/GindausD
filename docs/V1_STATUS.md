@@ -43,7 +43,7 @@ The [Verify Max V1 workflow](https://github.com/GindausD2/GindausD/actions/workf
 - Xcode 26.2: simulator Debug and unsigned iPhone Release builds pass for Max and both extensions; the native regression suite runs on the iPhone simulator.
 - Packaged-app checks validate privacy strings, Live Activity support, deep-link/OAuth schemes, background registration, compiled launch screen, expanded public configuration, and both extensions. Generation checks preserve the source Info.plist and App Group / Apple sign-in / WeatherKit entitlement files. Real signed entitlements still require Apple provisioning.
 
-These checks do not exercise a real provider, production Supabase authentication, Google OAuth, WeatherKit signing, microphone input, location-trigger delivery, or physical Dynamic Island interaction. Local backend environment and native public release settings are absent. Hosting inspection returned HTTP 403 for the project scope, so the live server configuration was not inspected.
+These checks do not exercise a real provider, production Supabase authentication, Google OAuth, WeatherKit signing, microphone input, location-trigger delivery, or physical Dynamic Island interaction. On October 14, the Max.ai Supabase project was resumed, its usage migration was installed and verified on the hosted database, and the native public project configuration was prepared. Apple sign-in remains disabled in the Supabase provider settings; real sign-in is unverified. See [the project setup record](SUPABASE_SETUP.md) for exact evidence and remaining steps. Backend deployment and provider credentials remain unconfigured. Hosting inspection returned HTTP 403 for the project scope, so the live server configuration was not inspected.
 
 ## Device acceptance checks
 
