@@ -157,10 +157,10 @@ struct PaywallView: View {
                         .disabled(store.isLoading)
 
                         HStack(spacing: 4) {
-                            Text("By subscribing you agree to our")
-                            Link("Terms", destination: URL(string: "https://www.anthropic.com/legal/consumer-terms")!)
+                            Text("AI provider information:")
+                            Link("Policies", destination: URL(string: "https://openai.com/policies/")!)
                             Text("and")
-                            Link("Privacy Policy", destination: URL(string: "https://www.anthropic.com/legal/privacy")!)
+                            Link("Data Handling", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                         }
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.40))

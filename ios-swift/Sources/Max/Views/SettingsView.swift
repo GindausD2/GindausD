@@ -80,13 +80,13 @@ struct SettingsView: View {
                             }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "doc.text.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "Terms of Use") {
-                                UIApplication.shared.open(URL(string: "https://www.anthropic.com/legal/consumer-terms")!)
+                                       title: "AI Provider Policies") {
+                                UIApplication.shared.open(URL(string: "https://openai.com/policies/")!)
                             }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.shield.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "Privacy Policy") {
-                                UIApplication.shared.open(URL(string: "https://www.anthropic.com/legal/privacy")!)
+                                       title: "AI Data Handling") {
+                                UIApplication.shared.open(URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                             }
                             Divider().padding(.leading, 56)
                             HStack {
@@ -625,7 +625,7 @@ private struct PrivacySheet: View {
                         .onChange(of: settings.personalisedSuggestions) { _, _ in onSave() }
                 } header: { Text("Data Usage") }
                 Section {
-                    Text("Your conversations are processed by Anthropic's Claude API and are subject to Anthropic's privacy policy.")
+                    Text("When you send a message, Max sends the conversation and relevant saved context to OpenAI through Max's server. Notes and history remain stored on this device. See AI Data Handling for the provider's retention controls.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } header: { Text("Note") }

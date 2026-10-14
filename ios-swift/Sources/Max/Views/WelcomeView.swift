@@ -275,7 +275,7 @@ private struct WelcomePage: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Text("Powered by Claude")
+                    Text("Powered by OpenAI")
                         .font(.caption)
                         .foregroundStyle(Color.secondary.opacity(0.7))
                 }

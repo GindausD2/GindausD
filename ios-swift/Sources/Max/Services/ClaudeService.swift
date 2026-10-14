@@ -17,7 +17,7 @@ private struct SSEEvent {
     var data: String?
 }
 
-// MARK: - Claude API Request Bodies
+// MARK: - Max Backend Request Bodies
 
 private struct ClaudeRequest: Encodable {
     let model: String
@@ -120,8 +120,7 @@ final class ClaudeService {
     static let shared = ClaudeService()
 
 
-    private let apiVersion = "2023-06-01"
-    private let modelID = "claude-sonnet-4-6"
+    private let modelID = "managed-backend"
     private let maxTokens = 4096
 
     private init() {}
@@ -597,7 +596,7 @@ enum ClaudeError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "Invalid response from Claude API"
+            return "Max could not finish that reply. Please try again."
         case .apiError(_, let body):
             return body
         case .noAPIKey:

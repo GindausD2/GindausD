@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createMaxServer } from '../server.mjs';
 import { createHandler } from '../handler.mjs';
+import { frame, chunk, textStream } from './openai-fixtures.mjs';
 
-const env = { ANTHROPIC_API_KEY: 'http-test-secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public-key' };
+const env = { OPENAI_API_KEY: 'http-test-secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public-key' };
 const body = JSON.stringify({ messages: [{ role: 'user', content: 'Hello' }] });
 async function serve(t, handle) {
   const server = createMaxServer({ handle }); server.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -25,7 +26,7 @@ test('actual HTTP adapter serves health and returns validation errors', async t 
 });
 test('actual HTTP streaming preserves split Unicode bytes and server key isolation', async t => {
   const calls = [];
-  const expected = 'data: {"text":"Hello ❄️ — café"}\n\n';
+  const expected = textStream('Hello ❄️ — café');
   const handle = createHandler({ env, fetchImpl: async (url, options) => {
     calls.push({ url, options });
     if (url.endsWith('/user')) return Response.json({ id: 'http-user' });
@@ -36,8 +37,9 @@ test('actual HTTP streaming preserves split Unicode bytes and server key isolati
   const { post } = await serve(t, handle);
   const response = await post();
   assert.equal(response.status, 200); assert.match(response.headers.get('content-type'), /text\/event-stream/);
-  assert.equal(await response.text(), expected);
-  assert.equal(calls.at(-1).options.headers['x-api-key'], env.ANTHROPIC_API_KEY);
+  const output = await response.text();
+  assert.match(output, /Hello ❄️ — café/); assert.match(output, /message_stop/);
+  assert.equal(calls.at(-1).options.headers.Authorization, 'Bearer ' + env.OPENAI_API_KEY);
   assert.doesNotMatch(expected, /http-test-secret/);
 });
 test('HTTP client disconnect cancels the upstream stream', async t => {
@@ -48,7 +50,7 @@ test('HTTP client disconnect cancels the upstream stream', async t => {
     if (url.includes('/rpc/')) return Response.json(true);
     return new Response(new ReadableStream({
       start(controller) {
-        controller.enqueue(new TextEncoder().encode('data: starting\n\n'));
+        controller.enqueue(new TextEncoder().encode(frame(chunk({ content: 'starting' }))));
         options.signal.addEventListener('abort', () => { controller.error(options.signal.reason); cancelled(); }, { once: true });
       }
     }));

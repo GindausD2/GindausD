@@ -2,7 +2,7 @@
 
 Max is a personal companion for conversations, daily briefings, reminders, and memories you choose to save. V1 focuses on the native iPhone app and Dynamic Island, with a premium glacier-blue glass interface. Flight/Uber booking and advanced autonomous agents are outside V1.
 
-The native implementation uses Apple speech recognition and text-to-speech. AI generation goes through an authenticated Max backend; users do not enter provider API keys. Local notes, saved places, reminder forms, and conversation history can be used without AI generation.
+The native implementation uses Apple speech recognition and text-to-speech. OpenAI generation goes through an authenticated Max backend hosted as a Supabase Edge Function; users do not enter provider API keys. Local notes, saved places, reminder forms, and conversation history can be used without AI generation.
 
 ## Project paths
 
@@ -19,5 +19,7 @@ node --test backend/tests/*.test.mjs
 npm ci
 npx tsc --noEmit
 ```
+
+For the deployed endpoint and remaining OpenAI secret, see [OpenAI setup](docs/OPENAI_SETUP.md).
 
 For native generation/build setup and the server environment, follow [V1 status and setup](docs/V1_STATUS.md). Xcode and live account/provider credentials are required to validate the release. No production-ready or always-on assistant is claimed by the prototype.

@@ -30,7 +30,7 @@ Verification on the hosted database confirmed:
 - Runtime minute/day boundaries, separate counters for two injected identities, and rejection without an identity. These tests invoked the real function with SQL-injected claims in a transaction, then rolled back the temporary account/counter fixtures. They do not establish a real Apple login or HTTP bearer-token flow.
 - Zero persisted account and usage rows after fixture rollback.
 - Automatic RLS still runs on new public tables after the helper's API privileges were revoked; its verification table was rolled back.
-- Auth settings endpoint returns HTTP 200 using the publishable key. Apple is **disabled**; anonymous sign-in is **disabled**.
+- Auth settings endpoint returns HTTP 200 using the publishable key. Apple is **enabled** (rechecked after dashboard configuration); anonymous sign-in remains **disabled**.
 
 Security advisors retain two intentional notices: [RLS without a policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), because clients must not access the counters directly, and [authenticated security-definer execution](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), because this constrained authenticated RPC must update the inaccessible counters. Do not grant direct table access to silence these notices. The former public execution warning on `rls_auto_enable()` was fixed.
 
@@ -43,17 +43,17 @@ cd ios-swift
 cp Configuration/Public.supabase.example.xcconfig Configuration/Public.xcconfig
 ```
 
-This project's URL and public key are already populated. Set `DEVELOPMENT_TEAM` for your Apple Developer team and `MAX_API_BASE_URL` once the backend is deployed. `Public.xcconfig` is ignored by Git. The workspace copy has been prepared; committed source contains the reusable public template.
+This project's URL and public key are already populated. Set `DEVELOPMENT_TEAM` for your Apple Developer team. `MAX_API_BASE_URL` now points to the deployed Max.ai Edge Function. `Public.xcconfig` is ignored by Git. The workspace copy has been prepared; committed source contains the reusable public template.
 
-For the backend, set `SUPABASE_URL` to the API URL above and `SUPABASE_ANON_KEY` to the same publishable key. The variable retains its compatibility name but accepts the modern publishable key. No service-role key is needed. Provider/backend deployment remains separate; the current backend still uses Anthropic and must be migrated to OpenAI before an OpenAI key can power Max.
+For the backend, set `SUPABASE_URL` to the API URL above and `SUPABASE_ANON_KEY` to the same publishable key. The variable retains its compatibility name but accepts the modern publishable key. No service-role key is needed. The backend now uses OpenAI and is deployed to the max-api Edge Function. Its OpenAI secret still needs to be entered; see [OpenAI setup](OPENAI_SETUP.md).
 
-## Apple sign-in still needs dashboard and signing setup
+## Apple sign-in is enabled; signed-device testing remains
 
-The connected Supabase tools expose database/project operations but not Auth-provider configuration. No Apple-provider changes were made.
+The connected Supabase tools expose database/project operations but not Auth-provider configuration. The user enabled Apple in the dashboard; the public Auth settings endpoint subsequently confirmed Apple enabled. Client IDs and Apple provisioning cannot be verified through these tools.
 
-1. Open [this project's Authentication providers](https://supabase.com/dashboard/project/omcboajliacdnhrroijb/auth/providers), select Apple, enable it, and add `com.gindausd.max` under Client IDs. Save.
+1. Apple is enabled in [this project's Authentication providers](https://supabase.com/dashboard/project/omcboajliacdnhrroijb/auth/providers). Verify that its Client IDs include `com.gindausd.max`.
 2. In your [Apple Developer identifiers](https://developer.apple.com/account/resources/identifiers/list), register or select the matching App ID, enable **Sign in with Apple**, and regenerate the provisioning profile used to sign Max.
 3. The app uses native Apple Authentication Services and exchanges the identity token with Supabase. Native-only Apple sign-in does not require the web OAuth Services ID, client secret or `.p8` setup. See [Supabase's native Swift configuration](https://supabase.com/docs/guides/auth/social-login/auth-apple?platform=swift).
 4. Build a signed app and test first sign-in, returning sign-in, cancelled sign-in, session restoration and sign-out on an iPhone. Then test the backend with that real session.
 
-Real Apple sign-in, authenticated HTTP quota calls, OpenAI responses, backend hosting and physical-device features remain unverified. Memory and conversation content remain account-scoped local storage; this setup does not add cloud memory sync.
+Real Apple sign-in, authenticated HTTP quota calls, OpenAI responses and physical-device features remain unverified. Backend hosting and missing-secret protection are verified. Memory and conversation content remain account-scoped local storage; this setup does not add cloud memory sync.

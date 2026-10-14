@@ -133,7 +133,7 @@ struct MaxLiveActivityWidget: Widget {
 //
 // Layout mirrors the reference screenshot:
 //   [avatar]  Max                          [time elapsed]
-//   [phase label — accent color]            Claude
+//   [phase label — accent color]            OpenAI
 //
 //   Bold headline transcript text OR tool action card
 //
@@ -167,7 +167,7 @@ private struct MaxLockScreenBody: View {
 
                 Spacer()
 
-                Text("Claude")
+                Text("OpenAI")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.white.opacity(0.45))
             }
