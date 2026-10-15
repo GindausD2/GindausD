@@ -6,7 +6,12 @@ import AuthenticationServices
 struct WelcomeView: View {
     @EnvironmentObject private var authService: AuthService
 
-    @State private var currentPage: Int = 1   // Start on Welcome page
+    @State private var currentPage: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(initialMode: AuthEntryMode? = nil) {
+        _currentPage = State(initialValue: initialMode?.page ?? 1)
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -15,25 +20,25 @@ struct WelcomeView: View {
                 ambientBlobs
 
                 VStack(spacing: 0) {
-                    pageIndicator
+                    navigationControl
                         .padding(.top, geo.safeAreaInsets.top + 18)
                         .padding(.bottom, 10)
 
-                    TabView(selection: $currentPage) {
-                        LoginPage(onNavigateToWelcome: { currentPage = 1 })
-                            .tag(0)
+                    if currentPage == 1 {
                         WelcomePage(onLogin: { currentPage = 0 }, onSignUp: { currentPage = 2 })
-                            .tag(1)
-                        SignUpPage(onBack: { currentPage = 1 }, onSignedUp: { currentPage = 3 })
-                            .tag(2)
+                    } else if currentPage == 3 {
                         PlanPage(onBack: {
                             authService.signOut()
                             currentPage = 2
                         })
-                        .tag(3)
+                    } else {
+                        TabView(selection: $currentPage) {
+                            LoginPage(onSignUp: { currentPage = 2 }).tag(0)
+                            SignUpPage(onBack: { currentPage = 1 }, onSignedUp: { currentPage = 3 }).tag(2)
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                 }
             }
         }
@@ -80,6 +85,32 @@ struct WelcomeView: View {
                 .frame(width: 200, height: 200)
                 .blur(radius: 60)
                 .offset(x: 60, y: -60)
+        }
+    }
+
+    // MARK: - Authentication slider
+
+    @ViewBuilder private var navigationControl: some View {
+        if currentPage == 0 || currentPage == 2 {
+            HStack(spacing: 12) {
+                Button { currentPage = 1 } label: {
+                    Image(systemName: "arrow.left")
+                        .font(.body.weight(.medium))
+                        .frame(width: 44, height: 44)
+                        .glassCard(cornerRadius: 22, interactive: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back to welcome")
+                AuthModeSlider(selection: Binding(
+                    get: { currentPage == 0 ? .login : .signUp },
+                    set: { currentPage = $0.page; authService.authError = nil }
+                ))
+            }
+            .disabled(authService.isLoading)
+            .padding(.horizontal, 24)
+            .frame(maxWidth: 460)
+        } else {
+            pageIndicator
         }
     }
 
@@ -231,7 +262,7 @@ private struct LiquidGlassPrimaryButton: View {
 // MARK: - Login Page
 
 private struct LoginPage: View {
-    var onNavigateToWelcome: () -> Void
+    var onSignUp: () -> Void
     @EnvironmentObject private var authService: AuthService
 
     var body: some View {
@@ -275,7 +306,7 @@ private struct LoginPage: View {
                 }
                 .padding(.horizontal, 22)
 
-                Button { onNavigateToWelcome() } label: {
+                Button { onSignUp() } label: {
                     HStack(spacing: 5) {
                         Text("New to Max?")
                             .foregroundStyle(.secondary)

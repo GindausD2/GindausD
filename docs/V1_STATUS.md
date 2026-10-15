@@ -80,6 +80,8 @@ The panel uses the native iOS 26 glass material and the existing earlier-iOS mat
 
 ## Reference-inspired home layout
 
+Login and Sign Up share a glacier-blue Liquid Glass slider: dragging its thumb left selects Login, right selects Sign Up, and either label can be tapped. The auth pages are adjacent so switching does not pass through the welcome screen. Back returns to welcome/Try Demo. The slider supports VoiceOver adjustment, reduced motion, the existing material/opaque accessibility fallbacks, and disabled input during sign-in. Native screenshot fixtures capture both selections; these are simulator UI previews, not proof of Apple login.
+
 The native home uses one glossy glacier-blue orb, a compact Max heading, generous spacing, and separate floating glass buttons. The orb has soft highlights and refraction rather than concentric outlined rings; its waveform appears while listening/speaking. New conversation and Settings sit at the top. Your day, Hear Max, History and Briefing remain reachable below the independent message field. Opening Settings, Your day or History ends foreground capture/playback. Voice-to-text still creates an editable draft and waits for Send.
 
 The dock uses a bottom safe-area inset instead of a fixed overlay, so the transcript area follows the controls and keyboard. The light background stays quiet and warm; dark appearance has its own neutral background. Interactive glass controls use the native iOS 26 material, with the existing earlier-iOS and reduced-transparency fallback. Orb/dock motion respects reduced motion. Native screenshot fixtures cover idle home, dark home, listening and a finished voice draft using sample words. Physical-device layout, keyboard and audio acceptance remain required.
