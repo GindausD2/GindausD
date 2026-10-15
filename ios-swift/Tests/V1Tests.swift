@@ -5,6 +5,27 @@ import UIKit
 
 @MainActor
 final class V1Tests: XCTestCase {
+    func testGuestTrialEndsAtSevenDaysAndSurvivesEncoding() throws {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let guest = AuthUser(id: "guest-a", name: "Guest", email: nil, isDemo: true, trialStartedAt: start)
+        let restored = try JSONDecoder().decode(AuthUser.self, from: JSONEncoder().encode(guest))
+        let expiry = start.addingTimeInterval(7 * 24 * 3600)
+        XCTAssertEqual(restored.trialExpiresAt, expiry)
+        XCTAssertFalse(restored.demoIsExpired(at: expiry.addingTimeInterval(-1)))
+        XCTAssertTrue(restored.demoIsExpired(at: expiry))
+        XCTAssertTrue(restored.demoIsExpired(at: expiry.addingTimeInterval(1)))
+    }
+
+    func testGuestDataScopeSurvivesAppleConversionAndIsolatesOtherGuests() {
+        let guest = AuthUser(id: "guest-a", name: "Guest", email: nil, isDemo: true)
+        let linked = AuthUser(id: "guest-a", name: "Apple user", email: nil, isDemo: false)
+        let another = AuthUser(id: "guest-b", name: "Guest", email: nil, isDemo: true)
+        XCTAssertEqual(guest.storageScope, linked.storageScope)
+        XCTAssertNotEqual(guest.storageScope, another.storageScope)
+        XCTAssertTrue(guest.demoIsExpired(at: Date()), "A missing trial timestamp must fail closed")
+        XCTAssertFalse(linked.demoIsExpired(at: Date()))
+    }
+
     private func isolated(_ body: () async throws -> Void) async rethrows {
         let previous = StorageService.shared.accountScope
         let scope = "verification-" + UUID().uuidString

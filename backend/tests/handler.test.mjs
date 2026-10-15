@@ -5,11 +5,11 @@ import { textStream, frame, chunk } from './openai-fixtures.mjs';
 const env = { OPENAI_API_KEY: 'server-secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public-key' };
 const payload = { messages: [{ role: 'user', content: 'Remember my idea' }] };
 const request = (body = payload, token = 'valid-session') => new Request('https://max.example/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
-function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerStatus = 200 } = {}) {
+function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerStatus = 200, user = { id: 'verified-user' }, now = Date.now } = {}) {
   const calls = [];
-  const handler = createHandler({ env, fetchImpl: async (url, options) => {
+  const handler = createHandler({ env, now, fetchImpl: async (url, options) => {
     calls.push({ url, options });
-    if (url.endsWith('/user')) return Response.json({ id: 'verified-user' }, { status: authStatus });
+    if (url.endsWith('/user')) return Response.json(user, { status: authStatus });
     if (url.includes('/rpc/')) return Response.json(quota, { status: quotaStatus });
     return new Response(providerStatus === 200 ? textStream('Hello ❄️') : 'server-secret provider error', { status: providerStatus });
   } });
@@ -75,4 +75,38 @@ test('full native tool feedback round trip retains IDs, schema and per-request q
   assert.match(await first.text(), /"stop_reason":"tool_use"/);
   const second = await h(request({ messages: [{ role: 'user', content: 'What time is it?' }, { role: 'assistant', content: [{ type: 'tool_use', id: 'call-1', name: 'get_datetime', input: {} }] }, { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'call-1', content: '2026-10-14T12:00:00+01:00' }] }], tools }));
   assert.match(await second.text(), /It is noon/); assert.equal(generations, 2); assert.equal(quotas, 2);
+});
+
+const trialStart = Date.parse('2026-10-01T08:00:00.000Z');
+const trialEnd = trialStart + 7 * 24 * 60 * 60 * 1000;
+const guest = { id: 'guest-account', is_anonymous: true, created_at: new Date(trialStart).toISOString() };
+test('a guest can stream real AI before seven days without an Apple identity', async () => {
+  const f = fixture({ user: guest, now: () => trialEnd - 1 });
+  const response = await f.handler(request());
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /Hello/);
+  assert.equal(f.calls.length, 3);
+});
+test('guest expiry is exact and refresh/client trial claims cannot restart it', async () => {
+  for (const current of [trialEnd, trialEnd + 86400000]) {
+    const f = fixture({ user: { ...guest, last_sign_in_at: new Date(current).toISOString(), user_metadata: { is_anonymous: false, trial_started_at: new Date(current).toISOString() } }, now: () => current });
+    const response = await f.handler(request({ ...payload, is_anonymous: false, trial_started_at: new Date(current).toISOString() }));
+    assert.equal(response.status, 402);
+    assert.equal((await response.json()).code, 'demo_expired');
+    assert.equal(f.calls.length, 1, 'expired guests must not consume quota or reach OpenAI');
+  }
+});
+test('missing, invalid and future guest timestamps fail closed', async () => {
+  for (const created_at of [undefined, null, '', 'invalid', trialStart, new Date(trialEnd + 1).toISOString()]) {
+    const f = fixture({ user: { ...guest, created_at }, now: () => trialEnd });
+    assert.equal((await f.handler(request())).status, 503);
+    assert.equal(f.calls.length, 1);
+  }
+  const f = fixture({ user: { ...guest, is_anonymous: 'false' } });
+  assert.equal((await f.handler(request())).status, 503);
+  assert.equal(f.calls.length, 1);
+});
+test('a verified permanent user is not mistaken for an expired guest', async () => {
+  const f = fixture({ user: { ...guest, is_anonymous: false }, now: () => trialEnd });
+  assert.equal((await f.handler(request())).status, 200);
 });

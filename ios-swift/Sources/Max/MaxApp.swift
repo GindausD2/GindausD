@@ -53,7 +53,7 @@ struct MaxApp: App {
                 }
                 // Start / stop the persistent Dynamic Island session when auth changes
                 .onChange(of: authService.currentUser) { _, user in
-                    if user != nil {
+                    if user != nil && !authService.isDemoExpired {
                         LiveActivityService.shared.startPersistentSession()
                         scheduleBackgroundRefresh()
                         BriefingService.shared.rescheduleIfNeeded()
@@ -70,8 +70,10 @@ struct MaxApp: App {
                     // When app becomes active, ensure the session is alive + refresh emails
                     if phase == .active && authService.currentUser != nil {
                         authService.expireDemoIfNeeded()
-                        LiveActivityService.shared.startPersistentSession()
-                        Task { await EmailMonitorService.shared.checkAndNotify() }
+                        if !authService.isDemoExpired {
+                            LiveActivityService.shared.startPersistentSession()
+                            Task { await EmailMonitorService.shared.checkAndNotify() }
+                        }
                     }
                 }
         }
@@ -151,10 +153,14 @@ struct RootView: View {
     @StateObject private var store = StoreKitService.shared
 
     var body: some View {
-        Group {
-            if showHome {
+        TimelineView(.periodic(from: .now, by: 30)) { _ in
+            if authService.isRestoringSession {
+                ProgressView("Opening Max…")
+            } else if authService.currentUser?.isDemo == true && (authService.isDemoExpired || authService.isUpgradingDemo) {
+                DemoUpgradeView().environmentObject(authService)
+            } else if showHome {
                 HomeView()
-                    .id(authService.currentUser?.isDemo == true ? "demo" : authService.currentUser?.id ?? "signed-out")
+                    .id(authService.currentUser?.storageScope ?? "signed-out")
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),

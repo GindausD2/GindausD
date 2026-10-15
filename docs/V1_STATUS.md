@@ -4,6 +4,14 @@ Release focus: the native iPhone app, with Dynamic Island as its identity. The E
 
 The native V1 beta is available after sign-in without a mandatory StoreKit purchase gate. Existing subscription code is retained but the purchase entry point is hidden from V1 Settings; server usage limits control AI generation.
 
+## Seven-day Try Demo
+
+Try Demo is now a real guest trial, not a local-only preview. The app creates or resumes a Supabase anonymous session without Apple sign-in or payment, and uses that session for the same managed AI/tools and usage quota. Each guest gets a separate local data scope. The server checks the verified Auth user's `is_anonymous` and immutable `created_at` on every generation/continuation request; at exactly seven days it returns HTTP 402 / `demo_expired` before quota or OpenAI. Client metadata, a refreshed token or leaving/reopening the demo cannot reset that account's clock. This is a per-guest-account trial, not device/person-level reinstall-abuse protection.
+
+The home banner shows days remaining. The app checks expiry while open and on foreground; server expiry also opens the continuation screen. Continuing with Apple links the identity to the same guest account, preserving its local notes/memories. An identity already attached to another Max account can fail linking; no silent cross-account data merge is performed. Local preview data from older builds stays in the old `demo` scope and is not automatically copied into a new guest account.
+
+Hosted setup still requires enabling anonymous sign-ins and manual identity linking in Supabase Authentication settings. Both are checked separately from Apple provider enablement. Apple purchases, subscription products and server-side paid-entitlement enforcement are not activated by this demo change: the current signed-in beta remains free. Production paid access after the demo is still blocked on that Apple subscription work and signed-device testing.
+
 Keep the premium glacier-blue glass design. Priorities are speed, personality, a useful daily ritual, and memory the user controls. Booking rides/flights, purchases, and advanced autonomous agents are excluded.
 
 The glass orb is an explicit speech control: tap to hear Max's greeting or replay the latest completed reply, and tap again to stop. Use the separate microphone to talk. While speaking, its rings pulse and waveform moves; reduced-motion settings keep it still. Native speech-word callbacks request soft, throttled iPhone haptics while the app is active. The optional Speaking haptics preference disables these pulses, including on older saved settings. Speech and haptics stop when the conversation ends or the app leaves the foreground. The Expo web app previews this appearance and tap/stop interaction; browser audio and iPhone haptic delivery still need real-device acceptance testing.

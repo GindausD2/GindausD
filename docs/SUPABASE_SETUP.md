@@ -49,6 +49,12 @@ For the backend, set `SUPABASE_URL` to the API URL above and `SUPABASE_ANON_KEY`
 
 ## Apple sign-in is enabled; signed-device testing remains
 
+### Guest demo configuration
+
+Enable anonymous sign-ins in Authentication → Sign In / Providers → Anonymous Sign-Ins, and enable manual identity linking in Authentication settings. The native app calls `signInAnonymously()` only when the user starts Try Demo; it does not request an Apple identity or a purchase. Real anonymous sessions still assume the `authenticated` database role and use the existing quota RPC. The backend expires guests using Auth's verified `created_at` after seven days, before quota/provider calls. The UI clock is only presentation; the server never accepts a client-supplied trial start date.
+
+The app uses native `linkIdentityWithIdToken` to continue with Apple while preserving the guest user ID. Manual linking must be enabled before testing this upgrade. Existing-identity conflicts are surfaced rather than merging another account's data. Anonymous signup also needs internet and remains subject to Supabase's signup limits/CAPTCHA configuration. Enabling it is required before a live guest acceptance test; the connected tools do not expose Auth setting writes.
+
 The connected Supabase tools expose database/project operations but not Auth-provider configuration. The user enabled Apple in the dashboard; the public Auth settings endpoint subsequently confirmed Apple enabled. Client IDs and Apple provisioning cannot be verified through these tools.
 
 1. Apple is enabled in [this project's Authentication providers](https://supabase.com/dashboard/project/omcboajliacdnhrroijb/auth/providers). Verify that its Client IDs include `com.gindausd.max`.

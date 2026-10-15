@@ -25,6 +25,20 @@ struct AuthUser: Codable, Equatable {
     var name: String?
     var email: String?
     var isDemo: Bool?
+    var trialStartedAt: Date? = nil
+
+    var storageScope: String { id ?? (isDemo == true ? "demo" : "signed-out") }
+
+    var trialExpiresAt: Date? {
+        guard isDemo == true, let trialStartedAt else { return nil }
+        return trialStartedAt.addingTimeInterval(7 * 24 * 3600)
+    }
+
+    func demoIsExpired(at date: Date) -> Bool {
+        guard isDemo == true else { return false }
+        guard let expiry = trialExpiresAt else { return true }
+        return date >= expiry
+    }
 }
 
 // MARK: - AppSettings

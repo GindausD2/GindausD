@@ -107,11 +107,18 @@ struct WelcomeView: View {
 
 private func appleSignInHandler(authService: AuthService) -> (Result<ASAuthorization, Error>) -> Void {
     return { result in
+        if case .failure(let error) = result {
+            authService.authError = error.localizedDescription
+            return
+        }
         guard case .success(let auth) = result,
               let credential = auth.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8)
-        else { return }
+        else {
+            authService.authError = "Apple sign-in couldn't complete. Please try again."
+            return
+        }
         let fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
             .compactMap { $0 }.joined(separator: " ")
         Task {
@@ -119,6 +126,44 @@ private func appleSignInHandler(authService: AuthService) -> (Result<ASAuthoriza
                 idToken: idToken,
                 name: fullName.isEmpty ? nil : fullName
             )
+        }
+    }
+}
+
+// MARK: - Continue after the guest demo
+
+struct DemoUpgradeView: View {
+    @EnvironmentObject private var authService: AuthService
+
+    var body: some View {
+        ZStack {
+            CompanionCanvas()
+            VStack(spacing: 22) {
+                OrbView(state: .idle, size: 110)
+                Text(authService.isDemoExpired ? "Your seven-day demo has ended" : "Keep Max with you")
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Text("Continue with Apple to set up your account and keep your saved thoughts.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                SignInWithAppleButton(.continue, onRequest: { request in
+                    request.requestedScopes = [.fullName, .email]
+                }, onCompletion: appleSignInHandler(authService: authService))
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .disabled(authService.isLoading)
+                if authService.isLoading { ProgressView() }
+                if let error = authService.authError {
+                    Text(error).font(.footnote).foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
+                if !authService.isDemoExpired {
+                    Button("Back to my demo") { authService.cancelDemoUpgrade() }
+                }
+            }
+            .padding(30)
+            .frame(maxWidth: 440)
         }
     }
 }
@@ -308,7 +353,7 @@ private struct WelcomePage: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 13))
-                    Text("Try Demo")
+                    Text("Try Demo · 7 days free")
                         .font(.subheadline.weight(.medium))
                 }
                 .foregroundStyle(.secondary)

@@ -185,9 +185,9 @@ struct HomeView: View {
                 .font(.system(size: 13, weight: .medium))
             Spacer()
             Button {
-                authService.signOut()   // clears demo → WelcomeView shows plan page
+                authService.beginDemoUpgrade()
             } label: {
-                Text("Subscribe")
+                Text("Continue with Apple")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
@@ -764,7 +764,7 @@ final class HomeViewModel: ObservableObject {
             guard turnID == briefingID, !Task.isCancelled, storage.accountScope == scope else { return }
             conversationState = .idle
             addUserMessage("Good morning — give me my daily briefing.")
-            if kMaxAPIBaseURL.isEmpty || AuthService.shared.currentUser?.isDemo == true {
+            if kMaxAPIBaseURL.isEmpty {
                 messages.append(Message(role: "assistant", content: snapshot))
                 storage.saveMessages(messages)
                 archiveCurrentConversation()

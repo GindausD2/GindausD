@@ -413,7 +413,11 @@ final class ClaudeService {
                 errorBytes.append(byte)
                 if errorBytes.count >= 2048 { break }
             }
-            let serverError = (try? JSONSerialization.jsonObject(with: errorBytes) as? [String: Any])?["error"] as? String
+            let errorBody = (try? JSONSerialization.jsonObject(with: errorBytes)) as? [String: Any]
+            if httpResponse.statusCode == 402, errorBody?["code"] as? String == "demo_expired" {
+                await MainActor.run { AuthService.shared.markDemoExpired() }
+            }
+            let serverError = errorBody?["error"] as? String
             throw ClaudeError.apiError(httpResponse.statusCode, serverError ?? "Max couldn't reply just now. Please try again.")
         }
 

@@ -172,7 +172,7 @@ struct SettingsView: View {
                                 .cornerRadius(12)
 
                                 if let error = authService.authError { Text(error).font(.footnote).foregroundStyle(.red) }
-                                Text("Sign in to talk with Max. Your notes stay on this iPhone.")
+                                Text("Continue with Apple to keep this guest account. Your notes stay on this iPhone.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
