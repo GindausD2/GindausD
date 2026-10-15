@@ -108,7 +108,7 @@ struct WelcomeView: View {
 private func appleSignInHandler(authService: AuthService) -> (Result<ASAuthorization, Error>) -> Void {
     return { result in
         if case .failure(let error) = result {
-            authService.authError = error.localizedDescription
+            Task { @MainActor in authService.authError = error.localizedDescription }
             return
         }
         guard case .success(let auth) = result,
@@ -116,7 +116,7 @@ private func appleSignInHandler(authService: AuthService) -> (Result<ASAuthoriza
               let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8)
         else {
-            authService.authError = "Apple sign-in couldn't complete. Please try again."
+            Task { @MainActor in authService.authError = "Apple sign-in couldn't complete. Please try again." }
             return
         }
         let fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
