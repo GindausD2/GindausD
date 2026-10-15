@@ -2,7 +2,7 @@
 
 Release focus: the native iPhone app, with Dynamic Island as its identity. The Expo app remains the design preview; Expo and native Android are not yet equivalent release clients for these native V1 changes.
 
-The native V1 beta is available after sign-in without a mandatory StoreKit purchase gate. Existing subscription code is retained but the purchase entry point is hidden from V1 Settings; server usage limits control AI generation.
+The native access flow is Try Demo (seven days, no Apple sign-in/payment) → Continue with Apple → subscription selection. Permanent users need a verified monthly/yearly StoreKit entitlement to reach Home. Products unavailable from Apple disable checkout and show an honest availability message; no fallback prices or unimplemented subscription benefits are advertised. The upgrade entry in Settings stays hidden while distribution setup is pending. This native gate does not replace server-side paid-entitlement verification, which is still required before production billing.
 
 ## Seven-day Try Demo
 
@@ -10,7 +10,7 @@ Try Demo is now a real guest trial, not a local-only preview. The app creates or
 
 The home banner shows days remaining. The app checks expiry while open and on foreground; server expiry also opens the continuation screen. Continuing with Apple links the identity to the same guest account, preserving its local notes/memories. An identity already attached to another Max account can fail linking; no silent cross-account data merge is performed. Local preview data from older builds stays in the old `demo` scope and is not automatically copied into a new guest account.
 
-Hosted setup still requires enabling anonymous sign-ins and manual identity linking in Supabase Authentication settings. Both are checked separately from Apple provider enablement. Apple purchases, subscription products and server-side paid-entitlement enforcement are not activated by this demo change: the current signed-in beta remains free. Production paid access after the demo is still blocked on that Apple subscription work and signed-device testing.
+Hosted setup still requires enabling anonymous sign-ins and manual identity linking in Supabase Authentication settings. Both are checked separately from Apple provider enablement. The native plan gate is restored, but Apple subscription products, purchase acceptance and server-side paid-entitlement enforcement are not configured/verified by this change. The backend still applies its ordinary quota policy to permanent accounts; the native StoreKit gate alone is not production billing security. Production paid access after the demo remains blocked on that Apple work and signed-device testing.
 
 Keep the premium glacier-blue glass design. Priorities are speed, personality, a useful daily ritual, and memory the user controls. Booking rides/flights, purchases, and advanced autonomous agents are excluded.
 

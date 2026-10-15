@@ -39,6 +39,10 @@ struct AuthUser: Codable, Equatable {
         guard let expiry = trialExpiresAt else { return true }
         return date >= expiry
     }
+
+    func allowsAccess(hasSubscription: Bool, at date: Date) -> Bool {
+        isDemo == true ? !demoIsExpired(at: date) : hasSubscription
+    }
 }
 
 // MARK: - AppSettings

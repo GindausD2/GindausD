@@ -12,7 +12,9 @@ final class V1Tests: XCTestCase {
         let expiry = start.addingTimeInterval(7 * 24 * 3600)
         XCTAssertEqual(restored.trialExpiresAt, expiry)
         XCTAssertFalse(restored.demoIsExpired(at: expiry.addingTimeInterval(-1)))
+        XCTAssertTrue(restored.allowsAccess(hasSubscription: false, at: expiry.addingTimeInterval(-1)))
         XCTAssertTrue(restored.demoIsExpired(at: expiry))
+        XCTAssertFalse(restored.allowsAccess(hasSubscription: true, at: expiry), "A purchase cannot silently extend an unconverted guest trial")
         XCTAssertTrue(restored.demoIsExpired(at: expiry.addingTimeInterval(1)))
     }
 
@@ -24,6 +26,8 @@ final class V1Tests: XCTestCase {
         XCTAssertNotEqual(guest.storageScope, another.storageScope)
         XCTAssertTrue(guest.demoIsExpired(at: Date()), "A missing trial timestamp must fail closed")
         XCTAssertFalse(linked.demoIsExpired(at: Date()))
+        XCTAssertFalse(linked.allowsAccess(hasSubscription: false, at: Date()))
+        XCTAssertTrue(linked.allowsAccess(hasSubscription: true, at: Date()))
     }
 
     private func isolated(_ body: () async throws -> Void) async rethrows {

@@ -181,7 +181,6 @@ struct RootView: View {
     }
 
     private var showHome: Bool {
-        // The V1 beta uses authenticated server-side usage limits, not a mandatory purchase gate.
-        authService.currentUser != nil
+        !authService.isDemoExpired && authService.currentUser?.allowsAccess(hasSubscription: store.isSubscribed, at: Date()) == true
     }
 }

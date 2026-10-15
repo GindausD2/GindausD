@@ -44,6 +44,9 @@ struct WelcomeView: View {
                 currentPage = 3
             }
         }
+        .onChange(of: authService.currentUser) { _, user in
+            if user != nil && user?.isDemo != true { currentPage = 3 }
+        }
     }
 
     // MARK: - Background
@@ -143,7 +146,7 @@ struct DemoUpgradeView: View {
                 Text(authService.isDemoExpired ? "Your seven-day demo has ended" : "Keep Max with you")
                     .font(.title2.weight(.semibold))
                     .multilineTextAlignment(.center)
-                Text("Continue with Apple to set up your account and keep your saved thoughts.")
+                Text("Continue with Apple to choose your subscription and keep your saved thoughts.")
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 SignInWithAppleButton(.continue, onRequest: { request in
@@ -480,9 +483,9 @@ private struct PlanPage: View {
                 VStack(spacing: 10) {
                     WelcomePlanCard(
                         title: "Yearly",
-                        price: store.yearlyProduct?.displayPrice ?? "$119.99",
+                        price: store.yearlyProduct?.displayPrice ?? "Unavailable",
                         period: "/ year",
-                        subtext: "Best value · save 17%",
+                        subtext: "Billed yearly",
                         badge: "Most Popular",
                         isSelected: selectedPlan == StoreKitService.yearlyID,
                         violet: violet
@@ -490,7 +493,7 @@ private struct PlanPage: View {
 
                     WelcomePlanCard(
                         title: "Monthly",
-                        price: store.monthlyProduct?.displayPrice ?? "$9.99",
+                        price: store.monthlyProduct?.displayPrice ?? "Unavailable",
                         period: "/ month",
                         subtext: "Flexible · cancel anytime",
                         badge: nil,
@@ -509,9 +512,9 @@ private struct PlanPage: View {
                 ) {
                     VStack(spacing: 10) {
                         ForEach([
-                            ("infinity",           "Unlimited conversations"),
-                            ("bolt.fill",          "Priority AI responses"),
-                            ("icloud.fill",        "Full iCloud sync"),
+                            ("bubble.left.and.bubble.right", "AI conversations with daily limits"),
+                            ("waveform",           "Voice and text conversations"),
+                            ("lock.fill",          "Memories saved on this iPhone"),
                             ("bell.badge.fill",    "Smart reminders & alerts")
                         ], id: \.0) { icon, text in
                             HStack(spacing: 12) {
@@ -547,7 +550,7 @@ private struct PlanPage: View {
                 LiquidGlassPrimaryButton(
                     title: store.isLoading ? "" : subscribeLabel,
                     isLoading: store.isLoading,
-                    isDisabled: store.isLoading
+                    isDisabled: store.isLoading || selectedProductUnavailable
                 ) {
                     Task {
                         let product = selectedPlan == StoreKitService.yearlyID
@@ -557,6 +560,15 @@ private struct PlanPage: View {
                 }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 12)
+
+                if selectedProductUnavailable && !store.isLoading {
+                    Text("Subscriptions are temporarily unavailable. Please try again later.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 12)
+                }
 
                 // Footer
                 VStack(spacing: 8) {
@@ -593,11 +605,14 @@ private struct PlanPage: View {
     }
 
     private var subscribeLabel: String {
-        let price = selectedPlan == StoreKitService.yearlyID
-            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
-            : (store.monthlyProduct?.displayPrice ?? "$9.99")
+        let product = selectedPlan == StoreKitService.yearlyID ? store.yearlyProduct : store.monthlyProduct
+        guard let product else { return "Subscriptions unavailable" }
         let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
-        return "Subscribe — \(price)/\(period)"
+        return "Subscribe — \(product.displayPrice)/\(period)"
+    }
+
+    private var selectedProductUnavailable: Bool {
+        selectedPlan == StoreKitService.yearlyID ? store.yearlyProduct == nil : store.monthlyProduct == nil
     }
 }
 
