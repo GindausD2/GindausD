@@ -47,7 +47,7 @@ export async function stopRecording(): Promise<RecordingResult | null> {
   if (!uri) return null;
   return {
     uri,
-    durationMs: status.isLoaded ? status.durationMillis ?? 0 : 0,
+    durationMs: status.durationMillis ?? 0,
   };
 }
 

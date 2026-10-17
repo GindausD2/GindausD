@@ -80,33 +80,33 @@ enum class OrbState(
     val maxScale: Float
 ) {
     IDLE(
-        primaryColor = Color(0xFFE87800),
-        secondaryColor = Color(0xFFFF6600),
-        glowColor = Color(0x40E87800),
+        primaryColor = Color(0xFF78B5CD),
+        secondaryColor = Color(0xFFC2E7F4),
+        glowColor = Color(0x4078B5CD),
         pulseSpeed = 3000f,
         minScale = 0.95f,
         maxScale = 1.05f
     ),
     LISTENING(
-        primaryColor = Color(0xFFFF3B00),
-        secondaryColor = Color(0xFFFF6030),
-        glowColor = Color(0x60FF3B00),
+        primaryColor = Color(0xFF78B5CD),
+        secondaryColor = Color(0xFFC2E7F4),
+        glowColor = Color(0x4078B5CD),
         pulseSpeed = 800f,
         minScale = 0.90f,
         maxScale = 1.15f
     ),
     THINKING(
-        primaryColor = Color(0xFFD97706),
-        secondaryColor = Color(0xFFB45309),
-        glowColor = Color(0x50D97706),
+        primaryColor = Color(0xFF78B5CD),
+        secondaryColor = Color(0xFFC2E7F4),
+        glowColor = Color(0x4078B5CD),
         pulseSpeed = 1500f,
         minScale = 0.92f,
         maxScale = 1.08f
     ),
     SPEAKING(
-        primaryColor = Color(0xFFFF8C00),
-        secondaryColor = Color(0xFFFF6000),
-        glowColor = Color(0x55FF8C00),
+        primaryColor = Color(0xFF78B5CD),
+        secondaryColor = Color(0xFFC2E7F4),
+        glowColor = Color(0x4078B5CD),
         pulseSpeed = 600f,
         minScale = 0.88f,
         maxScale = 1.18f

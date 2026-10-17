@@ -37,12 +37,23 @@ struct MaxApp: App {
                 .preferredColorScheme(resolvedScheme)
                 // Handle widget deep link: maxapp://listen
                 .onOpenURL { url in
-                    guard url.scheme == "maxapp", url.host == "listen" else { return }
-                    NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+                    guard url.scheme == "maxapp" else { return }
+                    switch url.host {
+                    case "listen":
+                        UserDefaults.standard.set(true, forKey: "max.pendingVoiceActivation")
+                        NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+                    case "briefing":
+                        UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
+                        NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
+                    case "quick":
+                        UserDefaults.standard.set("Help me plan the next hour.", forKey: "max.pendingQuickReply")
+                        NotificationCenter.default.post(name: .maxQuickReply, object: "Help me plan the next hour.")
+                    default: break
+                    }
                 }
                 // Start / stop the persistent Dynamic Island session when auth changes
                 .onChange(of: authService.currentUser) { _, user in
-                    if user != nil {
+                    if user != nil && !authService.isDemoExpired {
                         LiveActivityService.shared.startPersistentSession()
                         scheduleBackgroundRefresh()
                         BriefingService.shared.rescheduleIfNeeded()
@@ -59,8 +70,10 @@ struct MaxApp: App {
                     // When app becomes active, ensure the session is alive + refresh emails
                     if phase == .active && authService.currentUser != nil {
                         authService.expireDemoIfNeeded()
-                        LiveActivityService.shared.startPersistentSession()
-                        Task { await EmailMonitorService.shared.checkAndNotify() }
+                        if !authService.isDemoExpired {
+                            LiveActivityService.shared.startPersistentSession()
+                            Task { await EmailMonitorService.shared.checkAndNotify() }
+                        }
                     }
                 }
         }
@@ -115,6 +128,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if userInfo[BriefingService.userInfoTypeKey] as? String == BriefingService.briefingTypeValue {
             // Post to main thread so HomeView's onReceive picks it up
             DispatchQueue.main.async {
+                UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
                 NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
             }
         }
@@ -139,9 +153,14 @@ struct RootView: View {
     @StateObject private var store = StoreKitService.shared
 
     var body: some View {
-        Group {
-            if showHome {
+        TimelineView(.periodic(from: .now, by: 30)) { _ in
+            if authService.isRestoringSession {
+                ProgressView("Opening Max…")
+            } else if authService.currentUser?.isDemo == true && (authService.isDemoExpired || authService.isUpgradingDemo) {
+                DemoUpgradeView().environmentObject(authService)
+            } else if showHome {
                 HomeView()
+                    .id(authService.currentUser?.storageScope ?? "signed-out")
                     .environmentObject(authService)
                     .transition(.asymmetric(
                         insertion: .opacity.animation(.easeIn(duration: 0.35)),
@@ -162,7 +181,6 @@ struct RootView: View {
     }
 
     private var showHome: Bool {
-        guard let user = authService.currentUser else { return false }
-        return user.isDemo == true || store.isSubscribed
+        !authService.isDemoExpired && authService.currentUser?.allowsAccess(hasSubscription: store.isSubscribed, at: Date()) == true
     }
 }

@@ -41,6 +41,11 @@ struct DemoOnboardingView: View {
                 .animation(.spring(response: 0.45, dampingFraction: 0.85), value: step)
             }
         }
+        .alert("Demo unavailable", isPresented: Binding(
+            get: { authService.authError != nil },
+            set: { if !$0 { authService.authError = nil } }
+        )) { Button("OK") { authService.authError = nil } }
+        message: { Text(authService.authError ?? "Please try again.") }
     }
 
     // MARK: - Background
@@ -49,8 +54,8 @@ struct DemoOnboardingView: View {
         LinearGradient(
             stops: [
                 .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                .init(color: Color(red: 0.97, green: 0.95, blue: 1.00), location: 0.5),
-                .init(color: Color(red: 0.93, green: 0.89, blue: 1.00), location: 1.0)
+                .init(color: Color(red: 0.96, green: 0.98, blue: 0.99), location: 0.5),
+                .init(color: Color(red: 0.87, green: 0.94, blue: 0.97), location: 1.0)
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
@@ -60,13 +65,13 @@ struct DemoOnboardingView: View {
     private var ambientBlobs: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: "#7C3AED").opacity(0.07))
+                .fill(Color(hex: "#467A91").opacity(0.07))
                 .frame(width: 340)
                 .blur(radius: 80)
                 .offset(x: -80, y: -220)
                 .allowsHitTesting(false)
             Circle()
-                .fill(Color(hex: "#4F46E5").opacity(0.05))
+                .fill(Color(hex: "#315F75").opacity(0.05))
                 .frame(width: 260)
                 .blur(radius: 70)
                 .offset(x: 120, y: 300)
@@ -80,7 +85,7 @@ struct DemoOnboardingView: View {
         HStack(spacing: 8) {
             ForEach(0..<totalSteps, id: \.self) { i in
                 Capsule()
-                    .fill(step >= i ? Color(hex: "#7C3AED") : Color(hex: "#7C3AED").opacity(0.22))
+                    .fill(step >= i ? Color(hex: "#467A91") : Color(hex: "#467A91").opacity(0.22))
                     .frame(width: step == i ? 24 : 8, height: 8)
                     .animation(.spring(response: 0.32, dampingFraction: 0.72), value: step)
             }
@@ -90,7 +95,7 @@ struct DemoOnboardingView: View {
         .background(
             Capsule()
                 .fill(.ultraThinMaterial)
-                .overlay(Capsule().strokeBorder(Color(hex: "#7C3AED").opacity(0.15), lineWidth: 0.5))
+                .overlay(Capsule().strokeBorder(Color(hex: "#467A91").opacity(0.15), lineWidth: 0.5))
         )
     }
 
@@ -106,12 +111,12 @@ struct DemoOnboardingView: View {
         guard !isLaunching else { return }
         isLaunching = true
         Task {
-            await authService.startDemo(
+            let started = await authService.startDemo(
                 name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                 voice: voice.rawValue
             )
             isLaunching = false
-            dismiss()
+            if started { dismiss() }
         }
     }
 }
@@ -153,7 +158,7 @@ private struct Slide1: View {
                                 .focused($nameFocused)
                                 .font(.system(size: 17))
                                 .foregroundStyle(.primary)
-                                .tint(Color(hex: "#7C3AED"))
+                                .tint(Color(hex: "#467A91"))
                                 .autocorrectionDisabled()
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 14)
@@ -256,7 +261,7 @@ private struct Slide3: View {
 
             OrbView(state: .idle, size: 110)
                 .padding(.bottom, 28)
-                .shadow(color: Color(hex: "#7C3AED").opacity(0.25), radius: 40)
+                .shadow(color: Color(hex: "#467A91").opacity(0.25), radius: 40)
 
             DemoGlassCard {
                 VStack(spacing: 18) {
@@ -286,13 +291,13 @@ private struct Slide3: View {
                         .frame(height: 0.5)
 
                     DemoPrimaryButton(
-                        title: isLaunching ? "Starting…" : "Start exploring Max",
+                        title: isLaunching ? "Starting…" : "Start my 7-day demo",
                         isLoading: isLaunching
                     ) {
                         onStart()
                     }
 
-                    Text("All features included · No account required")
+                    Text("7 days free · No Apple sign-in or payment")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -331,7 +336,7 @@ private struct DemoGlassCard<Content: View>: View {
         }
         .overlay(content().padding(24))
         .shadow(color: .black.opacity(0.06), radius: 24, x: 0, y: 8)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.06), radius: 40, x: 0, y: 16)
+        .shadow(color: Color(hex: "#467A91").opacity(0.06), radius: 40, x: 0, y: 16)
     }
 }
 
@@ -351,7 +356,7 @@ private struct DemoGenderPill: View {
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(isSelected
-                              ? LinearGradient(colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
+                              ? LinearGradient(colors: [Color(hex: "#467A91"), Color(hex: "#315F75")],
                                                startPoint: .topLeading, endPoint: .bottomTrailing)
                               : LinearGradient(colors: [Color.black.opacity(0.04), Color.black.opacity(0.04)],
                                                startPoint: .top, endPoint: .bottom))
@@ -366,7 +371,7 @@ private struct DemoGenderPill: View {
         }
         .buttonStyle(.plain)
         .shadow(
-            color: isSelected ? Color(hex: "#7C3AED").opacity(0.30) : .clear,
+            color: isSelected ? Color(hex: "#467A91").opacity(0.30) : .clear,
             radius: 8, x: 0, y: 3
         )
     }
@@ -385,7 +390,7 @@ private struct DemoVoiceCard: View {
                         .fill(
                             isSelected
                             ? LinearGradient(
-                                colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
+                                colors: [Color(hex: "#467A91"), Color(hex: "#315F75")],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             )
                             : LinearGradient(
@@ -402,11 +407,11 @@ private struct DemoVoiceCard: View {
                         )
                     Image(systemName: option.symbolName)
                         .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(isSelected ? .white : Color(hex: "#7C3AED"))
+                        .foregroundStyle(isSelected ? .white : Color(hex: "#467A91"))
                         .symbolEffect(.variableColor.iterative, isActive: isSelected)
                 }
                 .shadow(
-                    color: isSelected ? Color(hex: "#7C3AED").opacity(0.40) : .clear,
+                    color: isSelected ? Color(hex: "#467A91").opacity(0.40) : .clear,
                     radius: 12, x: 0, y: 4
                 )
 
@@ -423,7 +428,7 @@ private struct DemoVoiceCard: View {
 
                 ZStack {
                     Circle()
-                        .fill(isSelected ? Color(hex: "#7C3AED") : Color.black.opacity(0.06))
+                        .fill(isSelected ? Color(hex: "#467A91") : Color.black.opacity(0.06))
                         .frame(width: 24, height: 24)
                         .overlay(Circle().strokeBorder(
                             isSelected ? Color.white.opacity(0.3) : Color.black.opacity(0.10),
@@ -440,12 +445,12 @@ private struct DemoVoiceCard: View {
             .background(
                 ZStack {
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(isSelected ? Color(hex: "#7C3AED").opacity(0.06) : Color.black.opacity(0.03))
+                        .fill(isSelected ? Color(hex: "#467A91").opacity(0.06) : Color.black.opacity(0.03))
                     RoundedRectangle(cornerRadius: 18, style: .continuous)
                         .strokeBorder(
                             isSelected
                             ? LinearGradient(
-                                colors: [Color(hex: "#A78BFA").opacity(0.80), Color(hex: "#7C3AED").opacity(0.30)],
+                                colors: [Color(hex: "#B8DEED").opacity(0.80), Color(hex: "#467A91").opacity(0.30)],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
                             )
                             : LinearGradient(
@@ -459,7 +464,7 @@ private struct DemoVoiceCard: View {
         }
         .buttonStyle(.plain)
         .shadow(
-            color: isSelected ? Color(hex: "#7C3AED").opacity(0.12) : .clear,
+            color: isSelected ? Color(hex: "#467A91").opacity(0.12) : .clear,
             radius: 14, x: 0, y: 5
         )
         .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isSelected)
@@ -474,7 +479,7 @@ private struct SummaryPill: View {
         HStack(spacing: 7) {
             Image(systemName: icon)
                 .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color(hex: "#7C3AED"))
+                .foregroundStyle(Color(hex: "#467A91"))
             Text(label)
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(.primary)
@@ -513,7 +518,7 @@ private struct DemoPrimaryButton: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
+                            colors: [Color(hex: "#467A91"), Color(hex: "#315F75")],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         )
                     )
@@ -536,8 +541,8 @@ private struct DemoPrimaryButton: View {
             }
         )
         .foregroundStyle(.white)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.35), radius: 12, x: 0, y: 5)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.12), radius: 28, x: 0, y: 10)
+        .shadow(color: Color(hex: "#467A91").opacity(0.35), radius: 12, x: 0, y: 5)
+        .shadow(color: Color(hex: "#467A91").opacity(0.12), radius: 28, x: 0, y: 10)
         .disabled(isLoading || isDisabled)
         .opacity(isDisabled ? 0.50 : 1.0)
     }

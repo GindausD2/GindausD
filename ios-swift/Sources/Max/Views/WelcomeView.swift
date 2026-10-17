@@ -6,34 +6,39 @@ import AuthenticationServices
 struct WelcomeView: View {
     @EnvironmentObject private var authService: AuthService
 
-    @State private var currentPage: Int = 1   // Start on Welcome page
+    @State private var currentPage: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(initialMode: AuthEntryMode? = nil) {
+        _currentPage = State(initialValue: initialMode?.page ?? 1)
+    }
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                backgroundGradient.ignoresSafeArea()
+                CompanionCanvas()
                 ambientBlobs
 
                 VStack(spacing: 0) {
-                    pageIndicator
+                    navigationControl
                         .padding(.top, geo.safeAreaInsets.top + 18)
                         .padding(.bottom, 10)
 
-                    TabView(selection: $currentPage) {
-                        LoginPage(onNavigateToWelcome: { currentPage = 1 })
-                            .tag(0)
+                    if currentPage == 1 {
                         WelcomePage(onLogin: { currentPage = 0 }, onSignUp: { currentPage = 2 })
-                            .tag(1)
-                        SignUpPage(onBack: { currentPage = 1 }, onSignedUp: { currentPage = 3 })
-                            .tag(2)
+                    } else if currentPage == 3 {
                         PlanPage(onBack: {
                             authService.signOut()
                             currentPage = 2
                         })
-                        .tag(3)
+                    } else {
+                        TabView(selection: $currentPage) {
+                            LoginPage(onSignUp: { currentPage = 2 }).tag(0)
+                            SignUpPage(onBack: { currentPage = 1 }, onSignedUp: { currentPage = 3 }).tag(2)
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                 }
             }
         }
@@ -44,39 +49,56 @@ struct WelcomeView: View {
                 currentPage = 3
             }
         }
+        .onChange(of: authService.currentUser) { _, user in
+            if user != nil && user?.isDemo != true { currentPage = 3 }
+        }
     }
 
     // MARK: - Background
 
-    private var backgroundGradient: some View {
-        LinearGradient(
-            stops: [
-                .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                .init(color: Color(red: 0.97, green: 0.95, blue: 1.00), location: 0.5),
-                .init(color: Color(red: 0.93, green: 0.89, blue: 1.00), location: 1.0)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
     private var ambientBlobs: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: "#7C3AED").opacity(0.07))
+                .fill(Color(hex: "#315E73").opacity(0.07))
                 .frame(width: 340, height: 340)
                 .blur(radius: 70)
                 .offset(x: -90, y: -210)
             Circle()
-                .fill(Color(hex: "#4F46E5").opacity(0.05))
+                .fill(Color(hex: "#315E73").opacity(0.05))
                 .frame(width: 280, height: 280)
                 .blur(radius: 80)
                 .offset(x: 110, y: 280)
             Circle()
-                .fill(Color(hex: "#C084FC").opacity(0.04))
+                .fill(Color(hex: "#315E73").opacity(0.04))
                 .frame(width: 200, height: 200)
                 .blur(radius: 60)
                 .offset(x: 60, y: -60)
+        }
+    }
+
+    // MARK: - Authentication slider
+
+    @ViewBuilder private var navigationControl: some View {
+        if currentPage == 0 || currentPage == 2 {
+            HStack(spacing: 12) {
+                Button { currentPage = 1 } label: {
+                    Image(systemName: "arrow.left")
+                        .font(.body.weight(.medium))
+                        .frame(width: 44, height: 44)
+                        .glassCard(cornerRadius: 22, interactive: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back to welcome")
+                AuthModeSlider(selection: Binding(
+                    get: { currentPage == 0 ? .login : .signUp },
+                    set: { currentPage = $0.page; authService.authError = nil }
+                ))
+            }
+            .disabled(authService.isLoading)
+            .padding(.horizontal, 24)
+            .frame(maxWidth: 460)
+        } else {
+            pageIndicator
         }
     }
 
@@ -86,7 +108,7 @@ struct WelcomeView: View {
         HStack(spacing: 8) {
             ForEach(0..<4) { i in
                 Capsule()
-                    .fill(currentPage == i ? Color(hex: "#7C3AED") : Color(hex: "#7C3AED").opacity(0.25))
+                    .fill(currentPage == i ? Color(hex: "#315E73") : Color(hex: "#315E73").opacity(0.25))
                     .frame(width: currentPage == i ? 22 : 7, height: 7)
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPage)
             }
@@ -97,7 +119,7 @@ struct WelcomeView: View {
             Capsule()
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    Capsule().strokeBorder(Color(hex: "#7C3AED").opacity(0.15), lineWidth: 0.5)
+                    Capsule().strokeBorder(Color(hex: "#315E73").opacity(0.15), lineWidth: 0.5)
                 )
         )
     }
@@ -107,11 +129,18 @@ struct WelcomeView: View {
 
 private func appleSignInHandler(authService: AuthService) -> (Result<ASAuthorization, Error>) -> Void {
     return { result in
+        if case .failure(let error) = result {
+            Task { @MainActor in authService.authError = error.localizedDescription }
+            return
+        }
         guard case .success(let auth) = result,
               let credential = auth.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8)
-        else { return }
+        else {
+            Task { @MainActor in authService.authError = "Apple sign-in couldn't complete. Please try again." }
+            return
+        }
         let fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
             .compactMap { $0 }.joined(separator: " ")
         Task {
@@ -119,6 +148,44 @@ private func appleSignInHandler(authService: AuthService) -> (Result<ASAuthoriza
                 idToken: idToken,
                 name: fullName.isEmpty ? nil : fullName
             )
+        }
+    }
+}
+
+// MARK: - Continue after the guest demo
+
+struct DemoUpgradeView: View {
+    @EnvironmentObject private var authService: AuthService
+
+    var body: some View {
+        ZStack {
+            CompanionCanvas()
+            VStack(spacing: 22) {
+                OrbView(state: .idle, size: 110)
+                Text(authService.isDemoExpired ? "Your seven-day demo has ended" : "Keep Max with you")
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Text("Continue with Apple to choose your subscription and keep your saved thoughts.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                SignInWithAppleButton(.continue, onRequest: { request in
+                    request.requestedScopes = [.fullName, .email]
+                }, onCompletion: appleSignInHandler(authService: authService))
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .disabled(authService.isLoading)
+                if authService.isLoading { ProgressView() }
+                if let error = authService.authError {
+                    Text(error).font(.footnote).foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
+                if !authService.isDemoExpired {
+                    Button("Back to my demo") { authService.cancelDemoUpgrade() }
+                }
+            }
+            .padding(30)
+            .frame(maxWidth: 440)
         }
     }
 }
@@ -148,7 +215,7 @@ private struct LiquidGlassPrimaryButton: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
+                            colors: [Color(hex: "#315E73"), Color(hex: "#315E73")],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -173,8 +240,8 @@ private struct LiquidGlassPrimaryButton: View {
             }
         )
         .foregroundStyle(.white)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.35), radius: 14, x: 0, y: 5)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.12), radius: 30, x: 0, y: 10)
+        .shadow(color: Color(hex: "#315E73").opacity(0.35), radius: 14, x: 0, y: 5)
+        .shadow(color: Color(hex: "#315E73").opacity(0.12), radius: 30, x: 0, y: 10)
         .disabled(isLoading || isDisabled)
         .opacity(isDisabled ? 0.55 : 1.0)
     }
@@ -183,7 +250,7 @@ private struct LiquidGlassPrimaryButton: View {
 // MARK: - Login Page
 
 private struct LoginPage: View {
-    var onNavigateToWelcome: () -> Void
+    var onSignUp: () -> Void
     @EnvironmentObject private var authService: AuthService
 
     var body: some View {
@@ -227,12 +294,12 @@ private struct LoginPage: View {
                 }
                 .padding(.horizontal, 22)
 
-                Button { onNavigateToWelcome() } label: {
+                Button { onSignUp() } label: {
                     HStack(spacing: 5) {
                         Text("New to Max?")
                             .foregroundStyle(.secondary)
                         Text("Get started →")
-                            .foregroundStyle(Color(hex: "#7C3AED"))
+                            .foregroundStyle(Color(hex: "#315E73"))
                             .fontWeight(.semibold)
                     }
                     .font(.subheadline)
@@ -269,13 +336,13 @@ private struct WelcomePage: View {
                 padding: EdgeInsets(top: 22, leading: 28, bottom: 22, trailing: 28)
             ) {
                 VStack(spacing: 12) {
-                    MaxLogoView(color: Color(hex: "#7C3AED"), width: 180)
+                    MaxLogoView(color: Color(hex: "#315E73"), width: 180)
                         .padding(.bottom, 2)
                     Text("Your AI personal assistant")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
-                    Text("Powered by Claude")
+                    Text("Powered by OpenAI")
                         .font(.caption)
                         .foregroundStyle(Color.secondary.opacity(0.7))
                 }
@@ -308,7 +375,7 @@ private struct WelcomePage: View {
                 HStack(spacing: 6) {
                     Image(systemName: "sparkles")
                         .font(.system(size: 13))
-                    Text("Try Demo")
+                    Text("Try Demo · 7 days free")
                         .font(.subheadline.weight(.medium))
                 }
                 .foregroundStyle(.secondary)
@@ -404,7 +471,7 @@ private struct PlanPage: View {
     @StateObject private var store = StoreKitService.shared
     @State private var selectedPlan: String = StoreKitService.yearlyID
 
-    private let violet = Color(hex: "#7C3AED")
+    private let violet = Color(hex: "#315E73")
     private let amber  = Color(hex: "#F59E0B")
 
     var body: some View {
@@ -435,9 +502,9 @@ private struct PlanPage: View {
                 VStack(spacing: 10) {
                     WelcomePlanCard(
                         title: "Yearly",
-                        price: store.yearlyProduct?.displayPrice ?? "$119.99",
+                        price: store.yearlyProduct?.displayPrice ?? "Unavailable",
                         period: "/ year",
-                        subtext: "Best value · save 17%",
+                        subtext: "Billed yearly",
                         badge: "Most Popular",
                         isSelected: selectedPlan == StoreKitService.yearlyID,
                         violet: violet
@@ -445,7 +512,7 @@ private struct PlanPage: View {
 
                     WelcomePlanCard(
                         title: "Monthly",
-                        price: store.monthlyProduct?.displayPrice ?? "$9.99",
+                        price: store.monthlyProduct?.displayPrice ?? "Unavailable",
                         period: "/ month",
                         subtext: "Flexible · cancel anytime",
                         badge: nil,
@@ -464,9 +531,9 @@ private struct PlanPage: View {
                 ) {
                     VStack(spacing: 10) {
                         ForEach([
-                            ("infinity",           "Unlimited conversations"),
-                            ("bolt.fill",          "Priority AI responses"),
-                            ("icloud.fill",        "Full iCloud sync"),
+                            ("bubble.left.and.bubble.right", "AI conversations with daily limits"),
+                            ("waveform",           "Voice and text conversations"),
+                            ("lock.fill",          "Memories saved on this iPhone"),
                             ("bell.badge.fill",    "Smart reminders & alerts")
                         ], id: \.0) { icon, text in
                             HStack(spacing: 12) {
@@ -502,7 +569,7 @@ private struct PlanPage: View {
                 LiquidGlassPrimaryButton(
                     title: store.isLoading ? "" : subscribeLabel,
                     isLoading: store.isLoading,
-                    isDisabled: store.isLoading
+                    isDisabled: store.isLoading || selectedProductUnavailable
                 ) {
                     Task {
                         let product = selectedPlan == StoreKitService.yearlyID
@@ -512,6 +579,15 @@ private struct PlanPage: View {
                 }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 12)
+
+                if selectedProductUnavailable && !store.isLoading {
+                    Text("Subscriptions are temporarily unavailable. Please try again later.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 12)
+                }
 
                 // Footer
                 VStack(spacing: 8) {
@@ -548,11 +624,14 @@ private struct PlanPage: View {
     }
 
     private var subscribeLabel: String {
-        let price = selectedPlan == StoreKitService.yearlyID
-            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
-            : (store.monthlyProduct?.displayPrice ?? "$9.99")
+        let product = selectedPlan == StoreKitService.yearlyID ? store.yearlyProduct : store.monthlyProduct
+        guard let product else { return "Subscriptions unavailable" }
         let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
-        return "Subscribe — \(price)/\(period)"
+        return "Subscribe — \(product.displayPrice)/\(period)"
+    }
+
+    private var selectedProductUnavailable: Bool {
+        selectedPlan == StoreKitService.yearlyID ? store.yearlyProduct == nil : store.monthlyProduct == nil
     }
 }
 

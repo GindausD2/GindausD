@@ -4,13 +4,14 @@
     "slug": "max-ai-assistant",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "dark",
+    "userInterfaceStyle": "light",
     "splash": {
       "resizeMode": "contain",
-      "backgroundColor": "#0A0A0F"
+      "backgroundColor": "#F4F1EB"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.max.aiassistant",
@@ -21,7 +22,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0A0A0F"
+        "backgroundColor": "#F4F1EB"
       },
       "permissions": [
         "RECORD_AUDIO",
@@ -39,7 +40,7 @@
       [
         "expo-notifications",
         {
-          "color": "#7C3AED",
+          "color": "#596F60",
           "sounds": []
         }
       ]

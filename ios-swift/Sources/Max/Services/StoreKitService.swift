@@ -77,7 +77,8 @@ final class StoreKitService: ObservableObject {
     func refreshEntitlements() async {
         var active: Set<String> = []
         for await result in Transaction.currentEntitlements {
-            if let tx = try? verified(result), tx.revocationDate == nil {
+            if let tx = try? verified(result), tx.revocationDate == nil,
+               [Self.monthlyID, Self.yearlyID].contains(tx.productID) {
                 active.insert(tx.productID)
             }
         }
@@ -100,7 +101,7 @@ final class StoreKitService: ObservableObject {
 
     // MARK: - Verification
 
-    private func verified<T>(_ result: VerificationResult<T>) throws -> T {
+    nonisolated private func verified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified: throw StoreError.verificationFailed
         case .verified(let value): return value

@@ -157,10 +157,10 @@ struct PaywallView: View {
                         .disabled(store.isLoading)
 
                         HStack(spacing: 4) {
-                            Text("By subscribing you agree to our")
-                            Link("Terms", destination: URL(string: "https://www.anthropic.com/legal/consumer-terms")!)
+                            Text("AI provider information:")
+                            Link("Policies", destination: URL(string: "https://openai.com/policies/")!)
                             Text("and")
-                            Link("Privacy Policy", destination: URL(string: "https://www.anthropic.com/legal/privacy")!)
+                            Link("Data Handling", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                         }
                         .font(.caption2)
                         .foregroundStyle(.white.opacity(0.40))
@@ -206,7 +206,7 @@ struct PaywallView: View {
         guard let yearly = store.yearlyProduct else { return "$8.33" }
         let monthly = yearly.price / 12
         let fmt = yearly.priceFormatStyle
-        return (try? monthly.formatted(fmt)) ?? "$8.33"
+        return monthly.formatted(fmt)
     }
 
     private var ctaLabel: String {
@@ -283,40 +283,5 @@ private struct PaywallPlanCard: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Logo (duplicated from HomeView for use here without circular deps)
-
-private struct MaxLogoView: View {
-    var color: Color = .white
-    var width: CGFloat
-
-    private var height: CGFloat { width * 50 / 100 }
-
-    var body: some View {
-        Canvas(opaque: false, colorMode: .linear) { context, size in
-            let u = size.width / 100.0
-            func ellipse(cx: CGFloat, cy: CGFloat, r: CGFloat) -> Path {
-                Path(ellipseIn: CGRect(x: (cx - r) * u, y: (cy - r) * u,
-                                       width: 2 * r * u, height: 2 * r * u))
-            }
-            context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 18, cy: 25, r: 24), with: .color(color))
-                ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 29, cy: 25, r: 19), with: .color(.black))
-            }
-            context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 50, cy: 25, r: 17), with: .color(color))
-                ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 50, cy: 25, r: 10), with: .color(.black))
-            }
-            context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 82, cy: 25, r: 24), with: .color(color))
-                ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 71, cy: 25, r: 19), with: .color(.black))
-            }
-        }
-        .frame(width: width, height: height)
     }
 }

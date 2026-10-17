@@ -1,344 +1,59 @@
-import React, { useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  StyleSheet,
-  ScrollView,
-  Switch,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, Switch, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
-
+import { GlassSurface } from '@/components/GlassSurface';
 import { useSettings } from '@/hooks/useSettings';
+import { useAuth } from '@/hooks/useAuth';
 import { clearMessages, loadNotes, loadMemories } from '@/services/storage';
 import { signOut } from '@/services/auth';
-
-// ─── Light palette ────────────────────────────────────────────────────────────
-const C = {
-  bg: '#F5F5F7',
-  surface: '#FFFFFF',
-  card: '#FFFFFF',
-  border: '#E5E7EB',
-  primary: '#4F46E5',
-  danger: '#EF4444',
-  textPrimary: '#1A1A2E',
-  textSecondary: '#6B7280',
-  textMuted: '#9CA3AF',
-  inputBg: '#F9FAFB',
-};
-
+import { Colors as C } from '@/constants/colors';
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <View style={styles.sectionCard}>{children}</View>
-    </View>
-  );
+  return <View style={styles.section}><Text style={styles.sectionTitle}>{title}</Text><GlassSurface style={styles.card}>{children}</GlassSurface></View>;
 }
-
-function Row({
-  icon,
-  label,
-  sublabel,
-  right,
-  onPress,
-  danger,
-  first,
-}: {
-  icon: keyof typeof import('@expo/vector-icons').Ionicons.glyphMap;
-  label: string;
-  sublabel?: string;
-  right?: React.ReactNode;
-  onPress?: () => void;
-  danger?: boolean;
-  first?: boolean;
-}) {
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.row,
-        !first && styles.rowBorder,
-        pressed && onPress && styles.rowPressed,
-      ]}
-      onPress={onPress}
-    >
-      <View style={[styles.rowIcon, danger && styles.rowIconDanger]}>
-        <Ionicons name={icon} size={17} color={danger ? C.danger : C.primary} />
-      </View>
-      <View style={styles.rowContent}>
-        <Text style={[styles.rowLabel, danger && styles.rowLabelDanger]}>{label}</Text>
-        {sublabel && <Text style={styles.rowSublabel}>{sublabel}</Text>}
-      </View>
-      {right ?? (onPress ? <Ionicons name="chevron-forward" size={15} color={C.textMuted} /> : null)}
-    </Pressable>
-  );
+function Row({ icon, title, subtitle, action, trailing, danger }: { icon: keyof typeof Ionicons.glyphMap; title: string; subtitle?: string; action?: () => void; trailing?: React.ReactNode; danger?: boolean }) {
+  const content = <><View style={styles.rowIcon}><Ionicons name={icon} size={20} color={danger ? C.error : C.textPrimary} /></View><View style={styles.rowText}><Text style={[styles.rowTitle, danger && { color: C.error }]}>{title}</Text>{subtitle ? <Text style={styles.rowSubtitle}>{subtitle}</Text> : null}</View>{trailing || (action ? <Ionicons name="chevron-forward" size={16} color={C.textMuted} /> : null)}</>;
+  return action ? <Pressable accessibilityRole="button" onPress={action} style={({ pressed }) => [styles.row, pressed && { opacity: 0.65 }]}>{content}</Pressable> : <View style={styles.row}>{content}</View>;
 }
-
 export default function SettingsScreen() {
   const { settings, updateSettings } = useSettings();
-  const [apiKey, setApiKey] = useState(settings?.apiKey ?? '');
-  const [userName, setUserName] = useState(settings?.userName ?? '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [showKey, setShowKey] = useState(false);
-
-  const handleSave = useCallback(async () => {
-    setIsSaving(true);
-    await updateSettings({ apiKey: apiKey.trim(), userName: userName.trim() });
-    setIsSaving(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    router.back();
-  }, [apiKey, userName, updateSettings]);
-
-  const handleToggleVoice = useCallback(
-    (val: boolean) => updateSettings({ voiceEnabled: val }),
-    [updateSettings]
-  );
-
-  const handleClearHistory = useCallback(() => {
-    Alert.alert('Clear Chat History', 'Permanently delete all messages?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          await clearMessages();
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        },
-      },
-    ]);
-  }, []);
-
-  const handleStats = useCallback(async () => {
-    const notes = await loadNotes();
-    const memories = await loadMemories();
-    Alert.alert('Stored Data', `Notes: ${notes.length}\nMemories: ${memories.length}`);
-  }, []);
-
-  const handleSignOut = useCallback(() => {
-    Alert.alert('Sign Out', 'Sign out and return to the welcome screen?', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: async () => {
-          await signOut();
-          router.replace('/welcome');
-        },
-      },
-    ]);
-  }, []);
-
-  if (!settings) {
-    return (
-      <SafeAreaView style={styles.safeArea}>
-        <ActivityIndicator color={C.primary} />
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => router.back()} hitSlop={12}>
-          <Ionicons name="close" size={22} color={C.textPrimary} />
-        </Pressable>
-        <Text style={styles.headerTitle}>Settings</Text>
-        <Pressable onPress={handleSave} disabled={isSaving} hitSlop={12}>
-          {isSaving
-            ? <ActivityIndicator size="small" color={C.primary} />
-            : <Text style={styles.saveBtn}>Save</Text>}
-        </Pressable>
-      </View>
-
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-
-        {/* API Key */}
-        <Section title="Anthropic API Key">
-          <View style={styles.keyField}>
-            <TextInput
-              style={styles.keyInput}
-              value={apiKey}
-              onChangeText={setApiKey}
-              placeholder="sk-ant-..."
-              placeholderTextColor={C.textMuted}
-              secureTextEntry={!showKey}
-              autoCapitalize="none"
-              autoCorrect={false}
-              selectionColor={C.primary}
-            />
-            <Pressable onPress={() => setShowKey(v => !v)} hitSlop={8} style={styles.eyeBtn}>
-              <Ionicons name={showKey ? 'eye-off-outline' : 'eye-outline'} size={19} color={C.textMuted} />
-            </Pressable>
-          </View>
-          <Text style={styles.hint}>
-            Get yours at console.anthropic.com — stored only on your device.
-          </Text>
-        </Section>
-
-        {/* Profile */}
-        <Section title="Profile">
-          <TextInput
-            style={styles.nameInput}
-            value={userName}
-            onChangeText={setUserName}
-            placeholder="Your name (so Max knows you)"
-            placeholderTextColor={C.textMuted}
-            autoCapitalize="words"
-            selectionColor={C.primary}
-          />
-        </Section>
-
-        {/* Voice */}
-        <Section title="Voice">
-          <Row
-            icon="volume-high-outline"
-            label="Voice Responses"
-            sublabel="Max speaks replies aloud"
-            first
-            right={
-              <Switch
-                value={settings.voiceEnabled}
-                onValueChange={handleToggleVoice}
-                trackColor={{ false: C.border, true: C.primary }}
-                thumbColor="#fff"
-              />
-            }
-          />
-        </Section>
-
-        {/* Data */}
-        <Section title="Data">
-          <Row icon="bar-chart-outline" label="Storage Stats" sublabel="Notes & memories" onPress={handleStats} first />
-          <Row icon="trash-outline" label="Clear History" danger onPress={handleClearHistory} />
-        </Section>
-
-        {/* Account */}
-        <Section title="Account">
-          <Row icon="log-out-outline" label="Sign Out" danger onPress={handleSignOut} first />
-        </Section>
-
-        {/* About */}
-        <Section title="About">
-          <View style={styles.aboutCard}>
-            <View style={styles.aboutOrb}>
-              <Text style={styles.aboutOrbText}>M</Text>
-            </View>
-            <Text style={styles.aboutName}>{settings.assistantName}</Text>
-            <Text style={styles.aboutSub}>AI Personal Assistant · v1.0</Text>
-            <Text style={styles.aboutPowered}>Powered by Claude claude-sonnet-4-6</Text>
-          </View>
-        </Section>
-
-      </ScrollView>
+  const { user, isLoading: authLoading } = useAuth();
+  const [name, setName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const hydrated = React.useRef(false);
+  useEffect(() => { if (settings && !authLoading && !hydrated.current) { setName(settings.userName || user?.name || ''); hydrated.current = true; } }, [settings, user?.name, authLoading]);
+  const save = async () => {
+    setSaving(true);
+    try { await updateSettings({ userName: name.trim() }); router.back(); }
+    catch { Alert.alert('Couldn’t save', 'Please try again.'); }
+    finally { setSaving(false); }
+  };
+  const stats = async () => { const [notes, memories] = await Promise.all([loadNotes(), loadMemories()]); Alert.alert('Your saved things', `${notes.length} notes · ${memories.length} memories`); };
+  const clear = () => Alert.alert('Clear conversation history?', 'This deletes messages saved on this device.', [{ text: 'Cancel', style: 'cancel' }, { text: 'Clear history', style: 'destructive', onPress: () => { void clearMessages(); } }]);
+  const logout = () => Alert.alert('Sign out of Max?', '', [{ text: 'Cancel', style: 'cancel' }, { text: 'Sign out', onPress: async () => { await signOut(); router.replace('/welcome'); } }]);
+  return <View style={styles.root}>
+    <LinearGradient colors={['#F9F7F2', '#F0EEE7', '#DCE4DA']} style={StyleSheet.absoluteFill} />
+    <SafeAreaView style={styles.safe}>
+      <View style={styles.header}><Pressable accessibilityRole="button" accessibilityLabel="Close settings" onPress={() => router.back()} style={styles.close}><Ionicons name="close" size={21} color={C.textPrimary} /></Pressable><Text style={styles.headerTitle}>Settings</Text><Pressable accessibilityRole="button" onPress={save} disabled={saving || !settings} style={styles.done}>{saving ? <ActivityIndicator color={C.primary} /> : <Text style={styles.doneText}>Done</Text>}</Pressable></View>
+      {!settings ? <ActivityIndicator style={{ marginTop: 60 }} color={C.primary} /> : <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.profile}><GlassSurface style={styles.avatar}><Text style={styles.initial}>{(name || 'M').slice(0, 1).toUpperCase()}</Text></GlassSurface><Text style={styles.profileName}>{name || 'Your space'}</Text><Text style={styles.profileSubtitle}>Make Max feel like you.</Text></View>
+        <Section title="PERSONAL"><Row icon="person-outline" title="Your name" trailing={<TextInput accessibilityLabel="Your name" value={name} onChangeText={setName} placeholder="Add name" placeholderTextColor={C.textMuted} autoCapitalize="words" style={styles.nameInput} />} /></Section>
+        <Section title="YOUR ASSISTANT"><Row icon="volume-medium-outline" title="Spoken replies" subtitle="Let Max read responses aloud" trailing={<Switch accessibilityLabel="Spoken replies" value={settings.voiceEnabled} onValueChange={async value => { try { await updateSettings({ voiceEnabled: value }); } catch { Alert.alert('Couldn’t save', 'Please try again.'); } }} trackColor={{ false: '#D4D8D0', true: '#697C67' }} thumbColor="#FFFFFF" />} /></Section>
+        <Section title="TOUCH"><Row icon="hand-left-outline" title="Speaking haptics" subtitle="Gentle pulses while Max speaks on iPhone" trailing={<Switch accessibilityLabel="Speaking haptics" value={settings.speakingHapticsEnabled ?? true} onValueChange={async value => { try { await updateSettings({ speakingHapticsEnabled: value }); } catch { Alert.alert('Couldn’t save', 'Please try again.'); } }} trackColor={{ false: '#D4D8D0', true: '#79B9D4' }} thumbColor="#FFFFFF" />} /></Section>
+        <Section title="SAVED ON THIS DEVICE"><Row icon="leaf-outline" title="Notes & memories" subtitle="The things you’ve asked Max to keep" action={stats} /><View style={styles.divider} /><Row icon="trash-outline" title="Clear conversation history" action={clear} danger /></Section>
+        <Section title="ACCOUNT"><Row icon="log-out-outline" title="Sign out" action={logout} /></Section>
+        <View style={styles.about}><Text style={styles.aboutBrand}>Max.</Text><Text style={styles.aboutText}>A little help. A little more space.</Text><Text style={styles.version}>Version 1.0</Text></View>
+      </ScrollView>}
     </SafeAreaView>
-  );
+  </View>;
 }
-
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: C.bg },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    backgroundColor: C.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: C.border,
-  },
-  headerTitle: { fontSize: 16, fontWeight: '600', color: C.textPrimary },
-  saveBtn: { fontSize: 15, fontWeight: '600', color: C.primary },
-  scroll: { flex: 1 },
-  scrollContent: { padding: 16, paddingBottom: 48, gap: 8 },
-  section: { marginBottom: 16 },
-  sectionTitle: {
-    fontSize: 11,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.9,
-    color: C.textMuted,
-    marginBottom: 6,
-    paddingHorizontal: 4,
-  },
-  sectionCard: {
-    backgroundColor: C.card,
-    borderRadius: 14,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  // Key input
-  keyField: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    gap: 8,
-  },
-  keyInput: {
-    flex: 1,
-    backgroundColor: C.inputBg,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    fontFamily: 'monospace',
-    fontSize: 13,
-    color: C.textPrimary,
-    borderWidth: 1,
-    borderColor: C.border,
-  },
-  eyeBtn: { padding: 4 },
-  hint: { fontSize: 11, color: C.textMuted, paddingHorizontal: 14, paddingBottom: 12, lineHeight: 16 },
-  // Name input
-  nameInput: {
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-    fontSize: 15,
-    color: C.textPrimary,
-  },
-  // Rows
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 13,
-    gap: 12,
-  },
-  rowBorder: { borderTopWidth: 1, borderTopColor: C.border },
-  rowPressed: { backgroundColor: '#F9FAFB' },
-  rowIcon: {
-    width: 30,
-    height: 30,
-    borderRadius: 8,
-    backgroundColor: 'rgba(79,70,229,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rowIconDanger: { backgroundColor: 'rgba(239,68,68,0.1)' },
-  rowContent: { flex: 1 },
-  rowLabel: { fontSize: 15, color: C.textPrimary },
-  rowLabelDanger: { color: C.danger },
-  rowSublabel: { fontSize: 12, color: C.textMuted, marginTop: 1 },
-  // About
-  aboutCard: { alignItems: 'center', paddingVertical: 28, gap: 5 },
-  aboutOrb: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#4F46E5',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 6,
-  },
-  aboutOrbText: { fontSize: 24, fontWeight: '700', color: '#fff' },
-  aboutName: { fontSize: 17, fontWeight: '700', color: C.textPrimary },
-  aboutSub: { fontSize: 13, color: C.textSecondary },
-  aboutPowered: { fontSize: 11, color: C.textMuted },
+  root: { flex: 1, backgroundColor: C.background }, safe: { flex: 1 }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14 },
+  close: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.65)', alignItems: 'center', justifyContent: 'center' }, headerTitle: { fontSize: 16, fontWeight: '600', color: C.textPrimary }, done: { minWidth: 44, minHeight: 44, justifyContent: 'center', alignItems: 'center' }, doneText: { fontSize: 15, fontWeight: '600', color: C.textPrimary },
+  content: { paddingHorizontal: 22, paddingBottom: 36 }, profile: { alignItems: 'center', paddingTop: 24, paddingBottom: 36 }, avatar: { width: 78, height: 78, borderRadius: 39, alignItems: 'center', justifyContent: 'center' }, initial: { fontSize: 28, fontWeight: '400', color: C.textPrimary },
+  profileName: { fontSize: 28, letterSpacing: -0.8, fontWeight: '500', color: C.textPrimary, marginTop: 18 }, profileSubtitle: { fontSize: 13, color: C.textSecondary, marginTop: 8 }, section: { marginBottom: 24 }, sectionTitle: { fontSize: 10, fontWeight: '600', letterSpacing: 1.7, color: C.textSecondary, marginBottom: 10, paddingLeft: 6 }, card: { borderRadius: 24 },
+  row: { minHeight: 72, paddingHorizontal: 16, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', gap: 12 }, rowIcon: { width: 28, alignItems: 'center' }, rowText: { flex: 1 }, rowTitle: { fontSize: 15, color: C.textPrimary }, rowSubtitle: { fontSize: 12, color: C.textSecondary, lineHeight: 18, marginTop: 5 }, divider: { height: 1, backgroundColor: '#E0E3DA', marginHorizontal: 18 }, nameInput: { width: 118, minHeight: 44, fontSize: 14, textAlign: 'right', color: C.textSecondary },
+  about: { alignItems: 'center', paddingTop: 12 }, aboutBrand: { fontSize: 25, fontWeight: '500', letterSpacing: -1, color: C.textPrimary }, aboutText: { marginTop: 8, fontSize: 12, color: C.textSecondary }, version: { marginTop: 12, fontSize: 10, color: C.textMuted },
 });

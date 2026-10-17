@@ -1,5 +1,8 @@
 import Foundation
+import Combine
 import Supabase
+import UserNotifications
+import WidgetKit
 
 @MainActor
 final class AuthService: ObservableObject {
@@ -7,27 +10,42 @@ final class AuthService: ObservableObject {
 
     let supabase: SupabaseClient
 
-    @Published var currentUser: AuthUser?
+    @Published var currentUser: AuthUser? {
+        didSet {
+            let scope = currentUser?.storageScope ?? "signed-out"
+            if scope != StorageService.shared.accountScope {
+                let ids = StorageService.shared.loadReminders().map(\.id) + [BriefingService.notificationID]
+                UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
+                UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
+                VoiceService.shared.stopRecording(); VoiceService.shared.stopSpeaking()
+                LiveActivityService.shared.stopPersistentSession()
+                let widget = UserDefaults(suiteName: "group.com.gindausd.max")
+                widget?.removeObject(forKey: "max:widget_last_message")
+                widget?.removeObject(forKey: "max:widget_last_message_time")
+                WidgetCenter.shared.reloadAllTimelines()
+                for key in ["max.pendingVoiceActivation", "max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            StorageService.shared.setAccountScope(scope)
+        }
+    }
     @Published var isLoading: Bool = false
     @Published var authError: String? = nil
+    @Published var isRestoringSession = true
+    @Published var isUpgradingDemo = false
+    @Published private(set) var serverExpiredDemo = false
 
     private let demoKey      = "max:auth_user_demo"
-    private let demoStartKey = "max:demo_start_date"
-    private let trialDuration: TimeInterval = 7 * 24 * 3600   // 7 days
 
     var demoTrialExpiry: Date? {
-        guard let start = UserDefaults.standard.object(forKey: demoStartKey) as? Date
-        else { return nil }
-        return start.addingTimeInterval(trialDuration)
+        currentUser?.trialExpiresAt
     }
 
     var isDemoExpired: Bool {
-        guard currentUser?.isDemo == true, let expiry = demoTrialExpiry else { return false }
-        return Date() >= expiry
+        currentUser?.isDemo == true && (serverExpiredDemo || currentUser?.demoIsExpired(at: Date()) == true)
     }
 
     var demoTrialDaysRemaining: Int {
-        guard let expiry = demoTrialExpiry else { return 7 }
+        guard let expiry = demoTrialExpiry else { return 0 }
         return max(0, Int(ceil(expiry.timeIntervalSinceNow / 86400)))
     }
 
@@ -37,31 +55,60 @@ final class AuthService: ObservableObject {
             supabaseKey: kSupabaseAnonKey
         )
 
-        // Restore demo session first (no network needed)
-        if let data = UserDefaults.standard.data(forKey: demoKey),
-           let user = try? JSONDecoder().decode(AuthUser.self, from: data) {
-            currentUser = user
-        }
-
-        // Then try to restore real Supabase session
+        StorageService.shared.setAccountScope("signed-out")
         Task {
+            defer { isRestoringSession = false }
+            guard !kSupabaseAnonKey.isEmpty else { return }
             if let session = try? await supabase.auth.session {
-                currentUser = AuthUser(supabaseUser: session.user)
+                applySession(session)
+            } else if let cached = supabase.auth.currentSession {
+                // Keep the guest identity during a refresh/network failure; never restart its clock.
+                applySession(cached)
             }
         }
 
         // Listen for ongoing auth state changes
         Task {
-            for await (event, session) in await supabase.auth.authStateChanges {
+            for await (event, session) in supabase.auth.authStateChanges {
                 switch event {
                 case .signedIn, .tokenRefreshed, .userUpdated:
-                    if let session { currentUser = AuthUser(supabaseUser: session.user) }
+                    if let session { applySession(session) }
                 case .signedOut:
-                    if currentUser?.isDemo != true { currentUser = nil }
+                    currentUser = nil
                 default: break
                 }
             }
         }
+    }
+
+    func managedSession() async throws -> (token: String, userID: String) {
+        guard !kSupabaseAnonKey.isEmpty, !isDemoExpired else { throw URLError(.userAuthenticationRequired) }
+        let session = try await supabase.auth.session
+        let userID = session.user.id.uuidString
+        guard userID == currentUser?.id else { throw URLError(.userAuthenticationRequired) }
+        return (session.accessToken, userID)
+    }
+
+    private func applySession(_ session: Session) {
+        let previousID = currentUser?.id
+        currentUser = AuthUser(supabaseUser: session.user)
+        if previousID != currentUser?.id { serverExpiredDemo = false }
+        if session.user.isAnonymous {
+            if let data = try? JSONEncoder().encode(currentUser) { UserDefaults.standard.set(data, forKey: demoKey) }
+        } else {
+            isUpgradingDemo = false
+            UserDefaults.standard.removeObject(forKey: demoKey)
+        }
+    }
+
+    func beginDemoUpgrade() { isUpgradingDemo = true; authError = nil }
+    func cancelDemoUpgrade() { isUpgradingDemo = false; authError = nil }
+
+    func markDemoExpired() {
+        guard currentUser?.isDemo == true else { return }
+        serverExpiredDemo = true
+        VoiceService.shared.stopRecording(); VoiceService.shared.stopSpeaking()
+        LiveActivityService.shared.stopPersistentSession()
     }
 
     // MARK: - Apple (native button → Supabase ID-token exchange)
@@ -69,53 +116,67 @@ final class AuthService: ObservableObject {
     func signInWithApple(idToken: String, name: String?) async {
         isLoading = true; authError = nil
         do {
-            let session = try await supabase.auth.signInWithIdToken(
-                credentials: .init(provider: .apple, idToken: idToken)
-            )
+            let credentials = OpenIDConnectCredentials(provider: .apple, idToken: idToken)
+            let session: Session
+            if supabase.auth.currentSession?.user.isAnonymous == true {
+                // Link the verified Apple identity to preserve the guest's account/data scope.
+                session = try await supabase.auth.linkIdentityWithIdToken(credentials: credentials)
+            } else {
+                session = try await supabase.auth.signInWithIdToken(credentials: credentials)
+            }
             if let name, !name.isEmpty {
-                try? await supabase.auth.update(
+                _ = try? await supabase.auth.update(
                     user: UserAttributes(data: ["full_name": .string(name)])
                 )
             }
-            currentUser = AuthUser(
-                name: name ?? session.user.userMetadata["full_name"]?.stringValue,
-                email: session.user.email,
-                isDemo: false
-            )
+            applySession(session)
+            if let name, !name.isEmpty { currentUser?.name = name }
         } catch {
             authError = error.localizedDescription
         }
         isLoading = false
     }
 
-    // MARK: - Demo (local only, no Supabase)
+    // MARK: - Seven-day guest demo (no Apple identity or purchase required)
 
-    func startDemo(name: String = "", voice: String = "female") async {
-        isLoading = true
-        let displayName = name.isEmpty ? "Guest" : name
-        let user = AuthUser(name: displayName, email: nil, isDemo: true)
-        if let data = try? JSONEncoder().encode(user) {
-            UserDefaults.standard.set(data, forKey: demoKey)
+    @discardableResult
+    func startDemo(name: String = "", voice: String = "female") async -> Bool {
+        guard !isLoading, !isRestoringSession else { return false }
+        isLoading = true; authError = nil
+        defer { isLoading = false }
+        do {
+            guard !kSupabaseAnonKey.isEmpty, !kMaxAPIBaseURL.isEmpty else {
+                throw DemoError.unavailable
+            }
+            let session: Session
+            if supabase.auth.currentSession != nil {
+                // A failed refresh must fail this attempt, not silently create another trial.
+                session = try await supabase.auth.session
+            } else {
+                session = try await supabase.auth.signInAnonymously(data: ["full_name": .string(name.isEmpty ? "Guest" : name)])
+            }
+            applySession(session)
+            guard session.user.isAnonymous else { return true }
+            var settings = StorageService.shared.loadSettings()
+            settings.preferredVoice = voice
+            if settings.userName.isEmpty { settings.userName = name.isEmpty ? "Guest" : name }
+            StorageService.shared.saveSettings(settings)
+            return true
+        } catch {
+            authError = "The demo couldn't start. Please check your connection and try again."
+            return false
         }
-        // Record trial start only on first demo start (don't reset on restore)
-        if UserDefaults.standard.object(forKey: demoStartKey) == nil {
-            UserDefaults.standard.set(Date(), forKey: demoStartKey)
-        }
-        var settings = StorageService.shared.loadSettings()
-        settings.preferredVoice = voice
-        if settings.userName.isEmpty { settings.userName = displayName }
-        StorageService.shared.saveSettings(settings)
-        currentUser = user
-        isLoading = false
     }
 
     // MARK: - Sign Out
 
     func signOut() {
-        if currentUser?.isDemo == true {
+        let wasDemo = currentUser?.isDemo == true
+        currentUser = nil
+        isUpgradingDemo = false
+        if wasDemo {
+            // Keep Supabase's guest session so leaving/reopening cannot restart the trial.
             UserDefaults.standard.removeObject(forKey: demoKey)
-            UserDefaults.standard.removeObject(forKey: demoStartKey)
-            currentUser = nil
         } else {
             Task { try? await supabase.auth.signOut() }
         }
@@ -124,18 +185,20 @@ final class AuthService: ObservableObject {
     /// Called on each app foreground to expire a demo whose 7-day trial is over.
     func expireDemoIfNeeded() {
         guard isDemoExpired else { return }
-        UserDefaults.standard.removeObject(forKey: demoKey)
-        UserDefaults.standard.removeObject(forKey: demoStartKey)
-        currentUser = nil
+        markDemoExpired()
     }
+
+    private enum DemoError: Error { case unavailable }
 }
 
 // MARK: - AuthUser from Supabase User
 
 private extension AuthUser {
     init(supabaseUser user: Supabase.User) {
+        self.id = user.id.uuidString
         self.name  = user.userMetadata["full_name"]?.stringValue
         self.email = user.email
-        self.isDemo = false
+        self.isDemo = user.isAnonymous
+        self.trialStartedAt = user.isAnonymous ? user.createdAt : nil
     }
 }

@@ -1,0 +1,93 @@
+name: Max
+options:
+  deploymentTarget:
+    iOS: '18.0'
+packages:
+  Supabase:
+    url: https://github.com/supabase/supabase-swift
+    from: 2.0.0
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MARKETING_VERSION: '1.0.0'
+    CURRENT_PROJECT_VERSION: '1'
+    CODE_SIGN_STYLE: Automatic
+    TARGETED_DEVICE_FAMILY: '1,2'
+targets:
+  Max:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/Max
+    configFiles:
+      Debug: Configuration/Public.xcconfig
+      Release: Configuration/Public.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Configuration/Max.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - package: Supabase
+        product: Supabase
+      - target: MaxLiveActivity
+        embed: true
+      - target: MaxWidget
+        embed: true
+  MaxLiveActivity:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/MaxLiveActivity
+      - Sources/Max/LiveActivity/MaxActivityAttributes.swift
+    info:
+      path: Configuration/LiveActivity-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.liveactivity
+        CODE_SIGN_ENTITLEMENTS: Configuration/Widget.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+  MaxWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Sources/MaxWidget
+      - Sources/Max/Components/MaxLogoView.swift
+    info:
+      path: Configuration/Widget-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.widget
+        CODE_SIGN_ENTITLEMENTS: Configuration/Widget.entitlements
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+  MaxTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [Tests]
+    dependencies:
+      - target: Max
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.tests
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Max:
+    build:
+      targets:
+        Max: all
+    test:
+      targets: [MaxTests]

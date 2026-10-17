@@ -1,5 +1,7 @@
 import Foundation
+import UIKit
 
+@MainActor
 final class StorageService {
     static let shared = StorageService()
 
@@ -21,10 +23,24 @@ final class StorageService {
         decoder.dateDecodingStrategy = .iso8601
     }
 
+    var accountScope: String { UserDefaults.standard.string(forKey: "max.storage.scope") ?? "demo" }
+    func setAccountScope(_ scope: String) { UserDefaults.standard.set(scope, forKey: "max.storage.scope") }
+    private func scoped(_ key: String, scope: String? = nil) -> String { "max.account.\(scope ?? accountScope).\(key)" }
+    private func readData(for key: String, scope: String? = nil) -> Data? {
+        let target = scope ?? accountScope
+        let current = UserDefaults.standard.data(forKey: scoped(key, scope: target))
+        // Legacy unscoped data is visible only to the local demo, never another account.
+        return current ?? (target == "demo" ? UserDefaults.standard.data(forKey: key) : nil)
+    }
+    private func removeData(for key: String) {
+        UserDefaults.standard.removeObject(forKey: scoped(key))
+        if accountScope == "demo" { UserDefaults.standard.removeObject(forKey: key) }
+    }
+
     // MARK: - Messages
 
     func loadMessages() -> [Message] {
-        guard let data = UserDefaults.standard.data(forKey: messagesKey),
+        guard let data = readData(for: messagesKey),
               let messages = try? decoder.decode([Message].self, from: data)
         else { return [] }
         return messages
@@ -38,18 +54,18 @@ final class StorageService {
             return m
         }
         if let data = try? encoder.encode(storable) {
-            UserDefaults.standard.set(data, forKey: messagesKey)
+            UserDefaults.standard.set(data, forKey: scoped(messagesKey))
         }
     }
 
     func clearMessages() {
-        UserDefaults.standard.removeObject(forKey: messagesKey)
+        removeData(for: messagesKey)
     }
 
     // MARK: - Settings
 
     func loadSettings() -> AppSettings {
-        guard let data = UserDefaults.standard.data(forKey: settingsKey),
+        guard let data = readData(for: settingsKey),
               let settings = try? decoder.decode(AppSettings.self, from: data)
         else { return AppSettings() }
         return settings
@@ -57,14 +73,14 @@ final class StorageService {
 
     func saveSettings(_ settings: AppSettings) {
         if let data = try? encoder.encode(settings) {
-            UserDefaults.standard.set(data, forKey: settingsKey)
+            UserDefaults.standard.set(data, forKey: scoped(settingsKey))
         }
     }
 
     // MARK: - Notes
 
     func loadNotes() -> [Note] {
-        guard let data = UserDefaults.standard.data(forKey: notesKey),
+        guard let data = readData(for: notesKey),
               let notes = try? decoder.decode([Note].self, from: data)
         else { return [] }
         return notes
@@ -72,7 +88,7 @@ final class StorageService {
 
     func saveNotes(_ notes: [Note]) {
         if let data = try? encoder.encode(notes) {
-            UserDefaults.standard.set(data, forKey: notesKey)
+            UserDefaults.standard.set(data, forKey: scoped(notesKey))
         }
     }
 
@@ -85,26 +101,34 @@ final class StorageService {
         return note
     }
 
-    func deleteNote(id: String) {
+    @discardableResult
+    func deleteNote(id: String, accountScope expectedScope: String? = nil) -> Bool {
+        guard expectedScope == nil || expectedScope == accountScope else { return false }
         var notes = loadNotes()
+        guard notes.contains(where: { $0.id == id }) else { return false }
         notes.removeAll { $0.id == id }
         saveNotes(notes)
+        return true
     }
 
-    func updateNote(id: String, title: String? = nil, content: String? = nil) {
+    @discardableResult
+    func updateNote(id: String, title: String? = nil, content: String? = nil, accountScope expectedScope: String? = nil) -> Bool {
+        guard expectedScope == nil || expectedScope == accountScope else { return false }
+        if let title, title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
+        if let content, content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return false }
         var notes = loadNotes()
-        if let idx = notes.firstIndex(where: { $0.id == id }) {
-            if let title = title { notes[idx].title = title }
-            if let content = content { notes[idx].content = content }
-            notes[idx].updatedAt = Date()
-        }
+        guard let idx = notes.firstIndex(where: { $0.id == id }) else { return false }
+        if let title { notes[idx].title = title.trimmingCharacters(in: .whitespacesAndNewlines) }
+        if let content { notes[idx].content = content.trimmingCharacters(in: .whitespacesAndNewlines) }
+        notes[idx].updatedAt = Date()
         saveNotes(notes)
+        return true
     }
 
     // MARK: - Memories
 
     func recallFacts() -> [UserMemory] {
-        guard let data = UserDefaults.standard.data(forKey: memoriesKey),
+        guard let data = readData(for: memoriesKey),
               let memories = try? decoder.decode([UserMemory].self, from: data)
         else { return [] }
         return memories
@@ -118,18 +142,40 @@ final class StorageService {
             memories.append(UserMemory(key: key, value: value, updatedAt: Date()))
         }
         if let data = try? encoder.encode(memories) {
-            UserDefaults.standard.set(data, forKey: memoriesKey)
+            UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
         }
     }
 
     func clearMemories() {
-        UserDefaults.standard.removeObject(forKey: memoriesKey)
+        removeData(for: memoriesKey)
+    }
+
+    @discardableResult
+    func updateFact(key: String, value: String, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope else { return false }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        var facts = recallFacts()
+        guard !trimmed.isEmpty, let index = facts.firstIndex(where: { $0.key.caseInsensitiveCompare(key) == .orderedSame }) else { return false }
+        facts[index].value = trimmed; facts[index].updatedAt = Date()
+        guard let data = try? encoder.encode(facts) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
+        return true
+    }
+
+    @discardableResult
+    func forgetFact(key: String, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope else { return false }
+        let facts = recallFacts()
+        let remaining = facts.filter { $0.key.caseInsensitiveCompare(key) != .orderedSame }
+        guard remaining.count != facts.count, let data = try? encoder.encode(remaining) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
+        return true
     }
 
     // MARK: - MemoryCards
 
     func loadMemoryCards() -> [MemoryCard] {
-        guard let data = UserDefaults.standard.data(forKey: memoryCardsKey),
+        guard let data = readData(for: memoryCardsKey),
               let cards = try? decoder.decode([MemoryCard].self, from: data)
         else { return [] }
         return cards
@@ -137,52 +183,76 @@ final class StorageService {
 
     func saveMemoryCards(_ cards: [MemoryCard]) {
         if let data = try? encoder.encode(cards) {
-            UserDefaults.standard.set(data, forKey: memoryCardsKey)
+            UserDefaults.standard.set(data, forKey: scoped(memoryCardsKey))
         }
     }
 
-    func deleteMemoryCard(id: String) {
+    @discardableResult
+    func saveMemoryCard(_ card: MemoryCard, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope, !card.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         var cards = loadMemoryCards()
+        guard !cards.contains(where: { $0.id == card.id }) else { return false }
+        cards.append(card); saveMemoryCards(cards)
+        return true
+    }
+
+    @discardableResult
+    func updateMemoryCard(id: String, content: String, category: MemoryCategory, accountScope expectedScope: String) -> Bool {
+        guard expectedScope == accountScope else { return false }
+        let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
+        var cards = loadMemoryCards()
+        guard !trimmed.isEmpty, let index = cards.firstIndex(where: { $0.id == id }) else { return false }
+        cards[index].content = trimmed; cards[index].category = category
+        saveMemoryCards(cards)
+        return true
+    }
+
+    @discardableResult
+    func deleteMemoryCard(id: String, accountScope expectedScope: String? = nil) -> Bool {
+        guard expectedScope == nil || expectedScope == accountScope else { return false }
+        var cards = loadMemoryCards()
+        guard cards.contains(where: { $0.id == id }) else { return false }
         cards.removeAll { $0.id == id }
         saveMemoryCards(cards)
+        return true
     }
 
     // MARK: - Place Visits
 
-    func loadPlaceVisits() -> [PlaceVisit] {
-        guard let data = UserDefaults.standard.data(forKey: placeVisitsKey),
+    func loadPlaceVisits(scope: String? = nil) -> [PlaceVisit] {
+        guard let data = readData(for: placeVisitsKey, scope: scope),
               let visits = try? decoder.decode([PlaceVisit].self, from: data)
         else { return [] }
         return visits
     }
 
-    func savePlaceVisit(_ visit: PlaceVisit) {
-        var visits = loadPlaceVisits()
+    func savePlaceVisit(_ visit: PlaceVisit, scope: String? = nil) {
+        var visits = loadPlaceVisits(scope: scope)
         visits.append(visit)
         if visits.count > 100 { visits = Array(visits.suffix(100)) }
         if let data = try? encoder.encode(visits) {
-            UserDefaults.standard.set(data, forKey: placeVisitsKey)
+            UserDefaults.standard.set(data, forKey: scoped(placeVisitsKey, scope: scope))
         }
     }
 
     func clearPlaceVisits() {
-        UserDefaults.standard.removeObject(forKey: placeVisitsKey)
+        removeData(for: placeVisitsKey)
     }
 
     // MARK: - Reminders
 
-    func loadReminders() -> [Reminder] {
-        guard let data = UserDefaults.standard.data(forKey: remindersKey),
+    func loadReminders(scope: String? = nil) -> [Reminder] {
+        guard let data = readData(for: remindersKey, scope: scope),
               let reminders = try? decoder.decode([Reminder].self, from: data)
         else { return [] }
         return reminders
     }
 
-    func saveReminder(_ reminder: Reminder) {
-        var reminders = loadReminders()
+    func saveReminder(_ reminder: Reminder, scope: String? = nil) {
+        var reminders = loadReminders(scope: scope)
         reminders.append(reminder)
         if let data = try? encoder.encode(reminders) {
-            UserDefaults.standard.set(data, forKey: remindersKey)
+            UserDefaults.standard.set(data, forKey: scoped(remindersKey, scope: scope))
         }
     }
 
@@ -190,7 +260,7 @@ final class StorageService {
         var reminders = loadReminders()
         reminders.removeAll { $0.id == id }
         if let data = try? encoder.encode(reminders) {
-            UserDefaults.standard.set(data, forKey: remindersKey)
+            UserDefaults.standard.set(data, forKey: scoped(remindersKey))
         }
     }
 
@@ -198,23 +268,23 @@ final class StorageService {
 
     func saveProfilePhoto(_ image: UIImage) {
         if let data = image.jpegData(compressionQuality: 0.8) {
-            UserDefaults.standard.set(data, forKey: profilePhotoKey)
+            UserDefaults.standard.set(data, forKey: scoped(profilePhotoKey))
         }
     }
 
     func loadProfilePhoto() -> UIImage? {
-        guard let data = UserDefaults.standard.data(forKey: profilePhotoKey) else { return nil }
+        guard let data = readData(for: profilePhotoKey) else { return nil }
         return UIImage(data: data)
     }
 
     func clearProfilePhoto() {
-        UserDefaults.standard.removeObject(forKey: profilePhotoKey)
+        removeData(for: profilePhotoKey)
     }
 
     // MARK: - Conversations
 
     func loadConversations() -> [Conversation] {
-        guard let data = UserDefaults.standard.data(forKey: conversationsKey),
+        guard let data = readData(for: conversationsKey),
               let convs = try? decoder.decode([Conversation].self, from: data)
         else { return [] }
         return convs
@@ -229,7 +299,7 @@ final class StorageService {
         }
         if convs.count > 200 { convs = Array(convs.prefix(200)) }
         if let data = try? encoder.encode(convs) {
-            UserDefaults.standard.set(data, forKey: conversationsKey)
+            UserDefaults.standard.set(data, forKey: scoped(conversationsKey))
         }
     }
 
@@ -237,12 +307,12 @@ final class StorageService {
         var convs = loadConversations()
         convs.removeAll { $0.id == id }
         if let data = try? encoder.encode(convs) {
-            UserDefaults.standard.set(data, forKey: conversationsKey)
+            UserDefaults.standard.set(data, forKey: scoped(conversationsKey))
         }
     }
 
     func clearAllConversations() {
-        UserDefaults.standard.removeObject(forKey: conversationsKey)
+        removeData(for: conversationsKey)
     }
 
     // MARK: - Clear All
@@ -250,7 +320,7 @@ final class StorageService {
     func clearAll() {
         clearMessages()
         clearMemories()
-        UserDefaults.standard.removeObject(forKey: notesKey)
-        UserDefaults.standard.removeObject(forKey: remindersKey)
+        removeData(for: notesKey)
+        removeData(for: remindersKey)
     }
 }

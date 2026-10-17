@@ -65,9 +65,9 @@ struct MaxWidgetProvider: TimelineProvider {
 private struct WidgetOrb: View {
     let size: CGFloat
 
-    private let c0 = Color(red: 1.00, green: 0.55, blue: 0.05)
-    private let c1 = Color(red: 0.95, green: 0.35, blue: 0.00)
-    private let c2 = Color(red: 1.00, green: 0.70, blue: 0.10)
+    private let c0 = Color(red: 0.76, green: 0.91, blue: 0.96)
+    private let c1 = Color(red: 0.47, green: 0.71, blue: 0.80)
+    private let c2 = Color(red: 0.95, green: 0.98, blue: 1.00)
 
     var body: some View {
         ZStack {

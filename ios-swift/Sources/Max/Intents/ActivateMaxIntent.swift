@@ -1,3 +1,4 @@
+import Foundation
 import AppIntents
 import ActivityKit
 
@@ -15,12 +16,12 @@ struct ActivateMaxIntent: AppIntent {
         "Activates Max AI on the Dynamic Island and starts listening.",
         categoryName: "Max AI"
     )
-    static var openAppWhenRun: Bool = false
+    static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         await MainActor.run {
-            LiveActivityService.shared.startPersistentSession()
-            LiveActivityService.shared.start()
+            UserDefaults.standard.set(true, forKey: "max.pendingVoiceActivation")
+            NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
         }
         return .result()
     }
