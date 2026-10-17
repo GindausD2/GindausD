@@ -21,6 +21,7 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
@@ -310,44 +311,56 @@ struct HomeView: View {
     }
 
     private func emptyState(availableHeight: CGFloat) -> some View {
-        let compact = availableHeight < 500
+        let showIntroduction = availableHeight >= 360 && !dynamicTypeSize.isAccessibilitySize
+        let showSuggestions = availableHeight >= 450 && !dynamicTypeSize.isAccessibilitySize
+            && !viewModel.isDictating && viewModel.inputText.isEmpty
+        let showOrbCaption = !viewModel.isDictating || showIntroduction
+        let reservedHeight: CGFloat = (showIntroduction ? 100 : 16)
+            + (showSuggestions ? 80 : 0) + (showOrbCaption ? 60 : 0)
+        let orbSize = viewModel.isDictating ? (showIntroduction ? 100.0 : 72.0)
+            : max(86, min(showIntroduction ? 174 : 132, (availableHeight - reservedHeight) / 1.42))
+
         return VStack(spacing: 0) {
-            Spacer(minLength: compact ? 12 : 24)
-            VStack(spacing: 10) {
-                Text("A little space for your day.")
-                    .font(.system(.title, design: .rounded).weight(.medium))
-                    .tracking(-0.8)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text("A thought, a plan, a little help.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            if showIntroduction {
+                VStack(spacing: 10) {
+                    Text("A little space for your day.")
+                        .font(.system(.title, design: .rounded).weight(.medium))
+                        .tracking(-0.8)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("A thought, a plan, a little help.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 26)
+                Spacer(minLength: 0)
             }
-            .padding(.horizontal, 26)
 
-            Spacer(minLength: compact ? 12 : 24)
             Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: viewModel.isDictating ? 112 : compact ? 148 : 174)
+                OrbView(state: viewModel.orbState, size: orbSize)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
 
-            Button { viewModel.handleOrbTap() } label: {
-                Label(viewModel.orbCaption, systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : "waveform")
-                    .font(.caption.weight(.medium))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 44)
-                    .glassCard(cornerRadius: 22, interactive: true)
+            if showOrbCaption {
+                Button { viewModel.handleOrbTap() } label: {
+                    Label(viewModel.orbCaption, systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : "waveform")
+                        .font(.caption.weight(.medium))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 44)
+                        .glassCard(cornerRadius: 22, interactive: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(viewModel.orbAccessibilityLabel)
+                .accessibilityHint(viewModel.orbAccessibilityHint)
+                .padding(.top, 6)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(viewModel.orbAccessibilityLabel)
-            .accessibilityHint(viewModel.orbAccessibilityHint)
-            .padding(.top, 6)
 
-            Spacer(minLength: compact ? 20 : 32)
-            if !viewModel.isDictating {
+            Spacer(minLength: 0)
+            if showSuggestions {
                 HStack(spacing: 10) {
                     draftSuggestion("Plan my day", icon: "sun.horizon")
                     draftSuggestion("Save a thought", icon: "square.and.pencil")
@@ -431,7 +444,7 @@ struct HomeView: View {
                             .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(Color(UIColor.systemBackground))
                             .frame(width: 44, height: 44)
-                            .background(Color.primary, in: Circle())
+                            .background(Color(UIColor.label), in: Circle())
                     }
                     .disabled(viewModel.isTranscribing)
                     .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
@@ -466,22 +479,38 @@ struct HomeView: View {
 
     private var floatingShortcuts: some View {
         HStack(spacing: 20) {
-            Button { viewModel.endConversation(); showCompanion = true } label: {
-                Label("Your day", systemImage: "square.grid.2x2").frame(minHeight: 44)
-            }
-            Button { viewModel.handleOrbTap() } label: {
-                Label(viewModel.conversationState == .idle ? "Hear Max" : viewModel.isDictating ? "Done" : "Stop", systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : viewModel.isDictating ? "checkmark" : "stop.fill")
-                    .frame(minHeight: 44)
-            }
-            .accessibilityLabel(viewModel.orbAccessibilityLabel)
-            .accessibilityHint(viewModel.orbAccessibilityHint)
-            Button { viewModel.startMorningBriefing() } label: {
-                Label("Briefing", systemImage: "sun.horizon").frame(minHeight: 44)
+            if dynamicTypeSize.isAccessibilitySize {
+                speechShortcut
+                Menu {
+                    Button("Your day", systemImage: "square.grid.2x2") {
+                        viewModel.endConversation(); showCompanion = true
+                    }
+                    Button("Morning briefing", systemImage: "sun.horizon") { viewModel.startMorningBriefing() }
+                } label: {
+                    Label("More", systemImage: "ellipsis").frame(minHeight: 44)
+                }
+                .accessibilityLabel("More companion tools")
+            } else {
+                Button { viewModel.endConversation(); showCompanion = true } label: {
+                    Label("Your day", systemImage: "square.grid.2x2").frame(minHeight: 44)
+                }
+                speechShortcut
+                Button { viewModel.startMorningBriefing() } label: {
+                    Label("Briefing", systemImage: "sun.horizon").frame(minHeight: 44)
+                }
             }
         }
         .font(.caption.weight(.medium))
         .foregroundStyle(.secondary)
-        .frame(minHeight: 44)
+    }
+
+    private var speechShortcut: some View {
+        Button { viewModel.handleOrbTap() } label: {
+            Label(viewModel.conversationState == .idle ? "Hear Max" : viewModel.isDictating ? "Done" : "Stop", systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : viewModel.isDictating ? "checkmark" : "stop.fill")
+                .frame(minHeight: 44)
+        }
+        .accessibilityLabel(viewModel.orbAccessibilityLabel)
+        .accessibilityHint(viewModel.orbAccessibilityHint)
     }
 
     // MARK: - Status Pill
