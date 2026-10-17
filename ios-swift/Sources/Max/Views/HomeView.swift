@@ -3,8 +3,6 @@ import Combine
 import UIKit
 import WidgetKit
 
-enum HomePage: String, CaseIterable { case home = "Home", profile = "Profile" }
-
 // MARK: - HomeView
 
 struct HomeView: View {
@@ -12,12 +10,9 @@ struct HomeView: View {
     @AppStorage("max:onboarding_complete") private var onboardingComplete: Bool = false
 
     @StateObject private var viewModel: HomeViewModel
-    @State private var showSettings: Bool = false
     @State private var showCompanion: Bool = false
-    @State private var showMemory = false
-    @State private var showIsland = false
-    @State private var selectedPage: HomePage
-    @State private var profileRefreshID = UUID()
+    @State private var showProfile = false
+    @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -26,14 +21,13 @@ struct HomeView: View {
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
-    @Namespace private var pageSelection
     @FocusState private var composerFocused: Bool
 
     private let liveActivity = LiveActivityService.shared
 
-    init(viewModel: HomeViewModel? = nil, initialPage: HomePage = .home) {
+    init(viewModel: HomeViewModel? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel ?? HomeViewModel())
-        _selectedPage = State(initialValue: initialPage)
+        _isTyping = State(initialValue: !(viewModel?.inputText.isEmpty ?? true))
     }
 
     var body: some View {
@@ -42,25 +36,14 @@ struct HomeView: View {
 
             VStack(spacing: 0) {
                 topBar
-                pageSwitcher
                 if authService.currentUser?.isDemo == true {
                     trialBanner
                 }
-                TabView(selection: $selectedPage) {
-                    transcriptArea.tag(HomePage.home)
-                    ProfileHubView(
-                        onYourDay: { showCompanion = true },
-                        onIsland: { showIsland = true },
-                        onMemory: { showMemory = true },
-                        onSettings: { showSettings = true },
-                        refreshID: profileRefreshID
-                    ).tag(HomePage.profile)
-                }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                transcriptArea
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if selectedPage == .home { VStack(spacing: 0) {
+            VStack(spacing: 0) {
                 if let img = pendingImage {
                     imagePendingBar(img: img)
                         .padding(.horizontal, 16)
@@ -73,12 +56,10 @@ struct HomeView: View {
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
-            }
         }
         .onDisappear { viewModel.endConversation() }
-        .onChange(of: selectedPage) { _, page in
-            composerFocused = false
-            if page == .profile { viewModel.endConversation() }
+        .onChange(of: viewModel.inputText) { _, text in
+            if !text.isEmpty { isTyping = true }
         }
         .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
         .alert("Voice input unavailable", isPresented: Binding(
@@ -87,18 +68,19 @@ struct HomeView: View {
         )) {
             Button("OK", role: .cancel) { viewModel.dictationError = nil }
         } message: { Text(viewModel.dictationError ?? "Please try again.") }
-        .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; viewModel.endConversation(); viewModel.loadMessages() }
+        .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
-        .sheet(isPresented: $showMemory) { MemoryView() }
-        .sheet(isPresented: $showIsland) { IslandOverviewView() }
+        .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
         .onChange(of: scenePhase) { _, phase in if phase == .background { viewModel.endConversation() } }
         .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
             UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
-            if let prompt = notification.object as? String { selectedPage = .home; viewModel.inputText = prompt; viewModel.sendTextMessage() }
+            if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
         }
         .sheet(isPresented: $showHistory) {
             ConversationHistoryView(onNewChat: {
                 showHistory = false
+                isTyping = false
+                composerFocused = false
                 viewModel.startNewChat()
             })
         }
@@ -111,10 +93,6 @@ struct HomeView: View {
             pendingImage = img
             capturedImage = nil
         }
-        .sheet(isPresented: $showSettings, onDismiss: { profileRefreshID = UUID() }) {
-            SettingsView(onClearHistory: viewModel.clearHistory)
-                .environmentObject(authService)
-        }
         .fullScreenCover(isPresented: Binding(
             get: { !onboardingComplete },
             set: { if !$0 { onboardingComplete = true } }
@@ -123,20 +101,19 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.loadMessages()
-            if selectedPage == .profile { viewModel.endConversation() }
             liveActivity.startPersistentSession()
             if UserDefaults.standard.bool(forKey: "max.pendingVoiceActivation") {
-                selectedPage = .home
+                showProfile = false
                 UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
                 viewModel.activateVoice()
             }
             if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
-                selectedPage = .home
+                showProfile = false
                 UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
                 viewModel.startMorningBriefing()
             }
             if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
-                selectedPage = .home
+                showProfile = false
                 UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
                 viewModel.inputText = prompt; viewModel.sendTextMessage()
             }
@@ -159,13 +136,13 @@ struct HomeView: View {
         }
         // Start briefing when user taps the morning notification
         .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
-            selectedPage = .home
+            showProfile = false
             UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
             viewModel.startMorningBriefing()
         }
         // Start listening when user taps the home screen widget
         .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
-            selectedPage = .home
+            showProfile = false
             UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
             viewModel.activateVoice()
         }
@@ -212,7 +189,9 @@ struct HomeView: View {
         HStack {
             Button {
                 pendingImage = nil
-                selectedPage = .home
+                showProfile = false
+                isTyping = false
+                composerFocused = false
                 viewModel.startNewChat()
             } label: {
                 Image(systemName: "square.and.pencil")
@@ -233,49 +212,19 @@ struct HomeView: View {
             .accessibilityLabel("Max")
             Spacer()
 
-            Button { viewModel.endConversation(); showSettings = true } label: {
-                Image(systemName: "slider.horizontal.3")
+            Button { viewModel.endConversation(); composerFocused = false; showProfile = true } label: {
+                Image(systemName: "person.crop.circle")
                     .font(.system(size: 18, weight: .regular))
                     .frame(width: 44, height: 44)
                     .glassCard(cornerRadius: 22, interactive: true)
             }
-            .accessibilityLabel("Settings")
+            .accessibilityLabel("Your space and settings")
         }
         .buttonStyle(.plain)
         .foregroundStyle(.secondary)
         .padding(.horizontal, 22)
         .padding(.top, 10)
         .padding(.bottom, 8)
-    }
-
-    private var pageSwitcher: some View {
-        HStack(spacing: 4) {
-            ForEach(HomePage.allCases, id: \.self) { page in
-                Button {
-                    withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.85)) { selectedPage = page }
-                } label: {
-                    Text(page.rawValue)
-                        .font(.subheadline.weight(page == selectedPage ? .semibold : .regular))
-                        .foregroundStyle(page == selectedPage ? Color.primary : Color.secondary)
-                        .frame(minWidth: 84, minHeight: 44)
-                        .background {
-                            if selectedPage == page {
-                                Capsule()
-                                    .fill(Color.primary.opacity(0.055))
-                                    .matchedGeometryEffect(id: "page", in: pageSelection)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Show \(page.rawValue)")
-                .accessibilityAddTraits(page == selectedPage ? .isSelected : [])
-            }
-        }
-        .padding(4)
-        .glassCard(cornerRadius: 28, interactive: true)
-        .padding(.top, 8)
-        .padding(.bottom, 10)
     }
 
     // MARK: - Transcript
@@ -311,71 +260,42 @@ struct HomeView: View {
     }
 
     private func emptyState(availableHeight: CGFloat) -> some View {
-        let showIntroduction = availableHeight >= 360 && !dynamicTypeSize.isAccessibilitySize
-        let showSuggestions = availableHeight >= 450 && !dynamicTypeSize.isAccessibilitySize
-            && !viewModel.isDictating && viewModel.inputText.isEmpty
-        let showOrbCaption = !viewModel.isDictating || showIntroduction
-        let reservedHeight: CGFloat = (showIntroduction ? 100 : 16)
-            + (showSuggestions ? 80 : 0) + (showOrbCaption ? 60 : 0)
-        let orbSize = viewModel.isDictating ? (showIntroduction ? 100.0 : 72.0)
-            : max(86, min(showIntroduction ? 174 : 132, (availableHeight - reservedHeight) / 1.42))
-
-        return VStack(spacing: 0) {
-            Spacer(minLength: 0)
-            if showIntroduction {
-                VStack(spacing: 10) {
-                    Text("A little space for your day.")
-                        .font(.system(.title, design: .rounded).weight(.medium))
-                        .tracking(-0.8)
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("A thought, a plan, a little help.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 26)
-                Spacer(minLength: 0)
+        let compact = availableHeight < 420 || dynamicTypeSize.isAccessibilitySize
+        return VStack(spacing: 18) {
+            Spacer(minLength: 16)
+            if !compact {
+                Text("A LITTLE SPACE FOR YOUR DAY")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(2)
+                    .foregroundStyle(.secondary)
             }
-
-            Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: orbSize)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(viewModel.orbAccessibilityLabel)
-            .accessibilityHint(viewModel.orbAccessibilityHint)
-
-            if showOrbCaption {
-                Button { viewModel.handleOrbTap() } label: {
-                    Label(viewModel.orbCaption, systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : "waveform")
-                        .font(.caption.weight(.medium))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 16)
-                        .frame(minHeight: 44)
-                        .glassCard(cornerRadius: 22, interactive: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(viewModel.orbAccessibilityLabel)
-                .accessibilityHint(viewModel.orbAccessibilityHint)
-                .padding(.top, 6)
-            }
-
-            Spacer(minLength: 0)
-            if showSuggestions {
+            Text("Make room for\nwhat matters.")
+                .font(.system(compact ? .title : .largeTitle, design: .rounded).weight(.medium))
+                .tracking(-1)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("A thought, a plan, a little help.\nStart wherever you are.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if !compact && !viewModel.isDictating && viewModel.inputText.isEmpty {
                 HStack(spacing: 10) {
                     draftSuggestion("Plan my day", icon: "sun.horizon")
                     draftSuggestion("Save a thought", icon: "square.and.pencil")
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 18)
+                }.padding(.top, 10)
             }
+            Spacer(minLength: 16)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
     }
 
     private func draftSuggestion(_ title: String, icon: String) -> some View {
         Button {
             viewModel.inputText = title == "Save a thought" ? "Remember this: " : "Help me plan my day. "
+            isTyping = true
             composerFocused = true
         } label: {
             Label(title, systemImage: icon)
@@ -407,80 +327,131 @@ struct HomeView: View {
     }
 
     private var regularDock: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             if viewModel.conversationState != .idle || viewModel.isTranscribing {
-                statusPill
-                    .transition(.opacity)
+                statusPill.transition(.opacity)
+            } else if !isTyping {
+                Text(viewModel.inputText.isEmpty ? "Tap the orb to hear Max" : "Draft ready · tap Type to edit")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            VStack(spacing: 8) {
-                HStack(spacing: 12) {
-                    Menu {
-                        Button("New conversation", systemImage: "square.and.pencil") {
-                            pendingImage = nil
-                            viewModel.startNewChat()
-                        }
-                        Button("Attach a photo", systemImage: "photo") { showCamera = true }
-                        Button("Conversation history", systemImage: "clock.arrow.circlepath") {
-                            viewModel.endConversation(); showHistory = true
-                        }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 19, weight: .regular))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 44, height: 44)
-                    }
-                    .accessibilityLabel("Conversation actions")
-                    TextField("Ask Max anything…", text: $viewModel.inputText, axis: .vertical)
-                        .font(.body)
-                        .lineLimit(1...4)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .focused($composerFocused)
-                        .submitLabel(.send)
-                        .onSubmit { viewModel.sendTextMessage() }
-                        .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
-                        .accessibilityLabel("Message Max")
-                    Button { viewModel.handleMicTap() } label: {
-                        Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Color(UIColor.systemBackground))
-                            .frame(width: 44, height: 44)
-                            .background(Color(UIColor.label), in: Circle())
-                    }
-                    .disabled(viewModel.isTranscribing)
-                    .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
-                    .accessibilityHint("Turn your voice into editable text")
-                    if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.conversationState == .idle {
-                        Button { viewModel.sendTextMessage() } label: {
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color(hex: "#315E73"), in: Circle())
-                        }
-                        .disabled(viewModel.isTranscribing)
-                        .accessibilityLabel("Send message")
-                    }
-                }
-                if viewModel.prefersTextReplyForDraft {
-                    Text("Voice draft · edit, then send")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if isTyping {
+                textComposer
+            } else {
+                orbDock
             }
-            .padding(.leading, 4)
-            .padding(.trailing, 10)
-            .padding(.vertical, 10)
-            .glassCard(cornerRadius: 34, depth: .regular)
-
             floatingShortcuts
         }
         .buttonStyle(.plain)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.conversationState)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: isTyping)
+    }
+
+    private var orbDock: some View {
+        HStack(spacing: 12) {
+            conversationActions
+            Spacer(minLength: 0)
+            Button { viewModel.handleOrbTap() } label: {
+                OrbView(state: viewModel.orbState, size: 62)
+            }
+            .accessibilityLabel(viewModel.orbAccessibilityLabel)
+            .accessibilityHint(viewModel.orbAccessibilityHint)
+            Spacer(minLength: 0)
+            microphoneButton
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+        .glassCard(cornerRadius: 48, depth: .regular)
+    }
+
+    private var conversationActions: some View {
+        Menu {
+            Button("Type a message", systemImage: "keyboard") { openTextEntry() }
+            Button("New conversation", systemImage: "square.and.pencil") {
+                pendingImage = nil
+                composerFocused = false
+                isTyping = false
+                viewModel.startNewChat()
+            }
+            Button("Attach a photo", systemImage: "photo") { showCamera = true }
+            Button("Conversation history", systemImage: "clock.arrow.circlepath") {
+                viewModel.endConversation(); showHistory = true
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityLabel("Conversation actions")
+    }
+
+    private var microphoneButton: some View {
+        Button { viewModel.handleMicTap() } label: {
+            Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color(UIColor.systemBackground))
+                .frame(width: 44, height: 44)
+                .background(Color(UIColor.label), in: Circle())
+        }
+        .disabled(viewModel.isTranscribing)
+        .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
+        .accessibilityHint("Turn your voice into editable text")
+    }
+
+    private var textComposer: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    composerFocused = false
+                    isTyping = false
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Return to orb")
+                .accessibilityHint("Keep your draft and hide text entry")
+                TextField("Write a message…", text: $viewModel.inputText, axis: .vertical)
+                    .font(.body)
+                    .lineLimit(1...4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .focused($composerFocused)
+                    .submitLabel(.send)
+                    .onSubmit { sendDraft() }
+                    .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
+                    .accessibilityLabel("Message Max")
+                if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.conversationState == .idle {
+                    Button { sendDraft() } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color(hex: "#315E73"), in: Circle())
+                    }
+                    .disabled(viewModel.isTranscribing)
+                    .accessibilityLabel("Send message")
+                } else {
+                    microphoneButton
+                }
+            }
+            if viewModel.prefersTextReplyForDraft {
+                Text("Voice draft · edit, then send")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
+        .padding(.vertical, 10)
+        .glassCard(cornerRadius: 34, depth: .regular)
     }
 
     private var floatingShortcuts: some View {
         HStack(spacing: 20) {
             if dynamicTypeSize.isAccessibilitySize {
-                speechShortcut
+                Button(action: openTextEntry) {
+                    Label("Type", systemImage: "keyboard").frame(minHeight: 44)
+                }
                 Menu {
                     Button("Your day", systemImage: "square.grid.2x2") {
                         viewModel.endConversation(); showCompanion = true
@@ -494,7 +465,9 @@ struct HomeView: View {
                 Button { viewModel.endConversation(); showCompanion = true } label: {
                     Label("Your day", systemImage: "square.grid.2x2").frame(minHeight: 44)
                 }
-                speechShortcut
+                Button(action: openTextEntry) {
+                    Label("Type", systemImage: "keyboard").frame(minHeight: 44)
+                }
                 Button { viewModel.startMorningBriefing() } label: {
                     Label("Briefing", systemImage: "sun.horizon").frame(minHeight: 44)
                 }
@@ -504,13 +477,18 @@ struct HomeView: View {
         .foregroundStyle(.secondary)
     }
 
-    private var speechShortcut: some View {
-        Button { viewModel.handleOrbTap() } label: {
-            Label(viewModel.conversationState == .idle ? "Hear Max" : viewModel.isDictating ? "Done" : "Stop", systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : viewModel.isDictating ? "checkmark" : "stop.fill")
-                .frame(minHeight: 44)
+    private func openTextEntry() {
+        viewModel.endConversation()
+        isTyping = true
+        composerFocused = true
+    }
+
+    private func sendDraft() {
+        viewModel.sendTextMessage()
+        if viewModel.inputText.isEmpty {
+            composerFocused = false
+            isTyping = false
         }
-        .accessibilityLabel(viewModel.orbAccessibilityLabel)
-        .accessibilityHint(viewModel.orbAccessibilityHint)
     }
 
     // MARK: - Status Pill
@@ -600,6 +578,7 @@ struct HomeView: View {
                 let img = pendingImage
                 pendingImage = nil
                 viewModel.sendTextMessage(image: img)
+                if viewModel.inputText.isEmpty { isTyping = false; composerFocused = false }
             } label: {
                 Text("Send")
                     .font(.subheadline.weight(.semibold))

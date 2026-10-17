@@ -100,3 +100,39 @@ struct ProfileHubView: View {
         preferredName = StorageService.shared.loadSettings().userName.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
+
+/// Account controls stay one tap away without adding tabs to the conversation.
+struct CompanionProfileSheet: View {
+    @EnvironmentObject private var authService: AuthService
+    @Environment(\.dismiss) private var dismiss
+    var onClearHistory: (() -> Void)? = nil
+    @State private var showDay = false
+    @State private var showIsland = false
+    @State private var showMemory = false
+    @State private var showSettings = false
+    @State private var refreshID = UUID()
+
+    var body: some View {
+        ZStack {
+            CompanionCanvas()
+            VStack(spacing: 0) {
+                CompanionSheetHeader(title: "Your space", onClose: { dismiss() })
+                ProfileHubView(
+                    onYourDay: { showDay = true },
+                    onIsland: { showIsland = true },
+                    onMemory: { showMemory = true },
+                    onSettings: { showSettings = true },
+                    refreshID: refreshID
+                )
+            }
+        }
+        .presentationCornerRadius(34)
+        .presentationDragIndicator(.hidden)
+        .sheet(isPresented: $showDay) { CompanionView() }
+        .sheet(isPresented: $showIsland) { IslandOverviewView() }
+        .sheet(isPresented: $showMemory) { MemoryView() }
+        .sheet(isPresented: $showSettings, onDismiss: { refreshID = UUID() }) {
+            SettingsView(onClearHistory: onClearHistory).environmentObject(authService)
+        }
+    }
+}
