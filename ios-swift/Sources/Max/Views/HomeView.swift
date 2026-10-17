@@ -467,15 +467,16 @@ struct HomeView: View {
     private var floatingShortcuts: some View {
         HStack(spacing: 20) {
             Button { viewModel.endConversation(); showCompanion = true } label: {
-                Label("Your day", systemImage: "square.grid.2x2")
+                Label("Your day", systemImage: "square.grid.2x2").frame(minHeight: 44)
             }
             Button { viewModel.handleOrbTap() } label: {
                 Label(viewModel.conversationState == .idle ? "Hear Max" : viewModel.isDictating ? "Done" : "Stop", systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : viewModel.isDictating ? "checkmark" : "stop.fill")
+                    .frame(minHeight: 44)
             }
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
             Button { viewModel.startMorningBriefing() } label: {
-                Label("Briefing", systemImage: "sun.horizon")
+                Label("Briefing", systemImage: "sun.horizon").frame(minHeight: 44)
             }
         }
         .font(.caption.weight(.medium))
