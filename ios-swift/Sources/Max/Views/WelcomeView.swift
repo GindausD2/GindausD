@@ -16,7 +16,7 @@ struct WelcomeView: View {
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                backgroundGradient.ignoresSafeArea()
+                CompanionCanvas()
                 ambientBlobs
 
                 VStack(spacing: 0) {
@@ -56,32 +56,20 @@ struct WelcomeView: View {
 
     // MARK: - Background
 
-    private var backgroundGradient: some View {
-        LinearGradient(
-            stops: [
-                .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                .init(color: Color(hex: "#F4F1EB"), location: 0.5),
-                .init(color: Color(hex: "#DCE4DA"), location: 1.0)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
     private var ambientBlobs: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: "#596F60").opacity(0.07))
+                .fill(Color(hex: "#315E73").opacity(0.07))
                 .frame(width: 340, height: 340)
                 .blur(radius: 70)
                 .offset(x: -90, y: -210)
             Circle()
-                .fill(Color(hex: "#596F60").opacity(0.05))
+                .fill(Color(hex: "#315E73").opacity(0.05))
                 .frame(width: 280, height: 280)
                 .blur(radius: 80)
                 .offset(x: 110, y: 280)
             Circle()
-                .fill(Color(hex: "#596F60").opacity(0.04))
+                .fill(Color(hex: "#315E73").opacity(0.04))
                 .frame(width: 200, height: 200)
                 .blur(radius: 60)
                 .offset(x: 60, y: -60)
@@ -120,7 +108,7 @@ struct WelcomeView: View {
         HStack(spacing: 8) {
             ForEach(0..<4) { i in
                 Capsule()
-                    .fill(currentPage == i ? Color(hex: "#596F60") : Color(hex: "#596F60").opacity(0.25))
+                    .fill(currentPage == i ? Color(hex: "#315E73") : Color(hex: "#315E73").opacity(0.25))
                     .frame(width: currentPage == i ? 22 : 7, height: 7)
                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPage)
             }
@@ -131,7 +119,7 @@ struct WelcomeView: View {
             Capsule()
                 .fill(.ultraThinMaterial)
                 .overlay(
-                    Capsule().strokeBorder(Color(hex: "#596F60").opacity(0.15), lineWidth: 0.5)
+                    Capsule().strokeBorder(Color(hex: "#315E73").opacity(0.15), lineWidth: 0.5)
                 )
         )
     }
@@ -227,7 +215,7 @@ private struct LiquidGlassPrimaryButton: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "#596F60"), Color(hex: "#596F60")],
+                            colors: [Color(hex: "#315E73"), Color(hex: "#315E73")],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -252,8 +240,8 @@ private struct LiquidGlassPrimaryButton: View {
             }
         )
         .foregroundStyle(.white)
-        .shadow(color: Color(hex: "#596F60").opacity(0.35), radius: 14, x: 0, y: 5)
-        .shadow(color: Color(hex: "#596F60").opacity(0.12), radius: 30, x: 0, y: 10)
+        .shadow(color: Color(hex: "#315E73").opacity(0.35), radius: 14, x: 0, y: 5)
+        .shadow(color: Color(hex: "#315E73").opacity(0.12), radius: 30, x: 0, y: 10)
         .disabled(isLoading || isDisabled)
         .opacity(isDisabled ? 0.55 : 1.0)
     }
@@ -311,7 +299,7 @@ private struct LoginPage: View {
                         Text("New to Max?")
                             .foregroundStyle(.secondary)
                         Text("Get started →")
-                            .foregroundStyle(Color(hex: "#596F60"))
+                            .foregroundStyle(Color(hex: "#315E73"))
                             .fontWeight(.semibold)
                     }
                     .font(.subheadline)
@@ -348,7 +336,7 @@ private struct WelcomePage: View {
                 padding: EdgeInsets(top: 22, leading: 28, bottom: 22, trailing: 28)
             ) {
                 VStack(spacing: 12) {
-                    MaxLogoView(color: Color(hex: "#596F60"), width: 180)
+                    MaxLogoView(color: Color(hex: "#315E73"), width: 180)
                         .padding(.bottom, 2)
                     Text("Your AI personal assistant")
                         .font(.subheadline)
@@ -483,7 +471,7 @@ private struct PlanPage: View {
     @StateObject private var store = StoreKitService.shared
     @State private var selectedPlan: String = StoreKitService.yearlyID
 
-    private let violet = Color(hex: "#596F60")
+    private let violet = Color(hex: "#315E73")
     private let amber  = Color(hex: "#F59E0B")
 
     var body: some View {

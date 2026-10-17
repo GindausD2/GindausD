@@ -28,6 +28,10 @@ final class ScreenshotTests: XCTestCase {
         try await capture(WelcomeView(initialMode: .login).environmentObject(AuthService.shared), name: "Max_Glass_Slider_Login")
         try await capture(WelcomeView(initialMode: .signUp).environmentObject(AuthService.shared), name: "Max_Glass_Slider_Signup")
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Profile_Design_Home")
+        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Dark", style: .dark)
+        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Compact", size: CGSize(width: 375, height: 667))
+        try await capture(HomeView().environmentObject(AuthService.shared).environment(\.dynamicTypeSize, .accessibility1), name: "Max_Reference_Home_Large_Text")
+        try await capture(HomeView().environmentObject(AuthService.shared).environment(\.accessibilityReduceTransparency, true).environment(\.accessibilityReduceMotion, true), name: "Max_Reference_Home_Accessibility")
         try await capture(HomeView(initialPage: .profile).environmentObject(AuthService.shared), name: "Max_Profile_Design_Profile")
         try await capture(MemoryView(), name: "Max_Profile_Design_Memory_Empty")
         XCTAssertTrue(StorageService.shared.saveMemoryCard(MemoryCard(category: .personal, content: "I like quiet mornings, a cup of tea, and a little time to plan my day."), accountScope: scope))
@@ -54,13 +58,18 @@ final class ScreenshotTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertTrue(draftModel.prefersTextReplyForDraft)
         try await capture(HomeView(viewModel: draftModel).environmentObject(AuthService.shared), name: "Max_Profile_Design_Draft")
+        StorageService.shared.saveMessages([
+            Message(role: "user", content: "Help me make a little room in my day."),
+            Message(role: "assistant", content: "Let's start small. What's the one thing you'd like to finish today? We can build the rest around it.")
+        ])
+        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Conversation")
     }
 
-    private func capture<Content: View>(_ content: Content, name: String, style: UIUserInterfaceStyle = .light) async throws {
+    private func capture<Content: View>(_ content: Content, name: String, style: UIUserInterfaceStyle = .light, size: CGSize = CGSize(width: 390, height: 844)) async throws {
         let controller = UIHostingController(rootView: content)
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let window = UIWindow(frame: CGRect(origin: .zero, size: size))
         if let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first { window.windowScene = scene }
-        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.frame = CGRect(origin: .zero, size: size)
         window.overrideUserInterfaceStyle = style
         window.rootViewController = controller
         window.makeKeyAndVisible()
@@ -73,7 +82,7 @@ final class ScreenshotTests: XCTestCase {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         let data = try XCTUnwrap(image.jpegData(compressionQuality: 0.94))
-        XCTAssertEqual(image.size.width, 390); XCTAssertGreaterThan(data.count, 5000)
+        XCTAssertEqual(image.size.width, size.width); XCTAssertGreaterThan(data.count, 5000)
         let attachment = XCTAttachment(image: image)
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
         let encoded = data.base64EncodedString()

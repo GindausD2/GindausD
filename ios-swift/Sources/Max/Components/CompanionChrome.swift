@@ -5,8 +5,8 @@ struct CompanionCanvas: View {
     var body: some View {
         LinearGradient(
             colors: colorScheme == .dark
-                ? [Color(hex: "#121A20"), Color(hex: "#1E2B34"), Color(hex: "#223640")]
-                : [Color(hex: "#F8FBFC"), Color(hex: "#EEF5F7"), Color(hex: "#E8F0F3")],
+                ? [Color(hex: "#101719"), Color(hex: "#151F23"), Color(hex: "#1B2A30")]
+                : [Color(hex: "#FCFDFD"), Color(hex: "#F4F8FA"), Color(hex: "#ECF3F6")],
             startPoint: .top, endPoint: .bottom
         ).ignoresSafeArea()
     }
@@ -30,8 +30,6 @@ struct CompanionSheetHeader: View {
                 .accessibilityLabel("Close \(title)")
                 Spacer()
                 Text(title).font(.subheadline.weight(.semibold))
-                    .padding(.horizontal, 18).padding(.vertical, 8)
-                    .glassCard(cornerRadius: 20)
                 Spacer()
                 if let onAdd {
                     Button(action: onAdd) {

@@ -25,6 +25,7 @@ struct HomeView: View {
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
+    @Namespace private var pageSelection
     @FocusState private var composerFocused: Bool
 
     private let liveActivity = LiveActivityService.shared
@@ -192,15 +193,15 @@ struct HomeView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(urgent ? Color.red : Color(hex: "#596F60"),
+                    .background(urgent ? Color.red : Color(hex: "#315E73"),
                                 in: Capsule())
             }
         }
-        .foregroundStyle(urgent ? Color.red : Color(hex: "#596F60"))
+        .foregroundStyle(urgent ? Color.red : Color(hex: "#315E73"))
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(
-            (urgent ? Color.red : Color(hex: "#596F60")).opacity(0.08)
+            (urgent ? Color.red : Color(hex: "#315E73")).opacity(0.08)
         )
     }
 
@@ -221,8 +222,14 @@ struct HomeView: View {
             .accessibilityLabel("New conversation")
 
             Spacer()
-            MaxLogoView(color: Color.primary, width: 42)
-                .accessibilityLabel("Max")
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("Max").foregroundStyle(.primary)
+                Text(".").foregroundStyle(Color(hex: "#7FB6CD"))
+            }
+            .font(.system(size: 27, weight: .semibold, design: .rounded))
+            .tracking(-1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Max")
             Spacer()
 
             Button { viewModel.endConversation(); showSettings = true } label: {
@@ -241,29 +248,33 @@ struct HomeView: View {
     }
 
     private var pageSwitcher: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 7) {
-                ForEach(HomePage.allCases, id: \.self) { page in
-                    Circle().fill(page == selectedPage ? Color.primary : Color.secondary.opacity(0.3))
-                        .frame(width: 5, height: 5)
+        HStack(spacing: 4) {
+            ForEach(HomePage.allCases, id: \.self) { page in
+                Button {
+                    withAnimation(reduceMotion ? nil : .spring(response: 0.38, dampingFraction: 0.85)) { selectedPage = page }
+                } label: {
+                    Text(page.rawValue)
+                        .font(.subheadline.weight(page == selectedPage ? .semibold : .regular))
+                        .foregroundStyle(page == selectedPage ? Color.primary : Color.secondary)
+                        .frame(minWidth: 84, minHeight: 44)
+                        .background {
+                            if selectedPage == page {
+                                Capsule()
+                                    .fill(Color.primary.opacity(0.055))
+                                    .matchedGeometryEffect(id: "page", in: pageSelection)
+                            }
+                        }
+                        .contentShape(Capsule())
                 }
-            }.accessibilityHidden(true)
-            HStack(spacing: 10) {
-                ForEach(HomePage.allCases, id: \.self) { page in
-                    Button {
-                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) { selectedPage = page }
-                    } label: {
-                        Text(page.rawValue).font(.caption.weight(page == selectedPage ? .semibold : .regular))
-                            .foregroundStyle(page == selectedPage ? Color.primary : Color.secondary)
-                            .padding(.horizontal, 18).padding(.vertical, 9)
-                            .frame(minHeight: 44)
-                            .glassCard(cornerRadius: 22, interactive: true)
-                    }.buttonStyle(.plain)
-                        .accessibilityLabel("Show \(page.rawValue)")
-                        .accessibilityValue(page == selectedPage ? "Selected" : "")
-                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Show \(page.rawValue)")
+                .accessibilityAddTraits(page == selectedPage ? .isSelected : [])
             }
-        }.padding(.vertical, 10)
+        }
+        .padding(4)
+        .glassCard(cornerRadius: 28, interactive: true)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
     }
 
     // MARK: - Transcript
@@ -274,7 +285,7 @@ struct HomeView: View {
                 ScrollView {
                     LazyVStack(spacing: 2) {
                         if viewModel.messages.isEmpty {
-                            emptyState
+                            emptyState(availableHeight: geometry.size.height)
                                 .frame(minHeight: max(0, geometry.size.height - 24))
                                 .id("empty")
                         } else {
@@ -298,30 +309,72 @@ struct HomeView: View {
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 14) {
+    private func emptyState(availableHeight: CGFloat) -> some View {
+        let compact = availableHeight < 500
+        return VStack(spacing: 0) {
+            Spacer(minLength: compact ? 12 : 24)
+            VStack(spacing: 10) {
+                Text("A little space for your day.")
+                    .font(.system(.title, design: .rounded).weight(.medium))
+                    .tracking(-0.8)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("A thought, a plan, a little help.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 26)
+
+            Spacer(minLength: compact ? 12 : 24)
             Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: viewModel.isDictating ? 92 : 132)
+                OrbView(state: viewModel.orbState, size: viewModel.isDictating ? 112 : compact ? 148 : 174)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
-            Text("Max")
-                .font(.system(size: 30, weight: .semibold, design: .rounded))
-                .tracking(-0.6)
-                .foregroundStyle(.primary)
-            Text("Your day, a little lighter.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            Text(viewModel.orbCaption)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.top, 4)
+
+            Button { viewModel.handleOrbTap() } label: {
+                Label(viewModel.orbCaption, systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : "waveform")
+                    .font(.caption.weight(.medium))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(viewModel.orbAccessibilityLabel)
+            .accessibilityHint(viewModel.orbAccessibilityHint)
+            .padding(.top, 6)
+
+            Spacer(minLength: compact ? 20 : 32)
+            if !viewModel.isDictating {
+                HStack(spacing: 10) {
+                    draftSuggestion("Plan my day", icon: "sun.horizon")
+                    draftSuggestion("Save a thought", icon: "square.and.pencil")
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 18)
+            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, viewModel.isDictating ? 12 : 28)
-        .padding(.horizontal, 28)
+        .padding(.vertical, 8)
+    }
+
+    private func draftSuggestion(_ title: String, icon: String) -> some View {
+        Button {
+            viewModel.inputText = title == "Save a thought" ? "Remember this: " : "Help me plan my day. "
+            composerFocused = true
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .glassCard(cornerRadius: 23, interactive: true)
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
+        .accessibilityHint("Start an editable message")
     }
 
     // MARK: - Bottom Dock (liquid glass)
@@ -341,13 +394,29 @@ struct HomeView: View {
     }
 
     private var regularDock: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             if viewModel.conversationState != .idle || viewModel.isTranscribing {
                 statusPill
                     .transition(.opacity)
             }
             VStack(spacing: 8) {
                 HStack(spacing: 12) {
+                    Menu {
+                        Button("New conversation", systemImage: "square.and.pencil") {
+                            pendingImage = nil
+                            viewModel.startNewChat()
+                        }
+                        Button("Attach a photo", systemImage: "photo") { showCamera = true }
+                        Button("Conversation history", systemImage: "clock.arrow.circlepath") {
+                            viewModel.endConversation(); showHistory = true
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 19, weight: .regular))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Conversation actions")
                     TextField("Ask Max anything…", text: $viewModel.inputText, axis: .vertical)
                         .font(.body)
                         .lineLimit(1...4)
@@ -360,9 +429,9 @@ struct HomeView: View {
                     Button { viewModel.handleMicTap() } label: {
                         Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(Color(hex: "#315E73"))
+                            .foregroundStyle(Color(UIColor.systemBackground))
                             .frame(width: 44, height: 44)
-                            .background(Color(hex: "#C7E7F1"), in: Circle())
+                            .background(Color.primary, in: Circle())
                     }
                     .disabled(viewModel.isTranscribing)
                     .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
@@ -384,9 +453,10 @@ struct HomeView: View {
                         .foregroundStyle(.secondary)
                 }
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 14)
-            .glassCard(cornerRadius: 30, depth: .regular)
+            .padding(.leading, 4)
+            .padding(.trailing, 10)
+            .padding(.vertical, 10)
+            .glassCard(cornerRadius: 34, depth: .regular)
 
             floatingShortcuts
         }
@@ -394,60 +464,23 @@ struct HomeView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.conversationState)
     }
 
-    @ViewBuilder private var floatingShortcuts: some View {
-        #if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 12) { shortcutRow }
-        } else {
-            shortcutRow
-        }
-        #else
-        shortcutRow
-        #endif
-    }
-
-    private var shortcutRow: some View {
-        HStack(spacing: 12) {
-            shortcut("Your day", icon: "square.grid.2x2") { viewModel.endConversation(); showCompanion = true }
-            shortcut(speechShortcutTitle, icon: speechShortcutIcon) {
-                viewModel.handleOrbTap()
+    private var floatingShortcuts: some View {
+        HStack(spacing: 20) {
+            Button { viewModel.endConversation(); showCompanion = true } label: {
+                Label("Your day", systemImage: "square.grid.2x2")
+            }
+            Button { viewModel.handleOrbTap() } label: {
+                Label(viewModel.conversationState == .idle ? "Hear Max" : viewModel.isDictating ? "Done" : "Stop", systemImage: viewModel.conversationState == .idle ? "speaker.wave.2" : viewModel.isDictating ? "checkmark" : "stop.fill")
             }
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
-            shortcut("History", icon: "clock.arrow.circlepath") { viewModel.endConversation(); showHistory = true }
-            shortcut("Briefing", icon: "sun.horizon") { viewModel.startMorningBriefing() }
-        }
-    }
-
-    private var speechShortcutTitle: String {
-        switch viewModel.conversationState {
-        case .idle: return "Hear Max"
-        case .listening: return "Done"
-        case .thinking, .speaking: return "Stop"
-        }
-    }
-
-    private var speechShortcutIcon: String {
-        switch viewModel.conversationState {
-        case .idle: return "speaker.wave.2"
-        case .listening: return "checkmark"
-        case .thinking, .speaking: return "stop.fill"
-        }
-    }
-
-    private func shortcut(_ title: String, icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: icon).font(.system(size: 17, weight: .regular))
-                Text(title).font(.system(.caption2, design: .rounded).weight(.medium))
-                    .lineLimit(2).multilineTextAlignment(.center)
+            Button { viewModel.startMorningBriefing() } label: {
+                Label("Briefing", systemImage: "sun.horizon")
             }
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .padding(.horizontal, 3)
-            .glassCard(cornerRadius: 20, interactive: true)
         }
-        .accessibilityLabel(title)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .frame(minHeight: 44)
     }
 
     // MARK: - Status Pill
@@ -543,7 +576,7 @@ struct HomeView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(Color(hex: "#596F60"), in: Capsule())
+                    .background(Color(hex: "#315E73"), in: Capsule())
             }
             .buttonStyle(.plain)
         }
