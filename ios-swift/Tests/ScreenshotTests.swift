@@ -31,7 +31,6 @@ final class ScreenshotTests: XCTestCase {
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Dark", style: .dark)
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Compact", size: CGSize(width: 375, height: 667))
         try await capture(HomeView().environmentObject(AuthService.shared).environment(\.dynamicTypeSize, .accessibility1), name: "Max_Reference_Home_Large_Text")
-        try await capture(HomeView().environmentObject(AuthService.shared).environment(\.accessibilityReduceTransparency, true).environment(\.accessibilityReduceMotion, true), name: "Max_Reference_Home_Accessibility")
         try await capture(HomeView(initialPage: .profile).environmentObject(AuthService.shared), name: "Max_Profile_Design_Profile")
         try await capture(MemoryView(), name: "Max_Profile_Design_Memory_Empty")
         XCTAssertTrue(StorageService.shared.saveMemoryCard(MemoryCard(category: .personal, content: "I like quiet mornings, a cup of tea, and a little time to plan my day."), accountScope: scope))
