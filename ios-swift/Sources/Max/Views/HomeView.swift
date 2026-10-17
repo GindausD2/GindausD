@@ -350,9 +350,10 @@ struct HomeView: View {
     private var orbDock: some View {
         HStack(spacing: 12) {
             conversationActions
+                .glassCard(cornerRadius: 22, interactive: true)
             Spacer(minLength: 0)
             Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: 62)
+                OrbView(state: viewModel.orbState, size: 88)
             }
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
@@ -361,7 +362,6 @@ struct HomeView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
-        .glassCard(cornerRadius: 48, depth: .regular)
     }
 
     private var conversationActions: some View {
