@@ -55,6 +55,8 @@ struct AppSettings: Codable {
     var colorScheme: String = "system"      // "system" | "light" | "dark"
     var continuousConversation: Bool? = false
     var preferredVoice: String = "female"   // "female" | "male"
+    var voiceProvider: String? = "openai"   // optional for older saved settings
+    var openAIVoice: String? = "marin"
     var shareAnalytics: Bool = false
     var personalisedSuggestions: Bool = true
     var briefingEnabled: Bool = false

@@ -41,7 +41,12 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
+      - run: npm ci --prefix backend
       - run: npm test --prefix backend
+      - name: Type-check Supabase Edge Function
+        run: npx --yes deno@2.9.6 check --config backend/deno.json backend/supabase-index.ts
+      - name: Verify Deno voice transport with local fixtures
+        run: npx --yes deno@2.9.6 test --config backend/deno.json --allow-net=127.0.0.1 --allow-env=WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE backend/tests/edge-runtime.test.ts
       - name: Verify quota in disposable PostgreSQL
         run: |
           command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)

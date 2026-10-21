@@ -70,6 +70,7 @@ struct MaxApp: App {
                     // When app becomes active, ensure the session is alive + refresh emails
                     if phase == .active && authService.currentUser != nil {
                         authService.expireDemoIfNeeded()
+                        Task { await StoreKitService.shared.refreshEntitlements() }
                         if !authService.isDemoExpired {
                             LiveActivityService.shared.startPersistentSession()
                             Task { await EmailMonitorService.shared.checkAndNotify() }

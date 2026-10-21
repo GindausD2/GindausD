@@ -21,6 +21,8 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
 
     @Published var isRecording: Bool = false
     @Published var isSpeaking: Bool = false
+    @Published private(set) var isPreparingSpeech = false
+    @Published private(set) var playbackNotice: String?
 
     @Published private(set) var transcript: String = ""
     var transcriptUpdates: AnyPublisher<String, Never> { $transcript.eraseToAnyPublisher() }
@@ -37,10 +39,23 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     private var currentUtterance: AVSpeechUtterance?
     private let speakingFeedback = UIImpactFeedbackGenerator(style: .soft)
     private var lastHapticAt: TimeInterval = 0
+    private var cloudSpeechTask: Task<Void, Never>?
+    private var playbackID = UUID()
+    private var audioPlayer: AVAudioPlayer?
+    private var cloudHapticsTask: Task<Void, Never>?
+    private var interruptionSubscriptions: Set<AnyCancellable> = []
 
     private override init() {
         super.init()
         speechSynthesizer.delegate = self
+        NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
+            .receive(on: DispatchQueue.main).sink { [weak self] _ in
+                self?.stopRecording(); self?.stopSpeaking()
+            }.store(in: &interruptionSubscriptions)
+        NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)
+            .receive(on: DispatchQueue.main).sink { [weak self] _ in
+                self?.stopRecording(); self?.stopSpeaking()
+            }.store(in: &interruptionSubscriptions)
     }
 
     // MARK: - Native speech recognition
@@ -130,6 +145,78 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         let clean = cleanForSpeech(text)
         guard !clean.isEmpty else { return }
 
+        let settings = StorageService.shared.loadSettings()
+        if (settings.voiceProvider ?? "openai") == "openai", clean.utf16.count <= 1000,
+           !kMaxAPIBaseURL.isEmpty, AuthService.shared.currentUser != nil {
+            let attempt = playbackID
+            let scope = StorageService.shared.accountScope
+            isSpeaking = true; isPreparingSpeech = true; playbackNotice = nil
+            cloudSpeechTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let session = try await AuthService.shared.managedSession()
+                    guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw URLError(.badURL) }
+                    var request = URLRequest(url: base.appendingPathComponent("v1/speech"))
+                    request.httpMethod = "POST"; request.timeoutInterval = 45
+                    request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    if let proof = await StoreKitService.shared.signedTransactionProof() {
+                        request.setValue(proof, forHTTPHeaderField: "X-Max-Transaction")
+                    }
+                    let selected = ["marin", "cedar"].contains(settings.openAIVoice ?? "") ? settings.openAIVoice! : "marin"
+                    request.httpBody = try JSONEncoder().encode(["text": clean, "voice": selected])
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    try Task.checkCancellation()
+                    guard self.playbackID == attempt, StorageService.shared.accountScope == scope,
+                          UIApplication.shared.applicationState == .active else { return }
+                    guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+                    if http.statusCode == 402 {
+                        let error = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                        if error?["code"] as? String == "demo_expired" {
+                            AuthService.shared.markDemoExpired()
+                            return
+                        }
+                        if error?["code"] as? String == "subscription_required" {
+                            self.stopSpeaking()
+                            await StoreKitService.shared.refreshEntitlements()
+                            return
+                        }
+                    }
+                    guard http.statusCode == 200, http.mimeType == "audio/wav", data.count <= 4_320_044 else { throw URLError(.badServerResponse) }
+                    let audioSession = AVAudioSession.sharedInstance()
+                    try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+                    try audioSession.setActive(true)
+                    let player = try AVAudioPlayer(data: data)
+                    self.audioPlayer = player; player.delegate = self
+                    player.prepareToPlay()
+                    guard player.play() else { throw URLError(.cannotDecodeContentData) }
+                    self.isPreparingSpeech = false
+                    self.cloudHapticsTask = Task { @MainActor [weak self, weak player] in
+                        while !Task.isCancelled, let self, player?.isPlaying == true, self.playbackID == attempt {
+                            if UIApplication.shared.applicationState == .active,
+                               StorageService.shared.loadSettings().speakingHapticsEnabled ?? true {
+                                self.speakingFeedback.impactOccurred(intensity: 0.35)
+                            }
+                            do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
+                        }
+                    }
+                } catch {
+                    guard !Task.isCancelled, self.playbackID == attempt,
+                          StorageService.shared.accountScope == scope,
+                          UIApplication.shared.applicationState == .active else { return }
+                    self.isPreparingSpeech = false
+                    self.playbackNotice = "Using iPhone voice"
+                    self.speakOnDevice(clean, preferredVoice: preferredVoice)
+                }
+            }
+        } else {
+            playbackNotice = nil
+            speakOnDevice(clean, preferredVoice: preferredVoice)
+        }
+    }
+
+    private func speakOnDevice(_ clean: String, preferredVoice: String) {
+
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
         try? session.setActive(true)
@@ -186,11 +273,32 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     }
 
     func stopSpeaking() {
+        playbackID = UUID()
+        cloudSpeechTask?.cancel(); cloudSpeechTask = nil
+        cloudHapticsTask?.cancel(); cloudHapticsTask = nil
+        audioPlayer?.stop(); audioPlayer = nil
+        isPreparingSpeech = false; playbackNotice = nil
         currentUtterance = nil
         if speechSynthesizer.isSpeaking {
             speechSynthesizer.stopSpeaking(at: .immediate)
         }
         isSpeaking = false
+        if !isRecording { try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation]) }
+    }
+}
+
+extension VoiceService: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor in
+            guard self.audioPlayer === player else { return }
+            self.stopSpeaking()
+        }
+    }
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor in
+            guard self.audioPlayer === player else { return }
+            self.stopSpeaking()
+        }
     }
 }
 
@@ -213,16 +321,14 @@ extension VoiceService: AVSpeechSynthesizerDelegate {
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor in
             guard self.currentUtterance === utterance else { return }
-            self.currentUtterance = nil
-            self.isSpeaking = false
+            self.stopSpeaking()
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor in
             guard self.currentUtterance === utterance else { return }
-            self.currentUtterance = nil
-            self.isSpeaking = false
+            self.stopSpeaking()
         }
     }
 }

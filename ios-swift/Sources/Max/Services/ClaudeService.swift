@@ -396,6 +396,10 @@ final class ClaudeService {
         urlRequest.httpMethod = "POST"
         urlRequest.setValue("Bearer \(sessionToken)", forHTTPHeaderField: "Authorization")
         urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let proof = await StoreKitService.shared.signedTransactionProof() {
+            urlRequest.setValue(proof, forHTTPHeaderField: "X-Max-Transaction")
+        }
+        guard await AuthService.shared.currentUser?.id == accountScope else { throw URLError(.userAuthenticationRequired) }
 
         let encoder = JSONEncoder()
         urlRequest.httpBody = try encoder.encode(request)
@@ -416,6 +420,8 @@ final class ClaudeService {
             let errorBody = (try? JSONSerialization.jsonObject(with: errorBytes)) as? [String: Any]
             if httpResponse.statusCode == 402, errorBody?["code"] as? String == "demo_expired" {
                 await MainActor.run { AuthService.shared.markDemoExpired() }
+            } else if httpResponse.statusCode == 402, errorBody?["code"] as? String == "subscription_required" {
+                await StoreKitService.shared.refreshEntitlements()
             }
             let serverError = errorBody?["error"] as? String
             throw ClaudeError.apiError(httpResponse.statusCode, serverError ?? "Max couldn't reply just now. Please try again.")

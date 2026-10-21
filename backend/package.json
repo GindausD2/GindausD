@@ -2,6 +2,15 @@
   "name": "max-companion-backend",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node --env-file-if-exists=.env server.mjs", "test": "node --test tests/*.test.mjs" },
-  "engines": { "node": ">=22" }
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@apple/app-store-server-library": "3.1.0",
+    "ws": "8.22.0"
+  }
 }

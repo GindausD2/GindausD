@@ -38,3 +38,19 @@ for (const statement of ['set role anon; select public.consume_max_request();', 
   assert.throws(() => sql(statement), /permission denied/);
 }
 console.log('PASS: real PostgreSQL concurrent minute cap, daily cap, account isolation, anonymous denial, and direct-table denial');
+
+const voiceMigration = readFileSync(new URL('../../supabase/migrations/20261021153551_max_voice_quota.sql', import.meta.url), 'utf8');
+sql(voiceMigration.replaceAll('now()', 'auth.test_now()'));
+const voiceCall = (id, characters) => `set role authenticated; set request.jwt.claim.sub='${id}'; select public.consume_max_voice(${characters});`;
+const voiceResults = await Promise.all(Array.from({ length: 12 }, () => exec('psql', [...args, voiceCall(a, 1000)])));
+assert.equal(voiceResults.filter(r => r.stdout.trim().split('\n').at(-1) === 't').length, 2);
+assert.equal(sql(`select request_count from public.max_usage where user_id='${a}' and bucket like 'voice-day:%';`), '2000');
+sql(`delete from public.max_usage where user_id='${a}' and bucket like 'voice-minute:%';`);
+assert.equal(sql(voiceCall(a, 1000)).split('\n').at(-1), 't');
+sql(`delete from public.max_usage where user_id='${a}' and bucket like 'voice-minute:%';`);
+assert.equal(sql(voiceCall(a, 1)).split('\n').at(-1), 'f');
+assert.equal(sql(voiceCall(b, 1000)).split('\n').at(-1), 't');
+for (const value of ['null', '0', '-10', '1001']) assert.equal(sql(voiceCall(b, value)).split('\n').at(-1), 'f');
+assert.equal(sql('set role authenticated; select public.consume_max_voice(1);').split('\n').at(-1), 'f');
+assert.throws(() => sql('set role anon; select public.consume_max_voice(1);'), /permission denied/);
+console.log('PASS: PostgreSQL voice minute/character caps, concurrent reservations, invalid sizes, account isolation and anonymous denial');

@@ -20,7 +20,7 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <!-- Triple moon logo centred -->
+                            <!-- Supplied Max logo centred -->
                             <imageView opaque="NO" clipsSubviews="YES"
                                        userInteractionEnabled="NO"
                                        contentMode="scaleAspectFit"
@@ -31,9 +31,8 @@
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeAreaLayoutGuide" id="Bcu-3y-fUS"/>
-                        <!-- Lavender-white background matching HomeView -->
-                        <color key="backgroundColor" red="0.976" green="0.965" blue="1.0" alpha="1"
-                               colorSpace="custom" customColorSpace="sRGB"/>
+                        <!-- System background adapts with the light and dark logo assets -->
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
                             <constraint firstItem="logo-img-01" firstAttribute="centerX"
                                         secondItem="Ze5-6b-2t3" secondAttribute="centerX"
@@ -55,6 +54,9 @@
         </scene>
     </scenes>
     <resources>
-        <image name="LaunchLogo" width="512" height="512"/>
+        <image name="LaunchLogo" width="600" height="320"/>
+        <systemColor name="systemBackgroundColor">
+            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
     </resources>
 </document>

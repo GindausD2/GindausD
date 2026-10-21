@@ -7,9 +7,9 @@ import { textStream } from './openai-fixtures.mjs';
 test('edge routing preserves request body and verified bearer token before OpenAI', async () => {
   for (const prefix of ['/max-api', '/functions/v1/max-api']) {
     const calls = [];
-    const handler = createEdgeHandler(createHandler({ env: { OPENAI_API_KEY: 'secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public' }, fetchImpl: async (url, options) => {
+    const handler = createEdgeHandler(createHandler({ verifyPaid: async () => ({ active: true }), env: { OPENAI_API_KEY: 'secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public' }, fetchImpl: async (url, options) => {
       calls.push({ url, options });
-      if (url.endsWith('/user')) return Response.json({ id: 'verified' });
+      if (url.endsWith('/user')) return Response.json({ id: 'verified', is_anonymous: false });
       if (url.includes('/rpc/')) return Response.json(true);
       return new Response(textStream('Hello'));
     } }));
@@ -26,7 +26,7 @@ test('edge health reports missing provider configuration without exposing secret
   assert.equal((await handler(new Request('https://max.example/max-api-wrong/health'))).status, 404);
 });
 test('edge conversation without a session cannot call auth, quota or provider', async () => {
-  const handler = createEdgeHandler(createHandler({ env: { OPENAI_API_KEY: 'secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public' }, fetchImpl: () => { throw Error('must not fetch'); } }));
+  const handler = createEdgeHandler(createHandler({ verifyPaid: async () => ({ active: true }), env: { OPENAI_API_KEY: 'secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public' }, fetchImpl: () => { throw Error('must not fetch'); } }));
   const response = await handler(new Request('https://max.example/max-api/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }));
   assert.equal(response.status, 401);
 });

@@ -3,6 +3,9 @@ import Combine
 import Supabase
 import UserNotifications
 import WidgetKit
+import AuthenticationServices
+import CryptoKit
+import Security
 
 @MainActor
 final class AuthService: ObservableObject {
@@ -26,6 +29,9 @@ final class AuthService: ObservableObject {
                 for key in ["max.pendingVoiceActivation", "max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
             }
             StorageService.shared.setAccountScope(scope)
+            if oldValue?.id != currentUser?.id || oldValue?.isDemo != currentUser?.isDemo {
+                Task { await StoreKitService.shared.refreshEntitlements() }
+            }
         }
     }
     @Published var isLoading: Bool = false
@@ -35,6 +41,7 @@ final class AuthService: ObservableObject {
     @Published private(set) var serverExpiredDemo = false
 
     private let demoKey      = "max:auth_user_demo"
+    private var appleNonce: String?
 
     var demoTrialExpiry: Date? {
         currentUser?.trialExpiresAt
@@ -113,12 +120,34 @@ final class AuthService: ObservableObject {
 
     // MARK: - Apple (native button → Supabase ID-token exchange)
 
-    func signInWithApple(idToken: String, name: String?) async {
+    func prepareAppleSignIn(_ request: ASAuthorizationAppleIDRequest) {
+        var random = [UInt8](repeating: 0, count: 32)
+        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else {
+            appleNonce = nil
+            authError = "Apple sign-in couldn't start. Please try again."
+            return
+        }
+        let nonce = random.map { String(format: "%02x", $0) }.joined()
+        appleNonce = nonce
+        request.requestedScopes = [.fullName, .email]
+        request.nonce = SHA256.hash(data: Data(nonce.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+
+    func cancelAppleSignIn() { appleNonce = nil }
+
+    var hasGuestSession: Bool { supabase.auth.currentSession?.user.isAnonymous == true }
+
+    func signInWithApple(idToken: String, name: String?, linkGuest: Bool = true) async {
+        guard let nonce = appleNonce else {
+            authError = "Please start Apple sign-in again."
+            return
+        }
+        appleNonce = nil
         isLoading = true; authError = nil
         do {
-            let credentials = OpenIDConnectCredentials(provider: .apple, idToken: idToken)
+            let credentials = OpenIDConnectCredentials(provider: .apple, idToken: idToken, nonce: nonce)
             let session: Session
-            if supabase.auth.currentSession?.user.isAnonymous == true {
+            if linkGuest && supabase.auth.currentSession?.user.isAnonymous == true {
                 // Link the verified Apple identity to preserve the guest's account/data scope.
                 session = try await supabase.auth.linkIdentityWithIdToken(credentials: credentials)
             } else {

@@ -15,7 +15,7 @@ async function serve(t, handle) {
 }
 test('actual HTTP adapter serves health and returns validation errors', async t => {
   let calls = 0;
-  const { base, post } = await serve(t, createHandler({ env, fetchImpl: () => { calls++; throw Error('not expected'); } }));
+  const { base, post } = await serve(t, createHandler({ env, verifyPaid: async () => ({ active: true }), fetchImpl: () => { calls++; throw Error('not expected'); } }));
   assert.equal((await fetch(base + '/health')).status, 200);
   assert.equal((await post('null')).status, 400);
   assert.equal((await post('{')).status, 400);
@@ -27,9 +27,9 @@ test('actual HTTP adapter serves health and returns validation errors', async t 
 test('actual HTTP streaming preserves split Unicode bytes and server key isolation', async t => {
   const calls = [];
   const expected = textStream('Hello ❄️ — café');
-  const handle = createHandler({ env, fetchImpl: async (url, options) => {
+  const handle = createHandler({ env, verifyPaid: async () => ({ active: true }), fetchImpl: async (url, options) => {
     calls.push({ url, options });
-    if (url.endsWith('/user')) return Response.json({ id: 'http-user' });
+    if (url.endsWith('/user')) return Response.json({ id: 'http-user', is_anonymous: false });
     if (url.includes('/rpc/')) return Response.json(true);
     const bytes = new TextEncoder().encode(expected);
     return new Response(new ReadableStream({ start(controller) { for (const byte of bytes) controller.enqueue(Uint8Array.of(byte)); controller.close(); } }));
@@ -45,8 +45,8 @@ test('actual HTTP streaming preserves split Unicode bytes and server key isolati
 test('HTTP client disconnect cancels the upstream stream', async t => {
   let cancelled;
   const cancellation = new Promise(resolve => { cancelled = resolve; });
-  const handle = createHandler({ env, fetchImpl: async (url, options) => {
-    if (url.endsWith('/user')) return Response.json({ id: 'http-user' });
+  const handle = createHandler({ env, verifyPaid: async () => ({ active: true }), fetchImpl: async (url, options) => {
+    if (url.endsWith('/user')) return Response.json({ id: 'http-user', is_anonymous: false });
     if (url.includes('/rpc/')) return Response.json(true);
     return new Response(new ReadableStream({
       start(controller) {

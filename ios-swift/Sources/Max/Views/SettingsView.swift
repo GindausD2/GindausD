@@ -52,6 +52,9 @@ struct SettingsView: View {
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.fill", iconColor: Color(hex: "#6B7280"),
                                        title: "Privacy") { showPrivacy = true }
+                            Divider().padding(.leading, 56)
+                            ProfileRow(icon: "creditcard", iconColor: Color(hex: "#315E73"),
+                                       title: "Subscription") { showSubscription = true }
                         }
 
                         // ── CONFIGURATION ─────────────────────────────────────
@@ -274,7 +277,7 @@ struct SettingsView: View {
             HStack(spacing: 4) {
                 Image(systemName: subscribed ? "crown.fill" : "plus")
                     .font(.system(size: 12, weight: .semibold))
-                Text(subscribed ? "Max Pro" : "Free Plan")
+                Text(subscribed ? "Max Pro" : "7-day demo")
                     .font(.subheadline)
             }
             .foregroundStyle(subscribed ? Color(hex: "#F59E0B") : .secondary)
@@ -354,257 +357,38 @@ private struct ProfileRow: View {
 // MARK: - Destination Sheets
 
 private struct SubscriptionSheet: View {
+    @EnvironmentObject private var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @StateObject private var store = StoreKitService.shared
-
-    @State private var selectedPlan: String = StoreKitService.yearlyID
-
-    private let violet = Color(hex: "#315E73")
-    private let amber  = Color(hex: "#F59E0B")
-
-    private let features: [(icon: String, title: String, detail: String)] = [
-        ("infinity",        "Unlimited Conversations", "No message caps — talk to Max as much as you want"),
-        ("bolt.fill",       "Priority Responses",      "Faster replies during peak hours"),
-        ("icloud.fill",     "Full iCloud Sync",        "History, memories, and notes across all devices"),
-        ("waveform",        "Advanced Voice",          "Premium neural voices and custom wake phrases"),
-        ("bell.badge.fill", "Smart Notifications",     "Proactive reminders and email alerts")
-    ]
-
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-
-                    // ── Header ──────────────────────────────────────────────
-                    VStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(amber.opacity(0.12))
-                                .frame(width: 88, height: 88)
-                            Image(systemName: "crown.fill")
-                                .font(.system(size: 40))
-                                .foregroundStyle(amber)
-                        }
-                        .padding(.top, 20)
-
-                        Text("Max Pro")
-                            .font(.system(size: 32, weight: .bold))
-                        Text("Everything you need for a truly personal AI assistant.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                    }
-
-                    // ── Plan Selector ───────────────────────────────────────
-                    VStack(spacing: 10) {
-                        PlanCard(
-                            id: StoreKitService.yearlyID,
-                            title: "Yearly",
-                            price: store.yearlyProduct?.displayPrice ?? "$119.99",
-                            period: "/ year",
-                            badge: "Save 17%",
-                            isSelected: selectedPlan == StoreKitService.yearlyID,
-                            violet: violet
-                        ) { selectedPlan = StoreKitService.yearlyID }
-
-                        PlanCard(
-                            id: StoreKitService.monthlyID,
-                            title: "Monthly",
-                            price: store.monthlyProduct?.displayPrice ?? "$9.99",
-                            period: "/ month",
-                            badge: nil,
-                            isSelected: selectedPlan == StoreKitService.monthlyID,
-                            violet: violet
-                        ) { selectedPlan = StoreKitService.monthlyID }
-                    }
-                    .padding(.horizontal, 16)
-
-                    // ── Feature List ────────────────────────────────────────
-                    VStack(spacing: 0) {
-                        ForEach(features, id: \.title) { f in
-                            HStack(spacing: 14) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(violet.opacity(0.10))
-                                        .frame(width: 38, height: 38)
-                                    Image(systemName: f.icon)
-                                        .font(.system(size: 17, weight: .medium))
-                                        .foregroundStyle(violet)
-                                }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(f.title)
-                                        .font(.system(size: 15, weight: .semibold))
-                                    Text(f.detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if store.isSubscribed {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(violet)
-                                        .font(.system(size: 18))
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            if f.title != features.last?.title {
-                                Divider().padding(.leading, 72)
-                            }
-                        }
-                    }
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding(.horizontal, 16)
-
-                    // ── Error ───────────────────────────────────────────────
-                    if let err = store.purchaseError {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    }
-
-                    // ── CTA ─────────────────────────────────────────────────
-                    VStack(spacing: 14) {
-                        if store.isSubscribed {
-                            Text("You're subscribed to Max Pro")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(violet)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(violet.opacity(0.10),
-                                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .padding(.horizontal, 16)
-                        } else {
-                            Button {
-                                Task {
-                                    let product = selectedPlan == StoreKitService.yearlyID
-                                        ? store.yearlyProduct : store.monthlyProduct
-                                    if let product { await store.purchase(product) }
-                                }
-                            } label: {
-                                Group {
-                                    if store.isLoading {
-                                        ProgressView().tint(.white)
-                                    } else {
-                                        Text(subscribeLabel)
-                                            .font(.body.weight(.semibold))
-                                            .foregroundStyle(.white)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(violet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
+            ZStack {
+                CompanionCanvas()
+                if authService.currentUser?.isDemo == true {
+                    VStack(spacing: 20) {
+                        MaxLogoView(color: .primary, width: 84)
+                        Text("Your seven-day demo").font(.title2.weight(.semibold))
+                        Text("No payment is needed during your demo. Continue with Apple when you’re ready to subscribe.")
+                        Button("Continue with Apple") { authService.beginDemoUpgrade(); dismiss() }
+                    }.multilineTextAlignment(.center).padding(24)
+                } else if store.isSubscribed {
+                    VStack(spacing: 20) {
+                        MaxLogoView(color: .primary, width: 84)
+                        Text("Your Max subscription is active").font(.title2.weight(.semibold))
+                        Link("Manage subscription", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
+                        Button("Restore Purchases") { Task { await store.restorePurchases() } }
                             .disabled(store.isLoading)
-                            .padding(.horizontal, 16)
-                        }
-
-                        Button {
-                            Task { await store.restorePurchases() }
-                        } label: {
-                            Text("Restore Purchases")
-                                .font(.subheadline)
-                                .foregroundStyle(violet)
-                        }
-                        .disabled(store.isLoading)
-
-                        Text("Subscription auto-renews. Cancel anytime in Settings → Apple ID → Subscriptions.")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
+                        if let error = store.purchaseError { Text(error).font(.footnote).foregroundStyle(.secondary) }
                     }
-                    .padding(.bottom, 40)
+                    .multilineTextAlignment(.center).padding(24)
+                } else {
+                    PlanPage(onBack: { dismiss() })
                 }
             }
-            .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Subscription")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }.fontWeight(.semibold)
-            }}
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
-    }
-
-    private var subscribeLabel: String {
-        let price = selectedPlan == StoreKitService.yearlyID
-            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
-            : (store.monthlyProduct?.displayPrice ?? "$9.99")
-        let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
-        return "Subscribe — \(price)/\(period)"
-    }
-}
-
-private struct PlanCard: View {
-    let id: String
-    let title: String
-    let price: String
-    let period: String
-    let badge: String?
-    let isSelected: Bool
-    let violet: Color
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .strokeBorder(isSelected ? violet : Color.secondary.opacity(0.3), lineWidth: 2)
-                        .frame(width: 22, height: 22)
-                    if isSelected {
-                        Circle()
-                            .fill(violet)
-                            .frame(width: 12, height: 12)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        Text(title)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.primary)
-                        if let badge {
-                            Text(badge)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(violet, in: Capsule())
-                        }
-                    }
-                    Text("Billed \(title.lowercased())")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                HStack(alignment: .lastTextBaseline, spacing: 2) {
-                    Text(price)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.primary)
-                    Text(period)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(isSelected ? violet : Color.clear, lineWidth: 2)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -784,11 +568,23 @@ private struct AssistantSheet: View {
                     Text("When enabled, Max listens again after a spoken reply while this app is open. Tap the stop control to end the conversation.")
                         .font(.caption).foregroundStyle(.secondary)
                     if settings.voiceEnabled {
+                        Picker("Spoken replies", selection: Binding(get: { settings.voiceProvider ?? "openai" }, set: { settings.voiceProvider = $0; onSave() })) {
+                            Text("OpenAI voice").tag("openai")
+                            Text("iPhone voice").tag("device")
+                        }
+                        if (settings.voiceProvider ?? "openai") == "openai" {
+                            Picker("Voice style", selection: Binding(get: { settings.openAIVoice ?? "marin" }, set: { settings.openAIVoice = $0; onSave() })) {
+                                Text("Marin").tag("marin")
+                                Text("Cedar").tag("cedar")
+                            }
+                            Text("Max’s voice is AI-generated. Spoken text is sent to OpenAI. Up to 3,000 characters per UTC day; longer replies and unavailable voice use your iPhone voice.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         Picker(selection: $settings.preferredVoice) {
                             Text("Female").tag("female")
                             Text("Male").tag("male")
                         } label: {
-                            Label("Voice", systemImage: "waveform")
+                            Label("iPhone fallback voice", systemImage: "waveform")
                         }
                         .tint(Color(hex: "#315E73"))
                         .onChange(of: settings.preferredVoice) { _, _ in onSave() }

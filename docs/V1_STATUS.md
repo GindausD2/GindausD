@@ -1,3 +1,7 @@
+# Current update: 21 October 2026
+
+Read [RELEASE_SETUP.md](RELEASE_SETUP.md) first. It supersedes the historical implementation notes below where they differ: logo-only headings, optional OpenAI voice, monthly-only launch, server-side subscription verification, and the remaining live setup. These latest native changes are not Xcode-verified.
+
 # Max V1 — The AI Companion
 
 Release focus: the native iPhone app, with Dynamic Island as its identity. The Expo app remains the design preview; Expo and native Android are not yet equivalent release clients for these native V1 changes.

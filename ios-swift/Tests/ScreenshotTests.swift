@@ -27,6 +27,11 @@ final class ScreenshotTests: XCTestCase {
         defer { UserDefaults.standard.set(onboarding, forKey: "max:onboarding_complete") }
         try await capture(WelcomeView(initialMode: .login).environmentObject(AuthService.shared), name: "Max_Glass_Slider_Login")
         try await capture(WelcomeView(initialMode: .signUp).environmentObject(AuthService.shared), name: "Max_Glass_Slider_Signup")
+        try await capture(WelcomeView().environmentObject(AuthService.shared), name: "Max_Entry_Welcome")
+        try await capture(DemoOnboardingView().environmentObject(AuthService.shared), name: "Max_Entry_Demo")
+        try await capture(WelcomeView(initialMode: .login).environmentObject(AuthService.shared), name: "Max_Entry_Login_Compact", size: CGSize(width: 375, height: 667))
+        try await capture(WelcomeView(initialMode: .signUp).environmentObject(AuthService.shared).environment(\.dynamicTypeSize, .accessibility1), name: "Max_Entry_Signup_Large_Text")
+        try await capture(DemoOnboardingView().environmentObject(AuthService.shared), name: "Max_Entry_Demo_Dark", style: .dark)
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Profile_Design_Home")
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Dark", style: .dark)
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Compact", size: CGSize(width: 375, height: 667))

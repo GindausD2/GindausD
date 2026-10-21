@@ -5,9 +5,9 @@ import { textStream, frame, chunk } from './openai-fixtures.mjs';
 const env = { OPENAI_API_KEY: 'server-secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public-key' };
 const payload = { messages: [{ role: 'user', content: 'Remember my idea' }] };
 const request = (body = payload, token = 'valid-session') => new Request('https://max.example/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
-function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerStatus = 200, user = { id: 'verified-user' }, now = Date.now } = {}) {
+function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerStatus = 200, user = { id: 'verified-user', is_anonymous: false }, now = Date.now } = {}) {
   const calls = [];
-  const handler = createHandler({ env, now, fetchImpl: async (url, options) => {
+  const handler = createHandler({ env, verifyPaid: async () => ({ active: true }), now, fetchImpl: async (url, options) => {
     calls.push({ url, options });
     if (url.endsWith('/user')) return Response.json(user, { status: authStatus });
     if (url.includes('/rpc/')) return Response.json(quota, { status: quotaStatus });
@@ -43,7 +43,7 @@ test('invalid server URL fails closed before calling auth', async () => {
   }
 });
 test('network exceptions are redacted', async () => {
-  const h = createHandler({ env, log: () => {}, fetchImpl: () => { throw Error('server-secret'); } });
+  const h = createHandler({ env, verifyPaid: async () => ({ active: true }), log: () => {}, fetchImpl: () => { throw Error('server-secret'); } });
   const r = await h(request()); assert.equal(r.status, 502); assert.doesNotMatch(await r.text(), /server-secret/);
 });
 test('V1 tool continuation is translated to OpenAI function messages', async () => {
@@ -58,8 +58,8 @@ test('V1 tool continuation is translated to OpenAI function messages', async () 
 });
 test('full native tool feedback round trip retains IDs, schema and per-request quotas', async () => {
   let generations = 0, quotas = 0;
-  const h = createHandler({ env, fetchImpl: async (url, options) => {
-    if (url.endsWith('/user')) return Response.json({ id: 'verified-user' });
+  const h = createHandler({ env, verifyPaid: async () => ({ active: true }), fetchImpl: async (url, options) => {
+    if (url.endsWith('/user')) return Response.json({ id: 'verified-user', is_anonymous: false });
     if (url.includes('/rpc/')) { quotas++; return Response.json(true); }
     assert.equal(url, 'https://api.openai.com/v1/chat/completions');
     const body = JSON.parse(options.body);

@@ -9,6 +9,7 @@ struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
     @AppStorage("max:onboarding_complete") private var onboardingComplete: Bool = false
 
+    @ObservedObject private var playback = VoiceService.shared
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
     @State private var showProfile = false
@@ -202,14 +203,8 @@ struct HomeView: View {
             .accessibilityLabel("New conversation")
 
             Spacer()
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text("Max").foregroundStyle(.primary)
-                Text(".").foregroundStyle(Color(hex: "#7FB6CD"))
-            }
-            .font(.system(size: 27, weight: .semibold, design: .rounded))
-            .tracking(-1)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Max")
+            MaxLogoView(color: .primary, width: 68)
+                .accessibilityLabel("Max")
             Spacer()
 
             Button { viewModel.endConversation(); composerFocused = false; showProfile = true } label: {
@@ -331,7 +326,7 @@ struct HomeView: View {
             if viewModel.conversationState != .idle || viewModel.isTranscribing {
                 statusPill.transition(.opacity)
             } else if !isTyping {
-                Text(viewModel.inputText.isEmpty ? "Tap the orb to hear Max" : "Draft ready · tap Type to edit")
+                Text(viewModel.inputText.isEmpty ? "Tap the orb to hear Max · AI voice" : "Draft ready · tap Type to edit")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -674,7 +669,9 @@ final class HomeViewModel: ObservableObject {
             if isTranscribing { return "Finishing your voice draft…" }
             return conversationState == .listening ? "Tap the orb to finish your draft" : "Getting the microphone ready…"
         }
-        return conversationState == .speaking ? "Max is speaking · tap to stop" : "Tap the orb to hear Max"
+        if voice.isPreparingSpeech { return "Getting Max’s voice ready · tap to stop" }
+        if let notice = voice.playbackNotice, conversationState == .speaking { return notice + " · tap to stop" }
+        return conversationState == .speaking ? "Max is speaking · tap to stop" : "Tap the orb to hear Max · AI voice"
     }
 
     func loadMessages() {
