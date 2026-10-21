@@ -1,8 +1,9 @@
 # Max AI release update — 21 October 2026
 
 This package contains source changes, not a signed app or a production launch.
-The GitHub PR still points to the older verified build. The changes below have
-not yet been uploaded there, compiled in Xcode, or deployed as an Edge Function.
+The source is uploaded to GitHub PR #2. The current native build/test status is
+tracked by GitHub Actions; the Edge Function update has not been deployed.
+https://github.com/GindausD2/GindausD/pull/2
 
 ## Price chosen by the owner
 
@@ -115,11 +116,12 @@ Checked 21 October 2026:
   auth/provider data; it verifies WAV delivery in the Edge runtime, not OpenAI.
 - Embedded PostgreSQL checks passed for voice caps, invalid sizes, account
   separation and denied direct access. Live installed-function checks passed.
-- A real multi-connection PostgreSQL concurrency test is added to CI; it has
-  not run for this updated source yet.
-- The native Swift changes are **not Xcode-compiled**. A syntax-parser comparison
-  found no additional errors relative to the prior source, but that is not an
-  iOS build or device test.
+- The GitHub backend job passed for commit 9c460d04e8bd266556a16fbbc9977438a22ac279,
+  including the real PostgreSQL concurrent minute/character caps and account
+  isolation checks.
+- The first Xcode build exposed optional account fields in StoreKitService.
+  Those are corrected in the follow-up source update. Check the latest Actions
+  run for compilation/tests; a syntax parser alone does not verify an iOS build.
 - The archive script passes shell syntax validation; no signed archive exists.
 - No production OpenAI voice, Apple purchase, Gmail, WeatherKit, physical-device
   acceptance or fresh native screenshot is claimed.

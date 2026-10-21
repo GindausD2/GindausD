@@ -51,8 +51,9 @@ final class StoreKitService: ObservableObject {
         purchaseError = nil
         defer { isLoading = false }
         do {
-            guard let user = AuthService.shared.currentUser, !user.isDemo,
-                  let accountID = UUID(uuidString: user.id) else {
+            guard let user = AuthService.shared.currentUser, user.isDemo == false,
+                  let userID = user.id,
+                  let accountID = UUID(uuidString: userID) else {
                 purchaseError = "Continue with Apple before subscribing."
                 return
             }
@@ -124,8 +125,9 @@ final class StoreKitService: ObservableObject {
     }
 
     func signedTransactionProof() async -> String? {
-        guard let user = AuthService.shared.currentUser, !user.isDemo,
-              let accountID = UUID(uuidString: user.id) else { return nil }
+        guard let user = AuthService.shared.currentUser, user.isDemo == false,
+                  let userID = user.id,
+              let accountID = UUID(uuidString: userID) else { return nil }
         for await result in Transaction.currentEntitlements {
             if let tx = try? verified(result), tx.revocationDate == nil,
                !tx.isUpgraded, tx.appAccountToken == accountID,

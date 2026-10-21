@@ -12,7 +12,7 @@ The Expo preview and earlier Android prototype are also included; they are not a
 
 This copy includes the latest local Login, Sign Up and Try Demo redesign.
 Chat uses the original styling, with the floating blue orb.
-These entry-screen changes have not yet been uploaded to GitHub or verified by an Xcode build.
+The entry-screen changes are uploaded to GitHub PR #2. Check its latest Actions run for Xcode verification.
 Generated concept images are design references, not screenshots of this running source.
 
 On iPhone: save this ZIP to Files, then tap it to extract.
@@ -26,7 +26,7 @@ LOGO UPDATE
 The supplied logo has been added to the native iPhone icon, launch screen, shared SwiftUI logo, entry/conversation headers and widget branding.
 branding/ contains the original JPEG, scalable SVG and transparent black/white PNGs.
 The blue voice orb is unchanged. The original chat styling is unchanged.
-This logo update has not been uploaded to GitHub or verified by an Xcode build.
+The logo update is uploaded to GitHub PR #2; native build evidence is recorded in Actions.
 
 21 OCTOBER RELEASE UPDATE
 Read docs/RELEASE_SETUP.md first for current status and setup.
@@ -36,5 +36,5 @@ Apple subscription verification, nonce-protected sign-in/linking and a Mac IPA e
 42 backend tests pass. The Edge entry type-check passes. Native compilation,
 real purchases/voice, signing, TestFlight and the latest screenshots are still pending.
 Guest sign-in is currently disabled in Supabase; it must be enabled for Try Demo.
-The voice quota migration has been applied to the hosted database. The new Edge
-Function code has not been deployed, and this source has not been uploaded to GitHub.
+The voice quota migration has been applied to the hosted database. The source is
+uploaded to GitHub PR #2. The new Edge Function code has not been deployed.
