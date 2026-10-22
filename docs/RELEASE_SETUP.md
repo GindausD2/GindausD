@@ -2,7 +2,8 @@
 
 This package contains source changes, not a signed app or a production launch.
 The source is uploaded to GitHub PR #2. The current native build/test status is
-tracked by GitHub Actions; the Edge Function update has not been deployed.
+tracked by GitHub Actions. A separate Sandbox beta is now deployed; see
+[BETA_SETUP.md](BETA_SETUP.md). The Production endpoint is unchanged.
 https://github.com/GindausD2/GindausD/pull/2
 
 ## Price chosen by the owner

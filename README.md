@@ -16,7 +16,7 @@ The native implementation uses Apple speech recognition, optional OpenAI voice p
 
 `branding/` contains the supplied Max logo reference, scalable SVG, transparent black/white PNGs and the reproducible import script. The native app icon, launch screen, shared logo component, entry headers and widget identity use this mark. The blue orb stays the voice control.
 
-See [the 21 October release update](docs/RELEASE_SETUP.md) for the chosen $4.99 monthly launch price, implemented source changes, exact checks and remaining live setup. The new voice and subscription endpoints are not yet deployed.
+See [the 21 October release update](docs/RELEASE_SETUP.md) for the chosen $4.99 monthly launch price, implemented source changes, exact checks and remaining live setup. The new voice and subscription endpoints are deployed to a separate [Sandbox beta service](docs/BETA_SETUP.md); the Production endpoint is unchanged.
 
 ## Validation
 
