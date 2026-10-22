@@ -1,9 +1,10 @@
 import { authorizeMax, apiError, readJSON } from './access.mjs';
 import { createAppleSubscriptionVerifier, SubscriptionUnavailable } from './apple-subscriptions.mjs';
 import { realtimeSpeech } from './realtime-speech.mjs';
+import { safeProviderCode } from './provider-errors.mjs';
 
 export function createCompanionAPI({ env = process.env, fetchImpl = fetch, now = Date.now,
-  verifyPaid = createAppleSubscriptionVerifier({ env, now }), speak = realtimeSpeech } = {}) {
+  verifyPaid = createAppleSubscriptionVerifier({ env, now }), speak = realtimeSpeech, log = console.error } = {}) {
   return async request => {
     const path = new URL(request.url).pathname;
     if (!['/v1/speech', '/v1/subscription'].includes(path)) return null;
@@ -35,6 +36,9 @@ export function createCompanionAPI({ env = process.env, fetchImpl = fetch, now =
       return new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } });
     } catch (error) {
       if (request.signal.aborted) return apiError(499, 'Playback stopped');
+      const reason = ['voice_text_mismatch', 'voice_unavailable', 'voice_closed', 'voice_incomplete', 'timeout', 'cancelled', 'voice_too_long'].includes(error?.message) ? error.message : 'unknown';
+      const status = [400, 401, 403, 404, 429, 500, 502, 503].includes(error?.providerStatus) ? error.providerStatus : undefined;
+      log('Max companion request failed', { operation: speech ? 'speech' : 'subscription', reason, code: safeProviderCode(error?.providerCode), ...(status ? { status } : {}) });
       return apiError(error instanceof SubscriptionUnavailable ? 503 : 502, 'Max could not verify access or play this voice. Please try again.');
     }
   };

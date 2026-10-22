@@ -1,4 +1,5 @@
 import { Buffer } from 'node:buffer';
+import { safeProviderCode } from './provider-errors.mjs';
 
 export function pcmWave(pcm) {
   const header = Buffer.alloc(44);
@@ -38,6 +39,12 @@ export async function realtimeSpeech({ text, voice, env, signal, socketFactory }
     const timer = setTimeout(() => finish(new Error('timeout')), 40000);
     signal.addEventListener('abort', cancel, { once: true });
     socket.on('error', () => finish(new Error('voice_unavailable')));
+    socket.on('unexpected-response', (_request, response) => {
+      const error = new Error('voice_unavailable');
+      error.providerStatus = response.statusCode;
+      response.destroy();
+      finish(error);
+    });
     socket.on('close', () => { if (!completed) finish(new Error('voice_closed')); });
     socket.on('message', raw => {
       if (completed) return;
@@ -65,8 +72,17 @@ export async function realtimeSpeech({ text, voice, env, signal, socketFactory }
           transcript += event.delta;
           if (transcript.length > 8000) throw Error();
         } else if (event.type === 'response.done') {
-          finish(event.response?.status === 'completed' ? undefined : new Error('voice_incomplete'));
-        } else if (event.type === 'error') finish(new Error('voice_unavailable'));
+          if (event.response?.status === 'completed') finish();
+          else {
+            const error = new Error('voice_incomplete');
+            error.providerCode = safeProviderCode(event.response?.status_details?.error?.code);
+            finish(error);
+          }
+        } else if (event.type === 'error') {
+          const error = new Error('voice_unavailable');
+          error.providerCode = safeProviderCode(event.error?.code);
+          finish(error);
+        }
       } catch { finish(new Error('voice_unavailable')); }
     });
     if (signal.aborted) cancel();

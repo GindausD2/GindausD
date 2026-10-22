@@ -124,3 +124,18 @@ test('cancelling pending cloud speech closes its upstream socket', async () => {
   await assert.rejects(realtimeSpeech({ text: 'Hello.', voice: 'marin', env, signal: abort.signal, socketFactory: f.factory }), /cancelled/);
   assert.equal(f.closed, true);
 });
+
+test('Realtime failures retain approved diagnostics without provider messages', async () => {
+  for (const event of [
+    { type: 'error', error: { code: 'insufficient_quota', message: 'private text' } },
+    { type: 'response.done', response: { status: 'failed', status_details: { error: { code: 'insufficient_quota', message: 'private text' } } } },
+  ]) {
+    await assert.rejects(realtimeSpeech({ text: 'Hello.', voice: 'marin', env,
+      signal: new AbortController().signal,
+      socketFactory: () => {
+        const s = new EventEmitter(); s.close = () => {};
+        queueMicrotask(() => s.emit('message', JSON.stringify(event))); return s;
+      },
+    }), error => error.providerCode === 'insufficient_quota' && !error.message.includes('private'));
+  }
+});
