@@ -71,18 +71,18 @@ function GlassField({
 }) {
   return (
     <View style={styles.fieldWrap}>
-      <Ionicons name={icon} size={18} color="rgba(255,255,255,0.7)" style={styles.fieldIcon} />
+      <Ionicons name={icon} size={18} color="#686D67" style={styles.fieldIcon} />
       <TextInput
         style={[styles.fieldInput, rightElement ? { flex: 1 } : null]}
         placeholder={placeholder}
-        placeholderTextColor="rgba(255,255,255,0.45)"
+        placeholderTextColor="#777C76"
         value={value}
         onChangeText={onChangeText}
         secureTextEntry={secureTextEntry}
         keyboardType={keyboardType ?? 'default'}
         autoCapitalize={autoCapitalize ?? 'none'}
         autoCorrect={autoCorrect ?? false}
-        selectionColor="rgba(255,255,255,0.8)"
+        selectionColor="#292D2B"
       />
       {rightElement}
     </View>
@@ -264,7 +264,7 @@ export default function WelcomeScreen() {
   return (
     <View style={styles.root}>
       <LinearGradient
-        colors={['#2D1B69', '#4F46E5', '#7C3AED', '#C084FC']}
+        colors={['#F9F7F2', '#F4F1EB', '#E6EADF', '#DCE4DA']}
         start={{ x: 0.1, y: 0 }}
         end={{ x: 0.9, y: 1 }}
         style={StyleSheet.absoluteFill}
@@ -299,7 +299,7 @@ export default function WelcomeScreen() {
           {/* ═══ PAGE 0: Login ═══════════════════════════════════════════ */}
           <View style={styles.page}>
             <Pressable onPress={() => goToPage(PAGE_WELCOME)} hitSlop={12} style={styles.backRow}>
-              <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.8)" />
+              <Ionicons name="chevron-back" size={20} color="#292D2B" />
               <Text style={styles.backLabel}>Back</Text>
             </Pressable>
 
@@ -326,7 +326,7 @@ export default function WelcomeScreen() {
                     <Ionicons
                       name={showLoginPass ? 'eye-off-outline' : 'eye-outline'}
                       size={18}
-                      color="rgba(255,255,255,0.6)"
+                      color="#686D67"
                     />
                   </Pressable>
                 }
@@ -339,7 +339,7 @@ export default function WelcomeScreen() {
               disabled={anyLoading}
             >
               {isLoading
-                ? <ActivityIndicator color="#fff" />
+                ? <ActivityIndicator color="#292D2B" />
                 : <Text style={styles.primaryBtnText}>Login</Text>}
             </Pressable>
 
@@ -360,14 +360,14 @@ export default function WelcomeScreen() {
               <View style={styles.specular} />
               <Text style={styles.appName}>Max</Text>
               <Text style={styles.appTagline}>
-                Your AI companion,{'\n'}always in your pocket.
+                A little help.{'\n'}A little more space.
               </Text>
             </GlassCard>
 
             <View style={styles.swipeRow}>
               <Pressable style={styles.swipeBtn} onPress={() => goToPage(PAGE_LOGIN)}>
                 <GlassCard style={styles.swipePill}>
-                  <Ionicons name="chevron-back" size={16} color="#fff" />
+                  <Ionicons name="chevron-back" size={16} color="#292D2B" />
                   <Text style={styles.swipePillText}>Login</Text>
                 </GlassCard>
               </Pressable>
@@ -375,7 +375,7 @@ export default function WelcomeScreen() {
               <Pressable style={styles.swipeBtn} onPress={() => goToPage(PAGE_SIGNUP)}>
                 <GlassCard style={styles.swipePill}>
                   <Text style={styles.swipePillText}>Get started</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#fff" />
+                  <Ionicons name="chevron-forward" size={16} color="#292D2B" />
                 </GlassCard>
               </Pressable>
             </View>
@@ -391,7 +391,7 @@ export default function WelcomeScreen() {
                 <ActivityIndicator color="rgba(255,255,255,0.9)" />
               ) : (
                 <>
-                  <Ionicons name="flash" size={18} color="rgba(255,255,255,0.95)" />
+                  <Ionicons name="flash" size={18} color="#292D2B" />
                   <Text style={styles.demoBtnText}>Try Demo</Text>
                 </>
               )}
@@ -406,7 +406,7 @@ export default function WelcomeScreen() {
             showsVerticalScrollIndicator={false}
           >
             <Pressable onPress={() => goToPage(PAGE_WELCOME)} hitSlop={12} style={styles.backRow}>
-              <Ionicons name="chevron-back" size={20} color="rgba(255,255,255,0.8)" />
+              <Ionicons name="chevron-back" size={20} color="#292D2B" />
               <Text style={styles.backLabel}>Back</Text>
             </Pressable>
 
@@ -420,7 +420,7 @@ export default function WelcomeScreen() {
                   <Text style={styles.googleG}>G</Text>
                 </View>
                 {loadingProvider === 'google'
-                  ? <ActivityIndicator color="#fff" style={{ flex: 1 }} />
+                  ? <ActivityIndicator color="#292D2B" style={{ flex: 1 }} />
                   : <Text style={styles.socialBtnText}>Continue with Google</Text>}
               </GlassCard>
             </SocialBtn>
@@ -441,12 +441,12 @@ export default function WelcomeScreen() {
             {/* ── Email ── */}
             <SocialBtn onPress={handleEmailSignUp} disabled={anyLoading && loadingProvider !== 'email'}>
               <GlassCard style={styles.socialCard}>
-                <Ionicons name="mail-outline" size={19} color="#fff" />
+                <Ionicons name="mail-outline" size={19} color="#292D2B" />
                 <Text style={styles.socialBtnText}>Continue with Email</Text>
                 <Ionicons
                   name={showEmailForm ? 'chevron-up' : 'chevron-down'}
                   size={15}
-                  color="rgba(255,255,255,0.5)"
+                  color="#686D67"
                 />
               </GlassCard>
             </SocialBtn>
@@ -483,7 +483,7 @@ export default function WelcomeScreen() {
                         <Ionicons
                           name={showSignupPass ? 'eye-off-outline' : 'eye-outline'}
                           size={18}
-                          color="rgba(255,255,255,0.6)"
+                          color="#686D67"
                         />
                       </Pressable>
                     }
@@ -496,7 +496,7 @@ export default function WelcomeScreen() {
                   disabled={loadingProvider === 'email'}
                 >
                   {loadingProvider === 'email'
-                    ? <ActivityIndicator color="#fff" />
+                    ? <ActivityIndicator color="#292D2B" />
                     : <Text style={styles.primaryBtnText}>Sign Up</Text>}
                 </Pressable>
               </View>
@@ -518,11 +518,11 @@ export default function WelcomeScreen() {
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#1E1B4B' },
+  root: { flex: 1, backgroundColor: '#F4F1EB' },
 
   blob: { position: 'absolute', borderRadius: 999, opacity: 0.25 },
-  blob1: { width: 280, height: 280, backgroundColor: '#C084FC', top: -60, right: -80 },
-  blob2: { width: 220, height: 220, backgroundColor: '#818CF8', bottom: 60, left: -60 },
+  blob1: { width: 280, height: 280, backgroundColor: '#DBE3D5', top: -60, right: -80 },
+  blob2: { width: 220, height: 220, backgroundColor: '#E5DCCB', bottom: 60, left: -60 },
 
   dotsRow: {
     flexDirection: 'row',
@@ -531,8 +531,8 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 6,
   },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
-  dotActive: { width: 20, backgroundColor: '#fff', borderRadius: 3 },
+  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#B7BDB3' },
+  dotActive: { width: 20, backgroundColor: '#596F60', borderRadius: 3 },
 
   page: {
     width: W,
@@ -557,10 +557,10 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     alignSelf: 'flex-start',
   },
-  backLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 15, fontWeight: '500' },
+  backLabel: { color: '#292D2B', fontSize: 15, fontWeight: '500' },
 
-  formTitle: { fontSize: 30, fontWeight: '700', color: '#fff', marginBottom: 6 },
-  formSubtitle: { fontSize: 15, color: 'rgba(255,255,255,0.65)', marginBottom: 24 },
+  formTitle: { fontSize: 30, fontWeight: '700', color: '#292D2B', marginBottom: 6 },
+  formSubtitle: { fontSize: 15, color: '#686D67', marginBottom: 24 },
 
   glassCard: {
     borderRadius: 22,
@@ -569,7 +569,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.25)',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.06,
     shadowRadius: 32,
     elevation: 12,
   },
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   fieldIcon: { width: 20, textAlign: 'center' },
-  fieldInput: { flex: 1, fontSize: 15, color: '#fff', fontWeight: '400' },
+  fieldInput: { flex: 1, fontSize: 15, color: '#292D2B', fontWeight: '400' },
   fieldSep: { height: 1, backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 16 },
 
   primaryBtn: {
@@ -600,16 +600,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.06,
     shadowRadius: 16,
     elevation: 6,
   },
   btnDisabled: { opacity: 0.5 },
-  primaryBtnText: { fontSize: 17, fontWeight: '700', color: '#fff', letterSpacing: 0.3 },
+  primaryBtnText: { fontSize: 17, fontWeight: '700', color: '#292D2B', letterSpacing: 0.3 },
 
   linkRow: { alignItems: 'center', paddingVertical: 4 },
-  linkText: { fontSize: 14, color: 'rgba(255,255,255,0.6)' },
-  linkBold: { fontWeight: '700', color: 'rgba(255,255,255,0.95)' },
+  linkText: { fontSize: 14, color: '#686D67' },
+  linkBold: { fontWeight: '700', color: '#292D2B' },
 
   orbContainer: { marginBottom: 24 },
   logoCard: {
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.55)',
     borderRadius: 1,
   },
-  appName: { fontSize: 40, fontWeight: '800', color: '#fff', letterSpacing: 3, marginBottom: 10 },
+  appName: { fontSize: 40, fontWeight: '500', color: '#292D2B', letterSpacing: -1.5, marginBottom: 10 },
   appTagline: {
     fontSize: 15,
     color: 'rgba(255,255,255,0.75)',
@@ -652,7 +652,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
   },
-  swipePillText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  swipePillText: { color: '#292D2B', fontSize: 14, fontWeight: '600' },
 
   dividerRow: {
     flexDirection: 'row',
@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(255,255,255,0.2)' },
-  dividerText: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '500' },
+  dividerText: { color: '#686D67', fontSize: 13, fontWeight: '500' },
 
   demoBtn: {
     flexDirection: 'row',
@@ -676,7 +676,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
     backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  demoBtnText: { fontSize: 16, fontWeight: '600', color: 'rgba(255,255,255,0.95)' },
+  demoBtnText: { fontSize: 16, fontWeight: '600', color: '#292D2B' },
 
   // ── Social sign-up buttons ──────────────────────────────────────────────────
   socialBtn: { marginBottom: 12 },
@@ -692,7 +692,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '600',
-    color: '#fff',
+    color: '#292D2B',
   },
   // Google coloured G badge
   googleDot: {

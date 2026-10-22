@@ -6,34 +6,39 @@ import AuthenticationServices
 struct WelcomeView: View {
     @EnvironmentObject private var authService: AuthService
 
-    @State private var currentPage: Int = 1   // Start on Welcome page
+    @State private var currentPage: Int
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(initialMode: AuthEntryMode? = nil) {
+        _currentPage = State(initialValue: initialMode?.page ?? 1)
+    }
 
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                backgroundGradient.ignoresSafeArea()
+                CompanionCanvas()
                 ambientBlobs
 
                 VStack(spacing: 0) {
-                    pageIndicator
+                    navigationControl
                         .padding(.top, geo.safeAreaInsets.top + 18)
                         .padding(.bottom, 10)
 
-                    TabView(selection: $currentPage) {
-                        LoginPage(onNavigateToWelcome: { currentPage = 1 })
-                            .tag(0)
+                    if currentPage == 1 {
                         WelcomePage(onLogin: { currentPage = 0 }, onSignUp: { currentPage = 2 })
-                            .tag(1)
-                        SignUpPage(onBack: { currentPage = 1 }, onSignedUp: { currentPage = 3 })
-                            .tag(2)
+                    } else if currentPage == 3 {
                         PlanPage(onBack: {
                             authService.signOut()
                             currentPage = 2
                         })
-                        .tag(3)
+                    } else {
+                        TabView(selection: $currentPage) {
+                            LoginPage().tag(0)
+                            SignUpPage(onSignedUp: { currentPage = 3 }).tag(2)
+                        }
+                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                     }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
-                    .animation(.spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                 }
             }
         }
@@ -44,81 +49,124 @@ struct WelcomeView: View {
                 currentPage = 3
             }
         }
+        .onChange(of: authService.currentUser) { _, user in
+            if user != nil && user?.isDemo != true { currentPage = 3 }
+        }
     }
 
     // MARK: - Background
 
-    private var backgroundGradient: some View {
-        LinearGradient(
-            stops: [
-                .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                .init(color: Color(red: 0.97, green: 0.95, blue: 1.00), location: 0.5),
-                .init(color: Color(red: 0.93, green: 0.89, blue: 1.00), location: 1.0)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
     private var ambientBlobs: some View {
         ZStack {
             Circle()
-                .fill(Color(hex: "#7C3AED").opacity(0.07))
+                .fill(Color(hex: "#315E73").opacity(0.07))
                 .frame(width: 340, height: 340)
                 .blur(radius: 70)
                 .offset(x: -90, y: -210)
             Circle()
-                .fill(Color(hex: "#4F46E5").opacity(0.05))
+                .fill(Color(hex: "#315E73").opacity(0.05))
                 .frame(width: 280, height: 280)
                 .blur(radius: 80)
                 .offset(x: 110, y: 280)
             Circle()
-                .fill(Color(hex: "#C084FC").opacity(0.04))
+                .fill(Color(hex: "#315E73").opacity(0.04))
                 .frame(width: 200, height: 200)
                 .blur(radius: 60)
                 .offset(x: 60, y: -60)
         }
     }
 
-    // MARK: - Page Indicator
+    // MARK: - Authentication slider
 
-    private var pageIndicator: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<4) { i in
-                Capsule()
-                    .fill(currentPage == i ? Color(hex: "#7C3AED") : Color(hex: "#7C3AED").opacity(0.25))
-                    .frame(width: currentPage == i ? 22 : 7, height: 7)
-                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentPage)
+    @ViewBuilder private var navigationControl: some View {
+        if currentPage == 0 || currentPage == 2 {
+            HStack(spacing: 12) {
+                Button { currentPage = 1 } label: {
+                    Image(systemName: "arrow.left")
+                        .font(.body.weight(.medium))
+                        .frame(width: 44, height: 44)
+                        .glassCard(cornerRadius: 22, interactive: true)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back to welcome")
+                AuthModeSlider(selection: Binding(
+                    get: { currentPage == 0 ? .login : .signUp },
+                    set: { currentPage = $0.page; authService.authError = nil }
+                ))
             }
+            .disabled(authService.isLoading)
+            .padding(.horizontal, 24)
+            .frame(maxWidth: 460)
+        } else {
+            CompanionWordmark()
+                .padding(.vertical, 8)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 7)
-        .background(
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule().strokeBorder(Color(hex: "#7C3AED").opacity(0.15), lineWidth: 0.5)
-                )
-        )
     }
+
 }
 
 // MARK: - Shared Apple Sign-In Handler
 
-private func appleSignInHandler(authService: AuthService) -> (Result<ASAuthorization, Error>) -> Void {
+private func appleSignInHandler(authService: AuthService, linkGuest: Bool = true) -> (Result<ASAuthorization, Error>) -> Void {
     return { result in
+        if case .failure(let error) = result {
+            Task { @MainActor in authService.cancelAppleSignIn(); authService.authError = error.localizedDescription }
+            return
+        }
         guard case .success(let auth) = result,
               let credential = auth.credential as? ASAuthorizationAppleIDCredential,
               let tokenData = credential.identityToken,
               let idToken = String(data: tokenData, encoding: .utf8)
-        else { return }
+        else {
+            Task { @MainActor in authService.authError = "Apple sign-in couldn't complete. Please try again." }
+            return
+        }
         let fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
             .compactMap { $0 }.joined(separator: " ")
         Task {
             await authService.signInWithApple(
                 idToken: idToken,
-                name: fullName.isEmpty ? nil : fullName
+                name: fullName.isEmpty ? nil : fullName,
+                linkGuest: linkGuest
             )
+        }
+    }
+}
+
+// MARK: - Continue after the guest demo
+
+struct DemoUpgradeView: View {
+    @EnvironmentObject private var authService: AuthService
+
+    var body: some View {
+        ZStack {
+            CompanionCanvas()
+            VStack(spacing: 22) {
+                OrbView(state: .idle, size: 110)
+                Text(authService.isDemoExpired ? "Your seven-day demo has ended" : "Keep Max with you")
+                    .font(.title2.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                Text("Continue with Apple to choose your subscription and keep your saved thoughts.")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                SignInWithAppleButton(.continue, onRequest: { request in
+                    authService.prepareAppleSignIn(request)
+                }, onCompletion: appleSignInHandler(authService: authService))
+                    .signInWithAppleButtonStyle(.black)
+                    .frame(height: 52)
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .disabled(authService.isLoading)
+                if authService.isLoading { ProgressView() }
+                if let error = authService.authError {
+                    Text(error).font(.footnote).foregroundStyle(.red)
+                        .multilineTextAlignment(.center)
+                }
+                if !authService.isDemoExpired {
+                    Button("Back to my demo") { authService.cancelDemoUpgrade() }
+                }
+            }
+            .padding(30)
+            .frame(maxWidth: 440)
         }
     }
 }
@@ -148,7 +196,7 @@ private struct LiquidGlassPrimaryButton: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
+                            colors: [Color(hex: "#315E73"), Color(hex: "#315E73")],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
@@ -173,238 +221,159 @@ private struct LiquidGlassPrimaryButton: View {
             }
         )
         .foregroundStyle(.white)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.35), radius: 14, x: 0, y: 5)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.12), radius: 30, x: 0, y: 10)
+        .shadow(color: Color(hex: "#315E73").opacity(0.35), radius: 14, x: 0, y: 5)
+        .shadow(color: Color(hex: "#315E73").opacity(0.12), radius: 30, x: 0, y: 10)
         .disabled(isLoading || isDisabled)
         .opacity(isDisabled ? 0.55 : 1.0)
     }
 }
 
-// MARK: - Login Page
+// MARK: - Entry screens
 
 private struct LoginPage: View {
-    var onNavigateToWelcome: () -> Void
-    @EnvironmentObject private var authService: AuthService
+    @State private var showDemo = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Spacer().frame(height: 48)
+        AuthEntryPage(mode: .login, onDemo: { showDemo = true })
+            .fullScreenCover(isPresented: $showDemo) { DemoOnboardingView() }
+    }
+}
 
-                VStack(spacing: 8) {
-                    Text("Welcome back")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(.primary)
-                    Text("Sign in to continue with Max")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, 32)
+private struct SignUpPage: View {
+    var onSignedUp: () -> Void
+    @EnvironmentObject private var authService: AuthService
+    @State private var showDemo = false
 
-                GlassCard(
-                    cornerRadius: 26,
-                    depth: .ultraThin,
-                    padding: EdgeInsets(top: 26, leading: 22, bottom: 26, trailing: 22)
-                ) {
-                    VStack(spacing: 18) {
-                        if let err = authService.authError {
-                            Text(err)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .multilineTextAlignment(.center)
-                        }
+    var body: some View {
+        AuthEntryPage(mode: .signUp, onDemo: { showDemo = true })
+            .fullScreenCover(isPresented: $showDemo) { DemoOnboardingView() }
+            .onChange(of: authService.currentUser) { _, user in
+                if user != nil && user?.isDemo != true { onSignedUp() }
+            }
+    }
+}
 
-                        SignInWithAppleButton(
-                            onRequest: { $0.requestedScopes = [.fullName, .email] },
-                            onCompletion: appleSignInHandler(authService: authService)
-                        )
-                        .signInWithAppleButtonStyle(.black)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .cornerRadius(16)
-                        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 3)
-                        .disabled(authService.isLoading)
+private struct AuthEntryPage: View {
+    let mode: AuthEntryMode
+    var onDemo: () -> Void
+    @EnvironmentObject private var authService: AuthService
+    @Environment(\.colorScheme) private var colorScheme
+    private var isLogin: Bool { mode == .login }
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 24) {
+                EntryHero(
+                    eyebrow: isLogin ? "YOUR SPACE IS HERE" : "MEET YOUR EVERYDAY COMPANION",
+                    title: isLogin ? "A little more\nyou, again." : "Make room\nfor what matters.",
+                    subtitle: isLogin ? "Pick up your thoughts, plans and little moments with Max." : "A thought, a plan, a little help.\nLet’s make your day feel lighter.",
+                    orbSize: 96
+                )
+
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(isLogin ? "Welcome back" : "Your space starts here")
+                        .font(.title3.weight(.semibold))
+                    if isLogin && authService.hasGuestSession {
+                        Text("Signing in to another account keeps your demo’s saved items separate.")
+                            .font(.footnote).foregroundStyle(.secondary)
                     }
+                    SignInWithAppleButton(
+                        isLogin ? .signIn : .signUp,
+                        onRequest: { authService.prepareAppleSignIn($0) },
+                        onCompletion: appleSignInHandler(authService: authService, linkGuest: !isLogin)
+                    )
+                    .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                    .frame(height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .disabled(authService.isLoading)
+                    if authService.isLoading { ProgressView().frame(maxWidth: .infinity) }
+                    if let error = authService.authError {
+                        Text(error).font(.footnote).foregroundStyle(.red)
+                    }
+                    Label("Your own place for thoughts and plans", systemImage: "lock")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 22)
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassCard(cornerRadius: 28)
 
-                Button { onNavigateToWelcome() } label: {
-                    HStack(spacing: 5) {
-                        Text("New to Max?")
-                            .foregroundStyle(.secondary)
-                        Text("Get started →")
-                            .foregroundStyle(Color(hex: "#7C3AED"))
-                            .fontWeight(.semibold)
+                Button(action: onDemo) {
+                    HStack(spacing: 8) {
+                        Text("Just looking around?").foregroundStyle(.secondary)
+                        Text("Try demo").fontWeight(.semibold)
+                        Image(systemName: "arrow.up.right").font(.caption.weight(.semibold))
                     }
                     .font(.subheadline)
+                    .frame(minHeight: 44)
                 }
-                .padding(.top, 22)
-
-                Spacer().frame(height: 60)
+                .buttonStyle(.plain)
+                .disabled(authService.isLoading)
+                Text("7 days to meet Max. No Apple sign-in or payment needed for the demo.")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 24)
+            .padding(.top, 14)
+            .padding(.bottom, 34)
+            .frame(maxWidth: 460)
+            .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
     }
 }
-
-// MARK: - Welcome Page (Center)
 
 private struct WelcomePage: View {
     var onLogin: () -> Void
     var onSignUp: () -> Void
     @EnvironmentObject private var authService: AuthService
-
-    @State private var showDemoOnboarding: Bool = false
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            OrbView(state: .idle, size: 120)
-                .padding(.bottom, 28)
-
-            GlassCard(
-                cornerRadius: 26,
-                depth: .ultraThin,
-                padding: EdgeInsets(top: 22, leading: 28, bottom: 22, trailing: 28)
-            ) {
-                VStack(spacing: 12) {
-                    MaxLogoView(color: Color(hex: "#7C3AED"), width: 180)
-                        .padding(.bottom, 2)
-                    Text("Your AI personal assistant")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Text("Powered by Claude")
-                        .font(.caption)
-                        .foregroundStyle(Color.secondary.opacity(0.7))
-                }
-            }
-            .padding(.horizontal, 44)
-            .padding(.bottom, 32)
-
-            HStack(spacing: 14) {
-                Button { onLogin() } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.left").font(.caption.weight(.semibold))
-                        Text("Login").font(.subheadline.weight(.semibold))
-                    }
-                }
-                .buttonStyle(GlassPillButtonStyle())
-
-                Button { onSignUp() } label: {
-                    HStack(spacing: 6) {
-                        Text("Get started").font(.subheadline.weight(.semibold))
-                        Image(systemName: "arrow.right").font(.caption.weight(.semibold))
-                    }
-                }
-                .buttonStyle(GlassPillButtonStyle(filled: true))
-            }
-            .padding(.bottom, 18)
-
-            Button {
-                showDemoOnboarding = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13))
-                    Text("Try Demo")
-                        .font(.subheadline.weight(.medium))
-                }
-                .foregroundStyle(.secondary)
-            }
-            .disabled(authService.isLoading)
-            .fullScreenCover(isPresented: $showDemoOnboarding) {
-                DemoOnboardingView()
-                    .environmentObject(authService)
-            }
-
-            Spacer()
-        }
-        .padding(.horizontal, 28)
-    }
-}
-
-// MARK: - Sign Up Page
-
-private struct SignUpPage: View {
-    var onBack: () -> Void
-    var onSignedUp: () -> Void
-    @EnvironmentObject private var authService: AuthService
+    @State private var showDemo = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Spacer().frame(height: 48)
-
-                VStack(spacing: 8) {
-                    Text("Create account")
-                        .font(.system(size: 34, weight: .bold))
-                        .foregroundStyle(.primary)
-                    Text("Sign up with Apple to get started")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, 32)
-
-                GlassCard(
-                    cornerRadius: 26,
-                    depth: .ultraThin,
-                    padding: EdgeInsets(top: 22, leading: 22, bottom: 22, trailing: 22)
-                ) {
-                    VStack(spacing: 16) {
-                        if let err = authService.authError {
-                            Text(err)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .multilineTextAlignment(.center)
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 28) {
+                EntryHero(eyebrow: "A LITTLE SPACE FOR YOUR DAY", title: "Life feels lighter.\nWith Max.", subtitle: "Your thoughts. Your plans.\nA companion for the everyday.", orbSize: 164)
+                VStack(spacing: 14) {
+                    EntryPrimaryButton(title: "Get started", action: onSignUp)
+                    Button { showDemo = true } label: {
+                        HStack {
+                            Text("Try the 7-day demo").fontWeight(.semibold)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
                         }
-
-                        SignInWithAppleButton(
-                            onRequest: { $0.requestedScopes = [.fullName, .email] },
-                            onCompletion: appleSignInHandler(authService: authService)
-                        )
-                        .signInWithAppleButtonStyle(.black)
-                        .frame(maxWidth: .infinity, minHeight: 52)
-                        .cornerRadius(16)
-                        .shadow(color: .black.opacity(0.08), radius: 8, x: 0, y: 3)
-                        .disabled(authService.isLoading)
+                        .padding(18)
+                        .glassCard(cornerRadius: 22, interactive: true)
                     }
+                    .buttonStyle(.plain)
+                    .disabled(authService.isLoading)
+                    Text("No Apple sign-in or payment for the demo")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 22)
-
-                Button { onBack() } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.left").font(.caption)
-                        Text("Back")
-                    }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                Button(action: onLogin) {
+                    Text("Already have a space here? ").foregroundStyle(.secondary)
+                    + Text("Log in").bold()
                 }
-                .padding(.top, 22)
-
-                Spacer().frame(height: 60)
+                .font(.subheadline)
+                .frame(minHeight: 44)
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal)
+            .padding(28)
+            .frame(maxWidth: 460)
+            .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .onChange(of: authService.currentUser) { _, user in
-            if user != nil && user?.isDemo != true {
-                onSignedUp()
-            }
-        }
+        .fullScreenCover(isPresented: $showDemo) { DemoOnboardingView() }
     }
 }
 
 // MARK: - Plan Page (Step 3 of signup)
 
-private struct PlanPage: View {
+struct PlanPage: View {
     var onBack: () -> Void
     @EnvironmentObject private var authService: AuthService
     @StateObject private var store = StoreKitService.shared
-    @State private var selectedPlan: String = StoreKitService.yearlyID
+    @State private var selectedPlan: String = StoreKitService.monthlyID
 
-    private let violet = Color(hex: "#7C3AED")
+    private let violet = Color(hex: "#315E73")
     private let amber  = Color(hex: "#F59E0B")
 
     var body: some View {
@@ -434,18 +403,8 @@ private struct PlanPage: View {
                 // Plan cards
                 VStack(spacing: 10) {
                     WelcomePlanCard(
-                        title: "Yearly",
-                        price: store.yearlyProduct?.displayPrice ?? "$119.99",
-                        period: "/ year",
-                        subtext: "Best value · save 17%",
-                        badge: "Most Popular",
-                        isSelected: selectedPlan == StoreKitService.yearlyID,
-                        violet: violet
-                    ) { selectedPlan = StoreKitService.yearlyID }
-
-                    WelcomePlanCard(
                         title: "Monthly",
-                        price: store.monthlyProduct?.displayPrice ?? "$9.99",
+                        price: store.monthlyProduct?.displayPrice ?? "Unavailable",
                         period: "/ month",
                         subtext: "Flexible · cancel anytime",
                         badge: nil,
@@ -464,9 +423,9 @@ private struct PlanPage: View {
                 ) {
                     VStack(spacing: 10) {
                         ForEach([
-                            ("infinity",           "Unlimited conversations"),
-                            ("bolt.fill",          "Priority AI responses"),
-                            ("icloud.fill",        "Full iCloud sync"),
+                            ("bubble.left.and.bubble.right", "AI conversations with daily limits"),
+                            ("waveform",           "Voice and text conversations"),
+                            ("lock.fill",          "Memories saved on this iPhone"),
                             ("bell.badge.fill",    "Smart reminders & alerts")
                         ], id: \.0) { icon, text in
                             HStack(spacing: 12) {
@@ -502,7 +461,7 @@ private struct PlanPage: View {
                 LiquidGlassPrimaryButton(
                     title: store.isLoading ? "" : subscribeLabel,
                     isLoading: store.isLoading,
-                    isDisabled: store.isLoading
+                    isDisabled: store.isLoading || selectedProductUnavailable
                 ) {
                     Task {
                         let product = selectedPlan == StoreKitService.yearlyID
@@ -512,6 +471,15 @@ private struct PlanPage: View {
                 }
                 .padding(.horizontal, 22)
                 .padding(.bottom, 12)
+
+                if selectedProductUnavailable && !store.isLoading {
+                    Text("Subscriptions are temporarily unavailable. Please try again later.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 12)
+                }
 
                 // Footer
                 VStack(spacing: 8) {
@@ -524,6 +492,8 @@ private struct PlanPage: View {
                     }
                     .disabled(store.isLoading)
 
+                    Text("Includes up to 100 AI requests and 3,000 OpenAI voice characters per UTC day. Each tool continuation counts as a request. Max’s voice is AI-generated.")
+                        .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Text("Auto-renews. Cancel anytime in Settings → Apple ID.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
@@ -548,11 +518,14 @@ private struct PlanPage: View {
     }
 
     private var subscribeLabel: String {
-        let price = selectedPlan == StoreKitService.yearlyID
-            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
-            : (store.monthlyProduct?.displayPrice ?? "$9.99")
+        let product = selectedPlan == StoreKitService.yearlyID ? store.yearlyProduct : store.monthlyProduct
+        guard let product else { return "Subscriptions unavailable" }
         let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
-        return "Subscribe — \(price)/\(period)"
+        return "Subscribe — \(product.displayPrice)/\(period)"
+    }
+
+    private var selectedProductUnavailable: Bool {
+        selectedPlan == StoreKitService.yearlyID ? store.yearlyProduct == nil : store.monthlyProduct == nil
     }
 }
 

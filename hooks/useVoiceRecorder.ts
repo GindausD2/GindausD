@@ -29,6 +29,11 @@ export function useVoiceRecorder(settings: AssistantSettings | null): UseVoiceRe
   const start = useCallback(async () => {
     try {
       setErrorMessage(null);
+      if (!settings?.apiKey) {
+        setErrorMessage('Voice input is not available yet. Please type your message.');
+        setState('error');
+        return;
+      }
       await startRecording();
       setState('recording');
       startTimeRef.current = Date.now();
@@ -44,7 +49,7 @@ export function useVoiceRecorder(settings: AssistantSettings | null): UseVoiceRe
       setErrorMessage(msg);
       setState('error');
     }
-  }, []);
+  }, [settings?.apiKey]);
 
   const stopAndTranscribe = useCallback(async (): Promise<string | null> => {
     if (timerRef.current) {
@@ -75,7 +80,7 @@ export function useVoiceRecorder(settings: AssistantSettings | null): UseVoiceRe
           return null;
         }
       } else {
-        setErrorMessage('API key required for voice input. Set it in Settings.');
+        setErrorMessage('Voice input is not available yet. Please type your message.');
         setState('error');
         return null;
       }

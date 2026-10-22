@@ -9,26 +9,31 @@ struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
     @AppStorage("max:onboarding_complete") private var onboardingComplete: Bool = false
 
-    @StateObject private var viewModel = HomeViewModel()
-    @State private var showSettings: Bool = false
+    @ObservedObject private var playback = VoiceService.shared
+    @StateObject private var viewModel: HomeViewModel
+    @State private var showCompanion: Bool = false
+    @State private var showProfile = false
+    @State private var isTyping: Bool
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
+    @FocusState private var composerFocused: Bool
 
     private let liveActivity = LiveActivityService.shared
 
+    init(viewModel: HomeViewModel? = nil) {
+        _viewModel = StateObject(wrappedValue: viewModel ?? HomeViewModel())
+        _isTyping = State(initialValue: !(viewModel?.inputText.isEmpty ?? true))
+    }
+
     var body: some View {
-        ZStack(alignment: .bottom) {
-            // ── Liquid glass background ───────────────────────────────────────
-            LinearGradient(
-                stops: [
-                    .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                    .init(color: Color(red: 0.97, green: 0.96, blue: 1.00), location: 0.5),
-                    .init(color: Color(red: 0.94, green: 0.91, blue: 1.00), location: 1.0)
-                ],
-                startPoint: .top, endPoint: .bottom
-            ).ignoresSafeArea()
+        ZStack {
+            CompanionCanvas()
 
             VStack(spacing: 0) {
                 topBar
@@ -36,28 +41,47 @@ struct HomeView: View {
                     trialBanner
                 }
                 transcriptArea
-                    .padding(.bottom, 140) // space for dock
             }
-
-            // ── Image preview bar ──────────────────────────────────────────────
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
-                Spacer()
                 if let img = pendingImage {
                     imagePendingBar(img: img)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                // ── Floating glass dock ────────────────────────────────────────
                 bottomDock
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: pendingImage != nil)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
+        }
+        .onDisappear { viewModel.endConversation() }
+        .onChange(of: viewModel.inputText) { _, text in
+            if !text.isEmpty { isTyping = true }
+        }
+        .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
+        .alert("Voice input unavailable", isPresented: Binding(
+            get: { viewModel.dictationError != nil },
+            set: { if !$0 { viewModel.dictationError = nil } }
+        )) {
+            Button("OK", role: .cancel) { viewModel.dictationError = nil }
+        } message: { Text(viewModel.dictationError ?? "Please try again.") }
+        .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+        .sheet(isPresented: $showCompanion) { CompanionView() }
+        .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
+        .onChange(of: scenePhase) { _, phase in if phase == .background { viewModel.endConversation() } }
+        .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
+            UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
+            if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
         }
         .sheet(isPresented: $showHistory) {
             ConversationHistoryView(onNewChat: {
                 showHistory = false
+                isTyping = false
+                composerFocused = false
                 viewModel.startNewChat()
             })
         }
@@ -70,10 +94,6 @@ struct HomeView: View {
             pendingImage = img
             capturedImage = nil
         }
-        .sheet(isPresented: $showSettings) {
-            SettingsView(onClearHistory: viewModel.clearHistory)
-                .environmentObject(authService)
-        }
         .fullScreenCover(isPresented: Binding(
             get: { !onboardingComplete },
             set: { if !$0 { onboardingComplete = true } }
@@ -82,7 +102,22 @@ struct HomeView: View {
         }
         .onAppear {
             viewModel.loadMessages()
-            liveActivity.startPersistentSession() // ensure island is alive
+            liveActivity.startPersistentSession()
+            if UserDefaults.standard.bool(forKey: "max.pendingVoiceActivation") {
+                showProfile = false
+                UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
+                viewModel.activateVoice()
+            }
+            if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
+                showProfile = false
+                UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
+                viewModel.startMorningBriefing()
+            }
+            if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
+                showProfile = false
+                UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
+                viewModel.inputText = prompt; viewModel.sendTextMessage()
+            }
         }
         // ── Dynamic Island ─────────────────────────────────────────────────────
         .onChange(of: viewModel.conversationState) { _, newState in
@@ -102,11 +137,15 @@ struct HomeView: View {
         }
         // Start briefing when user taps the morning notification
         .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+            showProfile = false
+            UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
             viewModel.startMorningBriefing()
         }
         // Start listening when user taps the home screen widget
         .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
-            viewModel.handleOrbTap()
+            showProfile = false
+            UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
+            viewModel.activateVoice()
         }
     }
 
@@ -126,22 +165,22 @@ struct HomeView: View {
                 .font(.system(size: 13, weight: .medium))
             Spacer()
             Button {
-                authService.signOut()   // clears demo → WelcomeView shows plan page
+                authService.beginDemoUpgrade()
             } label: {
-                Text("Subscribe")
+                Text("Continue with Apple")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
-                    .background(urgent ? Color.red : Color(hex: "#7C3AED"),
+                    .background(urgent ? Color.red : Color(hex: "#315E73"),
                                 in: Capsule())
             }
         }
-        .foregroundStyle(urgent ? Color.red : Color(hex: "#7C3AED"))
+        .foregroundStyle(urgent ? Color.red : Color(hex: "#315E73"))
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .background(
-            (urgent ? Color.red : Color(hex: "#7C3AED")).opacity(0.08)
+            (urgent ? Color.red : Color(hex: "#315E73")).opacity(0.08)
         )
     }
 
@@ -149,183 +188,302 @@ struct HomeView: View {
 
     private var topBar: some View {
         HStack {
-            // Settings
-            Button { showSettings = true } label: {
-                Image(systemName: "gearshape")
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(Color(white: 0.35))
+            Button {
+                pendingImage = nil
+                showProfile = false
+                isTyping = false
+                composerFocused = false
+                viewModel.startNewChat()
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 18, weight: .regular))
                     .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
             }
+            .accessibilityLabel("New conversation")
 
             Spacer()
-
-            // Logo
-            MaxLogoView(color: Color(white: 0.15), width: 54)
-
+            MaxLogoView(color: .primary, width: 68)
+                .accessibilityLabel("Max")
             Spacer()
 
-            // Conversation history
-            Button { showHistory = true } label: {
-                Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(Color(white: 0.35))
+            Button { viewModel.endConversation(); composerFocused = false; showProfile = true } label: {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 18, weight: .regular))
                     .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
             }
+            .accessibilityLabel("Your space and settings")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            ZStack {
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                Rectangle()
-                    .fill(Color.white.opacity(0.65))
-                // Specular top streak
-                VStack(spacing: 0) {
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.90), .clear],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                        .frame(height: 2)
-                    Spacer()
-                }
-                // Bottom hairline border
-                VStack(spacing: 0) {
-                    Spacer()
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.12), .clear],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
-                        .frame(height: 0.5)
-                }
-            }
-            .shadow(color: .black.opacity(0.06), radius: 12, x: 0, y: 3)
-            .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.04), radius: 20, x: 0, y: 6)
-        )
+        .buttonStyle(.plain)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 22)
+        .padding(.top, 10)
+        .padding(.bottom, 8)
     }
 
     // MARK: - Transcript
 
     private var transcriptArea: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    if viewModel.messages.isEmpty {
-                        emptyState.id("empty")
-                    } else {
-                        ForEach(viewModel.messages) { msg in
-                            TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
-                                .id(msg.id)
+        GeometryReader { geometry in
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        if viewModel.messages.isEmpty {
+                            emptyState(availableHeight: geometry.size.height)
+                                .frame(minHeight: max(0, geometry.size.height - 24))
+                                .id("empty")
+                        } else {
+                            ForEach(viewModel.messages) { msg in
+                                TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
+                                    .id(msg.id)
+                            }
                         }
                     }
+                    .padding(.vertical, 12)
                 }
-                .padding(.vertical, 14)
-            }
-            .onChange(of: viewModel.messages.count) { _, _ in
-                if let last = viewModel.messages.last {
-                    withAnimation(.easeOut(duration: 0.25)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                .onChange(of: viewModel.messages.count) { _, _ in
+                    if let last = viewModel.messages.last {
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
                 }
-            }
-            .onChange(of: viewModel.streamingText) { _, _ in
-                if let last = viewModel.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                .onChange(of: viewModel.streamingText) { _, _ in
+                    if let last = viewModel.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
+                }
             }
         }
     }
 
-    private var emptyState: some View {
-        VStack(spacing: 14) {
-            OrbView(state: .idle, size: 64)
-            Text("Hi! I'm Max")
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(Color(white: 0.15))
-            Text("Press the orb to talk to Max\nor tap the camera to show something")
-                .font(.subheadline)
-                .foregroundStyle(Color(white: 0.5))
+    private func emptyState(availableHeight: CGFloat) -> some View {
+        let compact = availableHeight < 420 || dynamicTypeSize.isAccessibilitySize
+        return VStack(spacing: 18) {
+            Spacer(minLength: 16)
+            if !compact {
+                Text("A LITTLE SPACE FOR YOUR DAY")
+                    .font(.caption2.weight(.semibold))
+                    .tracking(2)
+                    .foregroundStyle(.secondary)
+            }
+            Text("Make room for\nwhat matters.")
+                .font(.system(compact ? .title : .largeTitle, design: .rounded).weight(.medium))
+                .tracking(-1)
                 .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Text("A thought, a plan, a little help.\nStart wherever you are.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            if !compact && !viewModel.isDictating && viewModel.inputText.isEmpty {
+                HStack(spacing: 10) {
+                    draftSuggestion("Plan my day", icon: "sun.horizon")
+                    draftSuggestion("Save a thought", icon: "square.and.pencil")
+                }.padding(.top, 10)
+            }
+            Spacer(minLength: 16)
         }
         .frame(maxWidth: .infinity)
-        .padding(.top, 80)
-        .padding(.horizontal, 40)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 12)
+    }
+
+    private func draftSuggestion(_ title: String, icon: String) -> some View {
+        Button {
+            viewModel.inputText = title == "Save a thought" ? "Remember this: " : "Help me plan my day. "
+            isTyping = true
+            composerFocused = true
+        } label: {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .glassCard(cornerRadius: 23, interactive: true)
+        }
+        .buttonStyle(.plain)
+        .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
+        .accessibilityHint("Start an editable message")
     }
 
     // MARK: - Bottom Dock (liquid glass)
 
-    private var bottomDock: some View {
-        VStack(spacing: 0) {
-            // Status pill
-            if viewModel.conversationState != .idle || viewModel.isTranscribing {
-                statusPill
-                    .padding(.bottom, 10)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
-            // Main dock row
-            HStack(spacing: 0) {
-                // Places memory
-                placesButton
-                    .frame(maxWidth: .infinity)
-
-                // Orb (voice) — centre
-                OrbView(state: viewModel.orbState, size: 100)
-                    .onTapGesture { viewModel.handleOrbTap() }
-                    .frame(maxWidth: .infinity)
-
-                // Camera (vision)
-                cameraButton
-                    .frame(maxWidth: .infinity)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 18)
-            .padding(.bottom, 20)
+    @ViewBuilder private var bottomDock: some View {
+        if viewModel.isDictating {
+            VoiceToTextPanel(
+                transcript: viewModel.liveTranscript,
+                isPreparing: viewModel.conversationState != .listening && !viewModel.isTranscribing,
+                isFinishing: viewModel.isTranscribing,
+                onCancel: viewModel.endConversation,
+                onDone: viewModel.handleMicTap
+            )
+        } else {
+            regularDock
         }
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 36, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 36, style: .continuous)
-                    .fill(Color.white.opacity(0.55))
-                // Specular top streak
-                VStack(spacing: 0) {
-                    RoundedRectangle(cornerRadius: 36, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [.white.opacity(0.85), .clear],
-                                startPoint: .top,
-                                endPoint: UnitPoint(x: 0.5, y: 0.45)
-                            )
-                        )
-                        .frame(height: 48)
-                    Spacer()
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 36, style: .continuous))
+    }
+
+    private var regularDock: some View {
+        VStack(spacing: 8) {
+            if viewModel.conversationState != .idle || viewModel.isTranscribing {
+                statusPill.transition(.opacity)
+            } else if !isTyping {
+                Text(viewModel.inputText.isEmpty ? "Tap the orb to hear Max · AI voice" : "Draft ready · tap Type to edit")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 36, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0.90), location: 0.0),
-                            .init(color: .white.opacity(0.50), location: 0.35),
-                            .init(color: .white.opacity(0.15), location: 0.70),
-                            .init(color: .clear,               location: 1.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.2
-                )
-        )
-        .shadow(color: .black.opacity(0.10), radius: 24, x: 0, y: -4)
-        .shadow(color: Color(red: 0.49, green: 0.23, blue: 0.93).opacity(0.08), radius: 40, x: 0, y: -10)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: viewModel.conversationState)
+            if isTyping {
+                textComposer
+            } else {
+                orbDock
+            }
+            floatingShortcuts
+        }
+        .buttonStyle(.plain)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.conversationState)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: isTyping)
+    }
+
+    private var orbDock: some View {
+        HStack(spacing: 12) {
+            conversationActions
+                .glassCard(cornerRadius: 22, interactive: true)
+            Spacer(minLength: 0)
+            Button { viewModel.handleOrbTap() } label: {
+                OrbView(state: viewModel.orbState, size: 88)
+            }
+            .accessibilityLabel(viewModel.orbAccessibilityLabel)
+            .accessibilityHint(viewModel.orbAccessibilityHint)
+            Spacer(minLength: 0)
+            microphoneButton
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 4)
+    }
+
+    private var conversationActions: some View {
+        Menu {
+            Button("Type a message", systemImage: "keyboard") { openTextEntry() }
+            Button("New conversation", systemImage: "square.and.pencil") {
+                pendingImage = nil
+                composerFocused = false
+                isTyping = false
+                viewModel.startNewChat()
+            }
+            Button("Attach a photo", systemImage: "photo") { showCamera = true }
+            Button("Conversation history", systemImage: "clock.arrow.circlepath") {
+                viewModel.endConversation(); showHistory = true
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityLabel("Conversation actions")
+    }
+
+    private var microphoneButton: some View {
+        Button { viewModel.handleMicTap() } label: {
+            Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color(UIColor.systemBackground))
+                .frame(width: 44, height: 44)
+                .background(Color(UIColor.label), in: Circle())
+        }
+        .disabled(viewModel.isTranscribing)
+        .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
+        .accessibilityHint("Turn your voice into editable text")
+    }
+
+    private var textComposer: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    composerFocused = false
+                    isTyping = false
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .accessibilityLabel("Return to orb")
+                .accessibilityHint("Keep your draft and hide text entry")
+                TextField("Write a message…", text: $viewModel.inputText, axis: .vertical)
+                    .font(.body)
+                    .lineLimit(1...4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .focused($composerFocused)
+                    .submitLabel(.send)
+                    .onSubmit { sendDraft() }
+                    .disabled(viewModel.conversationState != .idle || viewModel.isTranscribing)
+                    .accessibilityLabel("Message Max")
+                if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.conversationState == .idle {
+                    Button { sendDraft() } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .semibold)).foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(Color(hex: "#315E73"), in: Circle())
+                    }
+                    .disabled(viewModel.isTranscribing)
+                    .accessibilityLabel("Send message")
+                } else {
+                    microphoneButton
+                }
+            }
+            if viewModel.prefersTextReplyForDraft {
+                Text("Voice draft · edit, then send")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.leading, 4)
+        .padding(.trailing, 10)
+        .padding(.vertical, 10)
+        .glassCard(cornerRadius: 34, depth: .regular)
+    }
+
+    private var floatingShortcuts: some View {
+        HStack(spacing: 20) {
+            if dynamicTypeSize.isAccessibilitySize {
+                Button(action: openTextEntry) {
+                    Label("Type", systemImage: "keyboard").frame(minHeight: 44)
+                }
+                Menu {
+                    Button("Your day", systemImage: "square.grid.2x2") {
+                        viewModel.endConversation(); showCompanion = true
+                    }
+                    Button("Morning briefing", systemImage: "sun.horizon") { viewModel.startMorningBriefing() }
+                } label: {
+                    Label("More", systemImage: "ellipsis").frame(minHeight: 44)
+                }
+                .accessibilityLabel("More companion tools")
+            } else {
+                Button { viewModel.endConversation(); showCompanion = true } label: {
+                    Label("Your day", systemImage: "square.grid.2x2").frame(minHeight: 44)
+                }
+                Button(action: openTextEntry) {
+                    Label("Type", systemImage: "keyboard").frame(minHeight: 44)
+                }
+                Button { viewModel.startMorningBriefing() } label: {
+                    Label("Briefing", systemImage: "sun.horizon").frame(minHeight: 44)
+                }
+            }
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+    }
+
+    private func openTextEntry() {
+        viewModel.endConversation()
+        isTyping = true
+        composerFocused = true
+    }
+
+    private func sendDraft() {
+        viewModel.sendTextMessage()
+        if viewModel.inputText.isEmpty {
+            composerFocused = false
+            isTyping = false
+        }
     }
 
     // MARK: - Status Pill
@@ -350,12 +508,13 @@ struct HomeView: View {
     }
 
     private var statusColor: Color {
-        if viewModel.isTranscribing { return Color(red: 0.95, green: 0.60, blue: 0.11) }
+        if colorScheme == .dark { return Color(hex: "#B8E3F0") }
+        if viewModel.isTranscribing { return Color(hex: "#315E73") }
         switch viewModel.conversationState {
         case .idle:      return .gray
-        case .listening: return Color(red: 0.94, green: 0.27, blue: 0.27)
-        case .thinking:  return Color(red: 0.49, green: 0.23, blue: 0.93)
-        case .speaking:  return Color(red: 0.23, green: 0.51, blue: 0.96)
+        case .listening: return Color(hex: "#315E73")
+        case .thinking:  return Color(hex: "#315E73")
+        case .speaking:  return Color(hex: "#315E73")
         }
     }
 
@@ -387,19 +546,6 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Places Button
-
-    private var placesButton: some View {
-        Button {
-            viewModel.sendPlacesQuery()
-        } label: {
-            Image(systemName: "mappin.and.ellipse")
-                .font(.system(size: 21, weight: .regular))
-                .foregroundStyle(Color(white: 0.35))
-                .frame(width: 44, height: 44)
-        }
-    }
-
     // MARK: - Image Pending Bar
 
     private func imagePendingBar(img: UIImage) -> some View {
@@ -427,13 +573,14 @@ struct HomeView: View {
                 let img = pendingImage
                 pendingImage = nil
                 viewModel.sendTextMessage(image: img)
+                if viewModel.inputText.isEmpty { isTyping = false; composerFocused = false }
             } label: {
                 Text("Send")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
-                    .background(Color(hex: "#7C3AED"), in: Capsule())
+                    .background(Color(hex: "#315E73"), in: Capsule())
             }
             .buttonStyle(.plain)
         }
@@ -456,14 +603,43 @@ final class HomeViewModel: ObservableObject {
     @Published var conversationState: ConversationState = .idle
     @Published var streamingText: String = ""
     @Published var isTranscribing: Bool = false
+    @Published private(set) var isDictating = false
+    @Published private(set) var liveTranscript = ""
+    @Published private(set) var prefersTextReplyForDraft = false
+    @Published var dictationError: String?
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
     private let voice   = VoiceService.shared
+    private let capture: any VoiceCapturing
+    private var voiceSubscriptions = Set<AnyCancellable>()
+    private var voiceInputTask: Task<Void, Never>?
+    private var dictationBaseDraft = ""
+    private var dictationScope: String?
 
+    private var streamTask: Task<Void, Never>?
+    private var speechCompletionTask: Task<Void, Never>?
+    private var turnID = UUID()
+    private var continuousActive = false
+    private var startingVoice = false
+    private var loadedScope: String?
     private var streamingMessageId: String? = nil
     private var currentConversationId: String = UUID().uuidString
     private var conversationStartedAt: Date = Date()
+
+    init(capture: (any VoiceCapturing)? = nil) {
+        let capture = capture ?? VoiceService.shared
+        self.capture = capture
+        capture.transcriptUpdates.sink { [weak self] text in
+            guard let self, self.isDictating, self.dictationScope == self.storage.accountScope else { return }
+            self.liveTranscript = text
+        }.store(in: &voiceSubscriptions)
+        capture.recordingUpdates.sink { [weak self] recording in
+            guard let self, !recording, self.isDictating, !self.isTranscribing, self.conversationState == .listening else { return }
+            // Recognition errors/interruptions must leave a usable draft, not a stuck microphone.
+            self.completeDictation(self.capture.currentTranscript, expectedTurn: self.turnID, scope: self.dictationScope)
+        }.store(in: &voiceSubscriptions)
+    }
 
     var orbState: OrbState {
         switch conversationState {
@@ -474,13 +650,45 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    var orbAccessibilityLabel: String {
+        switch conversationState {
+        case .idle: return "Hear Max"
+        case .listening: return "Finish voice input"
+        case .thinking: return "Stop response"
+        case .speaking: return "Stop Max speaking"
+        }
+    }
+
+    var orbAccessibilityHint: String {
+        if isDictating { return "Finish dictation and review your message before sending" }
+        return conversationState == .idle ? "Tap to hear Max. Use the microphone to dictate." : "Tap to stop"
+    }
+
+    var orbCaption: String {
+        if isDictating {
+            if isTranscribing { return "Finishing your voice draft…" }
+            return conversationState == .listening ? "Tap the orb to finish your draft" : "Getting the microphone ready…"
+        }
+        if voice.isPreparingSpeech { return "Getting Max’s voice ready · tap to stop" }
+        if let notice = voice.playbackNotice, conversationState == .speaking { return notice + " · tap to stop" }
+        return conversationState == .speaking ? "Max is speaking · tap to stop" : "Tap the orb to hear Max · AI voice"
+    }
+
     func loadMessages() {
+        if loadedScope != storage.accountScope {
+            inputText = ""
+            prefersTextReplyForDraft = false
+            currentConversationId = UUID().uuidString
+            conversationStartedAt = Date()
+        }
+        loadedScope = storage.accountScope
         messages = storage.loadMessages()
         // If there are existing messages from a previous session, assign them a stable ID
         // so resuming an app session keeps the archive up to date.
     }
 
     func clearHistory() {
+        endConversation()
         storage.clearMessages()
         messages = []
     }
@@ -488,6 +696,8 @@ final class HomeViewModel: ObservableObject {
     func startNewChat() {
         archiveCurrentConversation()
         clearHistory()
+        inputText = ""
+        prefersTextReplyForDraft = false
         currentConversationId = UUID().uuidString
         conversationStartedAt = Date()
     }
@@ -504,6 +714,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     private func archiveCurrentConversation() {
+        guard loadedScope == storage.accountScope else { return }
         let saveable = messages.filter { !$0.isStreaming && !$0.content.isEmpty }
         guard !saveable.isEmpty else { return }
         let firstUserText = saveable.first(where: { $0.role == "user" })?.content ?? "Conversation"
@@ -520,46 +731,181 @@ final class HomeViewModel: ObservableObject {
 
     func sendTextMessage(image: UIImage? = nil) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || image != nil, conversationState == .idle else { return }
+        guard !text.isEmpty || image != nil, conversationState == .idle, !isDictating, !isTranscribing, !startingVoice else { return }
+        let allowSpeech = !prefersTextReplyForDraft
         inputText = ""
+        prefersTextReplyForDraft = false
         let displayText = text.isEmpty ? "What do you see in this image?" : text
         addUserMessage(displayText)
         let imageData = image.flatMap { $0.jpegData(compressionQuality: 0.8) }
-        streamResponse(userText: displayText, imageData: imageData)
+        streamResponse(userText: displayText, imageData: imageData, allowSpeech: allowSpeech)
     }
 
     func handleMicTap() {
+        if isDictating {
+            if conversationState == .listening && !isTranscribing { finishDictation() }
+            return
+        }
         switch conversationState {
-        case .idle:                startListening()
+        case .idle:                startDictation()
         case .listening:           stopListening()
         case .thinking, .speaking: stopSpeaking()
         }
     }
 
-    func handleOrbTap() { handleMicTap() }
+    func handleOrbTap() {
+        if isDictating { handleMicTap(); return }
+        guard !startingVoice, !isTranscribing else { return }
+        guard conversationState == .idle else { handleMicTap(); return }
+        continuousActive = false
+        turnID = UUID()
+        let reply = messages.last(where: { $0.role == "assistant" && !$0.isStreaming && !$0.content.isEmpty && !$0.content.hasPrefix("⚠️") && !$0.content.hasPrefix("Error:") })?.content
+        playSpeech(reply ?? "Hi, I'm Max. I'm here. What's on your mind?")
+    }
+
+    private func playSpeech(_ text: String, continueListening: Bool = false) {
+        speechCompletionTask?.cancel()
+        let speechID = turnID
+        let speechScope = storage.accountScope
+        voice.speak(text, preferredVoice: storage.loadSettings().preferredVoice)
+        guard voice.isSpeaking else { conversationState = .idle; return }
+        conversationState = .speaking
+        speechCompletionTask = Task { [weak self] in
+            guard let self else { return }
+            while self.voice.isSpeaking {
+                do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
+            }
+            guard self.turnID == speechID, self.storage.accountScope == speechScope, !Task.isCancelled else { return }
+            self.conversationState = .idle
+            if continueListening, self.continuousActive, UIApplication.shared.applicationState == .active { self.startListening() }
+        }
+    }
+
+    func activateVoice() {
+        guard conversationState == .idle, !isTranscribing, !isDictating else { return }
+        startListening()
+    }
 
     func sendPlacesQuery() {
-        guard conversationState == .idle else { return }
+        guard conversationState == .idle, !isDictating, !startingVoice, !isTranscribing else { return }
         let query = "What interesting places are near me right now?"
         addUserMessage(query)
         streamResponse(userText: query, imageData: nil)
     }
 
     func startMorningBriefing() {
-        guard conversationState == .idle else { return }
-        let prompt = BriefingService.briefingPrompt
-        addUserMessage("Good morning — give me my daily briefing.")
-        streamResponse(userText: prompt, imageData: nil)
+        guard conversationState == .idle, !isDictating, !startingVoice, !isTranscribing else { return }
+        conversationState = .thinking
+        let briefingID = UUID(); turnID = briefingID
+        let scope = storage.accountScope
+        streamTask = Task {
+            let snapshot = await BriefingService.shared.snapshot()
+            guard turnID == briefingID, !Task.isCancelled, storage.accountScope == scope else { return }
+            conversationState = .idle
+            addUserMessage("Good morning — give me my daily briefing.")
+            if kMaxAPIBaseURL.isEmpty {
+                messages.append(Message(role: "assistant", content: snapshot))
+                storage.saveMessages(messages)
+                archiveCurrentConversation()
+                if storage.loadSettings().voiceEnabled { playSpeech(snapshot) }
+            } else { streamResponse(userText: "Summarize this verified snapshot warmly. Do not invent missing sources.\n" + snapshot) }
+        }
+    }
+
+    func endConversation() {
+        continuousActive = false
+        turnID = UUID()
+        voiceInputTask?.cancel(); voiceInputTask = nil
+        isDictating = false
+        liveTranscript = ""
+        dictationScope = nil
+        streamTask?.cancel(); streamTask = nil
+        speechCompletionTask?.cancel(); speechCompletionTask = nil
+        voice.stopSpeaking(); capture.stopRecording()
+        isTranscribing = false
+        streamingText = ""
+        messages.removeAll { $0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        for index in messages.indices { messages[index].isStreaming = false }
+        streamingMessageId = nil
+        conversationState = .idle
+        if loadedScope == storage.accountScope { storage.saveMessages(messages) }
+    }
+
+    private func startDictation() {
+        guard !startingVoice, !isTranscribing else { return }
+        continuousActive = false
+        capture.onUtteranceEnd = nil
+        dictationError = nil
+        dictationBaseDraft = inputText
+        dictationScope = storage.accountScope
+        liveTranscript = ""
+        isDictating = true
+        startingVoice = true
+        let activationID = UUID(); turnID = activationID
+        let scope = storage.accountScope
+        voiceInputTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.startingVoice = false }
+            do {
+                try await self.capture.startRecording()
+                guard self.turnID == activationID, self.storage.accountScope == scope, !Task.isCancelled else { self.capture.stopRecording(); return }
+                self.conversationState = .listening
+            } catch {
+                guard self.turnID == activationID, self.storage.accountScope == scope, !(error is CancellationError) else { return }
+                self.isDictating = false
+                self.liveTranscript = ""
+                self.dictationScope = nil
+                self.dictationError = error.localizedDescription
+            }
+        }
+    }
+
+    private func finishDictation() {
+        isTranscribing = true
+        let finishingID = turnID
+        let scope = dictationScope
+        voiceInputTask = Task { [weak self] in
+            guard let self else { return }
+            let result = await self.capture.stopAndTranscribe()
+            guard !Task.isCancelled else { return }
+            self.completeDictation(result, expectedTurn: finishingID, scope: scope)
+        }
+    }
+
+    private func completeDictation(_ result: String?, expectedTurn: UUID, scope: String?) {
+        guard isDictating, turnID == expectedTurn else { return }
+        isDictating = false
+        isTranscribing = false
+        conversationState = .idle
+        liveTranscript = ""
+        dictationScope = nil
+        guard scope == storage.accountScope else { inputText = ""; prefersTextReplyForDraft = false; return }
+        let text = result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty else { dictationError = "Couldn't catch that. Your draft is still here — try again."; return }
+        inputText = dictationBaseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        inputText += (inputText.isEmpty ? "" : " ") + text
+        prefersTextReplyForDraft = true
     }
 
     private func startListening() {
+        guard !startingVoice, !isTranscribing else { return }
+        startingVoice = true
+        let activationID = turnID
         Task {
+            defer { startingVoice = false }
             do {
+                continuousActive = storage.loadSettings().continuousConversation ?? false
+                capture.onUtteranceEnd = { [weak self] in
+                    guard let self, self.continuousActive, self.conversationState == .listening else { return }
+                    self.stopListening()
+                }
+                try await capture.startRecording()
+                guard turnID == activationID else { capture.stopRecording(); return }
                 conversationState = .listening
-                try await voice.startRecording()
             } catch {
+                guard turnID == activationID, !(error is CancellationError) else { return }
                 conversationState = .idle
-                addSystemError("Microphone access denied.")
+                addSystemError(error.localizedDescription)
             }
         }
     }
@@ -568,8 +914,10 @@ final class HomeViewModel: ObservableObject {
         guard conversationState == .listening else { return }
         conversationState = .idle
         isTranscribing = true
+        let listeningID = turnID
         Task {
-            let transcription = await voice.stopAndTranscribe(apiKey: kAnthropicAPIKey)
+            let transcription = await capture.stopAndTranscribe()
+            guard turnID == listeningID else { return }
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
@@ -580,10 +928,7 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
-    private func stopSpeaking() {
-        voice.stopSpeaking()
-        conversationState = .idle
-    }
+    private func stopSpeaking() { endConversation() }
 
     private func addUserMessage(_ text: String) {
         let msg = Message(role: "user", content: text)
@@ -597,8 +942,9 @@ final class HomeViewModel: ObservableObject {
         storage.saveMessages(messages)
     }
 
-    private func streamResponse(userText: String, imageData: Data? = nil) {
+    private func streamResponse(userText: String, imageData: Data? = nil, allowSpeech: Bool = true) {
         let settings = storage.loadSettings()
+        let thisTurn = UUID(); turnID = thisTurn
         conversationState = .thinking
 
         let streamId = UUID().uuidString
@@ -608,16 +954,16 @@ final class HomeViewModel: ObservableObject {
         var fullText = ""
 
         // Keep the last 40 messages (20 exchanges) to stay within token limits
-        let history = messages.filter { $0.id != streamId }
-        let trimmed = history.count > 40 ? Array(history.suffix(40)) : history
+        let history = messages.filter { $0.id != streamId && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        var trimmed = history.count > 40 ? Array(history.suffix(40)) : history
+        if let index = trimmed.lastIndex(where: { $0.role == "user" }) { trimmed[index].content = userText }
 
-        claude.streamMessage(
-            apiKey: kAnthropicAPIKey,
+        streamTask = claude.streamMessage(
             messages: trimmed,
             imageData: imageData
         ) { [weak self] chunk in
             Task { @MainActor [weak self] in
-                guard let self = self else { return }
+                guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
                 switch chunk {
                 case .text(let text):
                     fullText += text
@@ -645,21 +991,15 @@ final class HomeViewModel: ObservableObject {
                     self.storage.saveMessages(self.messages)
                     self.archiveCurrentConversation()
                     self.pushToWidget(fullText)
-                    if settings.voiceEnabled && !fullText.isEmpty {
-                        self.conversationState = .speaking
-                        self.voice.speak(fullText, preferredVoice: settings.preferredVoice)
-                        Task {
-                            while self.voice.isSpeaking {
-                                try? await Task.sleep(nanoseconds: 200_000_000)
-                            }
-                            await MainActor.run { self.conversationState = .idle }
-                        }
+                    if allowSpeech && settings.voiceEnabled && !fullText.isEmpty {
+                        self.playSpeech(fullText, continueListening: true)
                     } else {
                         self.conversationState = .idle
                     }
                 case .error(let errText):
+                    self.continuousActive = false
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        if fullText.isEmpty { self.messages[idx].content = "Error: \(errText)" }
+                        self.messages[idx].content = fullText.isEmpty ? "Error: \(errText)" : fullText + "\n\nReply interrupted: " + errText
                         self.messages[idx].isStreaming = false
                     }
                     self.streamingMessageId = nil

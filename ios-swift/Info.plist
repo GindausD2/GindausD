@@ -2,141 +2,132 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Identity -->
-    <key>CFBundleIconName</key>
-    <string>AppIcon</string>
-    <key>CFBundleName</key>
-    <string>Max</string>
-    <key>CFBundleDisplayName</key>
-    <string>Max</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.gindausd.max</string>
-    <key>CFBundleVersion</key>
-    <string>1</string>
-    <key>CFBundleShortVersionString</key>
-    <string>1.0.0</string>
-    <key>CFBundleExecutable</key>
-    <string>$(EXECUTABLE_NAME)</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleDevelopmentRegion</key>
-    <string>en</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-
-    <!-- Privacy Descriptions -->
-    <key>NSMicrophoneUsageDescription</key>
-    <string>Max needs microphone access so you can speak to your assistant hands-free.</string>
-    <key>NSCameraUsageDescription</key>
-    <string>Max uses your camera so you can show it something and ask about it.</string>
-    <key>NSPhotoLibraryUsageDescription</key>
-    <string>Max can read a photo from your library so you can ask about it.</string>
-    <key>NSUserNotificationsUsageDescription</key>
-    <string>Max can send you reminders you ask it to schedule.</string>
-    <key>NSContactsUsageDescription</key>
-    <string>Max uses your Contacts to look up phone numbers when you ask it to call someone by name.</string>
-    <key>NSCalendarsUsageDescription</key>
-    <string>Max can create calendar events you ask it to schedule.</string>
-    <key>NSCalendarsWriteOnlyAccessUsageDescription</key>
-    <string>Max can add events to your calendar when you ask it to schedule something.</string>
-    <key>NSLocationWhenInUseUsageDescription</key>
-    <string>Max uses your location to find nearby places and get directions.</string>
-
-    <!-- Main Interface -->
-    <key>UIMainStoryboardFile</key>
-    <string></string>
-    <key>UILaunchStoryboardName</key>
-    <string>LaunchScreen</string>
-
-    <!-- Supported Interface Orientations -->
-    <key>UISupportedInterfaceOrientations</key>
-    <array>
-        <string>UIInterfaceOrientationPortrait</string>
-        <string>UIInterfaceOrientationPortraitUpsideDown</string>
-    </array>
-    <key>UISupportedInterfaceOrientations~ipad</key>
-    <array>
-        <string>UIInterfaceOrientationPortrait</string>
-        <string>UIInterfaceOrientationPortraitUpsideDown</string>
-        <string>UIInterfaceOrientationLandscapeLeft</string>
-        <string>UIInterfaceOrientationLandscapeRight</string>
-    </array>
-
-    <!-- App Transport Security -->
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <key>NSAllowsArbitraryLoads</key>
-        <false/>
-        <key>NSExceptionDomains</key>
-        <dict>
-            <key>api.anthropic.com</key>
-            <dict>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key>
-                <false/>
-                <key>NSExceptionRequiresForwardSecrecy</key>
-                <true/>
-            </dict>
-            <key>feeds.bbci.co.uk</key>
-            <dict>
-                <key>NSIncludesSubdomains</key>
-                <true/>
-                <key>NSExceptionAllowsInsecureHTTPLoads</key>
-                <false/>
-                <key>NSExceptionRequiresForwardSecrecy</key>
-                <true/>
-            </dict>
-        </dict>
-    </dict>
-
-    <!-- Live Activities -->
-    <key>NSSupportsLiveActivities</key>
-    <true/>
-    <key>NSSupportsLiveActivitiesFrequentUpdates</key>
-    <true/>
-
-    <!-- Background Tasks -->
-    <key>BGTaskSchedulerPermittedIdentifiers</key>
-    <array>
-        <string>com.max.ai.liveactivity.refresh</string>
-    </array>
-
-    <!-- Background Modes -->
-    <key>UIBackgroundModes</key>
-    <array>
-        <string>audio</string>
-        <string>fetch</string>
-        <string>processing</string>
-    </array>
-
-    <!-- UI Requirements -->
-    <key>UIRequiresFullScreen</key>
-    <false/>
-    <key>UIStatusBarStyle</key>
-    <string>UIStatusBarStyleDefault</string>
-    <key>UIViewControllerBasedStatusBarAppearance</key>
-    <true/>
-
-    <!-- Scene Configuration -->
-    <key>UIApplicationSceneManifest</key>
-    <dict>
-        <key>UIApplicationSupportsMultipleScenes</key>
-        <false/>
-        <key>UISceneConfigurations</key>
-        <dict>
-            <key>UIWindowSceneSessionRoleApplication</key>
-            <array>
-                <dict>
-                    <key>UISceneConfigurationName</key>
-                    <string>Default Configuration</string>
-                </dict>
-            </array>
-        </dict>
-    </dict>
-
-    <!-- Capabilities -->
-    <key>ITSAppUsesNonExemptEncryption</key>
-    <false/>
+	<key>MAX_API_BASE_URL</key>
+	<string>$(MAX_API_BASE_URL)</string>
+	<key>SUPABASE_URL</key>
+	<string>$(SUPABASE_URL)</string>
+	<key>SUPABASE_ANON_KEY</key>
+	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>GOOGLE_CLIENT_ID</key>
+	<string>$(GOOGLE_CLIENT_ID)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleName</key>
+	<string>Max</string>
+	<key>CFBundleDisplayName</key>
+	<string>Max</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.gindausd.max</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Max turns your speech into text for your conversations. Recognition may use Apple’s servers when on-device recognition is unavailable.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Max needs microphone access so you can speak to your assistant hands-free.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Max uses your camera so you can show it something and ask about it.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Max can read a photo from your library so you can ask about it.</string>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>Max can send you reminders you ask it to schedule.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Max uses your Contacts to look up phone numbers when you ask it to call someone by name.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Max can create calendar events you ask it to schedule.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Max reads your calendar to tell you about upcoming events when you ask.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Max can add events to your calendar when you ask it to schedule something.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Max uses your location to find nearby places and get directions.</string>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<false/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>api.anthropic.com</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<true/>
+			</dict>
+			<key>feeds.bbci.co.uk</key>
+			<dict>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<false/>
+				<key>NSExceptionRequiresForwardSecrecy</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.max.ai.liveactivity.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<key>UIRequiresFullScreen</key>
+	<false/>
+	<key>UIStatusBarStyle</key>
+	<string>UIStatusBarStyleDefault</string>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<true/>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+	</dict>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.gindausd.max</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>maxapp</string>
+				<string>com.gindausd.max</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

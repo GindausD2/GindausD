@@ -122,6 +122,7 @@ const DEFAULT_SETTINGS: AssistantSettings = {
   apiKey: '',
   assistantName: 'Max',
   voiceEnabled: true,
+  speakingHapticsEnabled: true,
   voiceSpeed: 1.0,
   voicePitch: 1.1,
   userName: '',

@@ -1,0 +1,65 @@
+# Max Supabase setup
+
+Verified on October 14, 2026 for the native iPhone V1.
+
+## Connected project
+
+- Organization: **Max.ai** (Free plan).
+- Project: **GindausD2's Project**, reference `omcboajliacdnhrroijb`, region `us-east-2`.
+- API URL: `https://omcboajliacdnhrroijb.supabase.co`.
+- The previously paused project was resumed and confirmed `ACTIVE_HEALTHY` before the final migrations were installed and verified.
+- Use the active modern publishable key in `ios-swift/Configuration/Public.supabase.example.xcconfig`. It is intentionally public. Provider keys, database passwords, secret keys and service-role keys do not belong in the app.
+
+## Database installed and verified
+
+Hosted migration history contains:
+
+1. `20261014111015_max_v1_usage_limits` — the existing `backend/sql/001_usage.sql` source: `public.max_usage` and `public.consume_max_request()`.
+2. `20261014111307_max_restrict_rls_trigger_api` — removes API execution rights from the pre-existing automatic RLS event-trigger helper while preserving the trigger:
+
+```sql
+revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+```
+
+The usage function permits 20 generation requests per minute and 100 per UTC day per authenticated account. Continuation requests also count. Its security-definer implementation uses an empty search path, explicitly qualified objects and `auth.uid()`; clients cannot supply another user's ID or reset counters.
+
+Verification on the hosted database confirmed:
+
+- RLS enabled; direct reads/writes denied by grants to `anon` and `authenticated`.
+- Anonymous execution denied; authenticated execution granted.
+- Runtime minute/day boundaries, separate counters for two injected identities, and rejection without an identity. These tests invoked the real function with SQL-injected claims in a transaction, then rolled back the temporary account/counter fixtures. They do not establish a real Apple login or HTTP bearer-token flow.
+- Zero persisted account and usage rows after fixture rollback.
+- Automatic RLS still runs on new public tables after the helper's API privileges were revoked; its verification table was rolled back.
+- Auth settings endpoint returns HTTP 200 using the publishable key. Apple is **enabled** (rechecked after dashboard configuration); anonymous sign-in remains **disabled**.
+
+Security advisors retain two intentional notices: [RLS without a policy](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy), because clients must not access the counters directly, and [authenticated security-definer execution](https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable), because this constrained authenticated RPC must update the inaccessible counters. Do not grant direct table access to silence these notices. The former public execution warning on `rls_auto_enable()` was fixed.
+
+## Native configuration
+
+On the Mac used to build Max:
+
+```sh
+cd ios-swift
+cp Configuration/Public.supabase.example.xcconfig Configuration/Public.xcconfig
+```
+
+This project's URL and public key are already populated. Set `DEVELOPMENT_TEAM` for your Apple Developer team. `MAX_API_BASE_URL` now points to the deployed Max.ai Edge Function. `Public.xcconfig` is ignored by Git. The workspace copy has been prepared; committed source contains the reusable public template.
+
+For the backend, set `SUPABASE_URL` to the API URL above and `SUPABASE_ANON_KEY` to the same publishable key. The variable retains its compatibility name but accepts the modern publishable key. No service-role key is needed. The backend now uses OpenAI and is deployed to the max-api Edge Function. Its OpenAI secret is now present; OpenAI accepted the credential and returned the configured model from its model-retrieval endpoint. Generation permissions/billing/quota and authenticated native streaming remain unverified; see [OpenAI setup](OPENAI_SETUP.md).
+
+## Apple sign-in is enabled; signed-device testing remains
+
+### Guest demo configuration
+
+Enable anonymous sign-ins in Authentication → Sign In / Providers → Anonymous Sign-Ins, and enable manual identity linking in Authentication settings. The native app calls `signInAnonymously()` only when the user starts Try Demo; it does not request an Apple identity or a purchase. Real anonymous sessions still assume the `authenticated` database role and use the existing quota RPC. The backend expires guests using Auth's verified `created_at` after seven days, before quota/provider calls. The UI clock is only presentation; the server never accepts a client-supplied trial start date.
+
+The app uses native `linkIdentityWithIdToken` to continue with Apple while preserving the guest user ID. Manual linking must be enabled before testing this upgrade. Existing-identity conflicts are surfaced rather than merging another account's data. Anonymous signup also needs internet and remains subject to Supabase's signup limits/CAPTCHA configuration. Enabling it is required before a live guest acceptance test; the connected tools do not expose Auth setting writes.
+
+The connected Supabase tools expose database/project operations but not Auth-provider configuration. The user enabled Apple in the dashboard; the public Auth settings endpoint subsequently confirmed Apple enabled. Client IDs and Apple provisioning cannot be verified through these tools.
+
+1. Apple is enabled in [this project's Authentication providers](https://supabase.com/dashboard/project/omcboajliacdnhrroijb/auth/providers). Verify that its Client IDs include `com.gindausd.max`.
+2. In your [Apple Developer identifiers](https://developer.apple.com/account/resources/identifiers/list), register or select the matching App ID, enable **Sign in with Apple**, and regenerate the provisioning profile used to sign Max.
+3. The app uses native Apple Authentication Services and exchanges the identity token with Supabase. Native-only Apple sign-in does not require the web OAuth Services ID, client secret or `.p8` setup. See [Supabase's native Swift configuration](https://supabase.com/docs/guides/auth/social-login/auth-apple?platform=swift).
+4. Build a signed app and test first sign-in, returning sign-in, cancelled sign-in, session restoration and sign-out on an iPhone. Then test the backend with that real session.
+
+Real Apple sign-in, authenticated HTTP quota calls, OpenAI responses and physical-device features remain unverified. Backend hosting, missing-secret protection, current secret presence, OpenAI credential acceptance/model lookup, and HTTP 401 rejection of unsigned conversation requests are verified. Apple provider enablement was rechecked and remains enabled. Memory and conversation content remain account-scoped local storage; this setup does not add cloud memory sync.

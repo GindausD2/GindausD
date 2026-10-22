@@ -1,610 +1,125 @@
 import SwiftUI
 
-// MARK: - DemoOnboardingView
-//
-// Three-slide onboarding shown before the demo session:
-//   Slide 1 — Name + Gender
-//   Slide 2 — AI Voice preference (Male / Female)
-//   Slide 3 — Summary + "Start Demo" CTA
-
+/// A guest can explore before using Apple sign-in or choosing a subscription.
 struct DemoOnboardingView: View {
     @EnvironmentObject private var authService: AuthService
     @Environment(\.dismiss) private var dismiss
-
-    @State private var step: Int = 0
-    @State private var name: String = ""
-    @State private var gender: DemoGender = .preferNotToSay
+    @State private var name = ""
     @State private var voice: DemoVoice = .female
-    @State private var isLaunching: Bool = false
-
-    private let totalSteps = 3
+    @State private var isLaunching = false
+    @State private var showPersonalisation = false
 
     var body: some View {
         ZStack {
-            demoBackground.ignoresSafeArea()
-            ambientBlobs
+            CompanionCanvas()
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 24) {
+                    HStack {
+                        Button { dismiss() } label: {
+                            Image(systemName: "xmark")
+                                .font(.subheadline.weight(.medium))
+                                .frame(width: 44, height: 44)
+                                .glassCard(cornerRadius: 22, interactive: true)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Close demo welcome")
+                        Spacer()
+                        CompanionWordmark()
+                        Spacer()
+                        Color.clear.frame(width: 44, height: 44)
+                    }
+                    .disabled(isLaunching)
 
-            VStack(spacing: 0) {
-                progressIndicator
-                    .padding(.top, 56)
-                    .padding(.bottom, 12)
+                    EntryHero(eyebrow: "SEVEN DAYS, A LITTLE LIGHTER", title: "Say hello\nto your Max.", subtitle: "A little time together.\nSee how Max fits into your day.", orbSize: 104)
 
-                TabView(selection: $step) {
-                    Slide1(name: $name, gender: $gender, onNext: advance)
-                        .tag(0)
-                    Slide2(voice: $voice, onNext: advance)
-                        .tag(1)
-                    Slide3(name: name, voice: voice, isLaunching: isLaunching, onStart: launchDemo)
-                        .tag(2)
+                    VStack(alignment: .leading, spacing: 18) {
+                        EntryFeatureRow(icon: "bubble.left.and.bubble.right", title: "Talk it through", detail: "Ideas, questions and everyday plans.")
+                        EntryFeatureRow(icon: "bookmark", title: "Keep a little thought", detail: "Save something you want to remember.")
+                        EntryFeatureRow(icon: "sun.horizon", title: "Make space for your day", detail: "Start with one small next step.")
+                    }
+                    .padding(22)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .glassCard(cornerRadius: 28)
+
+                    DisclosureGroup(isExpanded: $showPersonalisation) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            TextField("What should Max call you? (optional)", text: $name)
+                                .textContentType(.givenName)
+                                .textInputAutocapitalization(.words)
+                                .padding(14)
+                                .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 14))
+                            Picker("Max’s voice", selection: $voice) {
+                                ForEach(DemoVoice.allCases, id: \.self) { option in
+                                    Text(option.label).tag(option)
+                                }
+                            }
+                            .pickerStyle(.inline)
+                        }
+                        .padding(.top, 14)
+                    } label: {
+                        Label("Make it yours · optional", systemImage: "slider.horizontal.3")
+                            .font(.subheadline)
+                    }
+                    .tint(Color(hex: "#416F84"))
+                    .disabled(isLaunching)
+
+                    VStack(spacing: 14) {
+                        EntryPrimaryButton(title: isLaunching ? "Getting your space ready…" : "Start my 7-day demo", isLoading: isLaunching, action: launchDemo)
+                        Text("No Apple sign-in. No payment.\nYour demo ends after 7 days.")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .animation(.spring(response: 0.45, dampingFraction: 0.85), value: step)
+                .padding(24)
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity)
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
-    }
-
-    // MARK: - Background
-
-    private var demoBackground: some View {
-        LinearGradient(
-            stops: [
-                .init(color: Color(red: 1.00, green: 1.00, blue: 1.00), location: 0.0),
-                .init(color: Color(red: 0.97, green: 0.95, blue: 1.00), location: 0.5),
-                .init(color: Color(red: 0.93, green: 0.89, blue: 1.00), location: 1.0)
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-
-    private var ambientBlobs: some View {
-        ZStack {
-            Circle()
-                .fill(Color(hex: "#7C3AED").opacity(0.07))
-                .frame(width: 340)
-                .blur(radius: 80)
-                .offset(x: -80, y: -220)
-                .allowsHitTesting(false)
-            Circle()
-                .fill(Color(hex: "#4F46E5").opacity(0.05))
-                .frame(width: 260)
-                .blur(radius: 70)
-                .offset(x: 120, y: 300)
-                .allowsHitTesting(false)
-        }
-    }
-
-    // MARK: - Progress indicator
-
-    private var progressIndicator: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<totalSteps, id: \.self) { i in
-                Capsule()
-                    .fill(step >= i ? Color(hex: "#7C3AED") : Color(hex: "#7C3AED").opacity(0.22))
-                    .frame(width: step == i ? 24 : 8, height: 8)
-                    .animation(.spring(response: 0.32, dampingFraction: 0.72), value: step)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(Capsule().strokeBorder(Color(hex: "#7C3AED").opacity(0.15), lineWidth: 0.5))
-        )
-    }
-
-    // MARK: - Navigation
-
-    private func advance() {
-        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-            step = min(step + 1, totalSteps - 1)
-        }
+        .interactiveDismissDisabled(isLaunching)
+        .alert("Demo unavailable", isPresented: Binding(
+            get: { authService.authError != nil },
+            set: { if !$0 { authService.authError = nil } }
+        )) { Button("OK") { authService.authError = nil } }
+        message: { Text(authService.authError ?? "Please try again.") }
     }
 
     private func launchDemo() {
         guard !isLaunching else { return }
         isLaunching = true
         Task {
-            await authService.startDemo(
-                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                voice: voice.rawValue
-            )
+            let started = await authService.startDemo(name: name.trimmingCharacters(in: .whitespacesAndNewlines), voice: voice.rawValue)
             isLaunching = false
-            dismiss()
+            if started { dismiss() }
         }
     }
 }
 
-// MARK: - Slide 1: Name + Gender ──────────────────────────────────────────────
-
-private struct Slide1: View {
-    @Binding var name: String
-    @Binding var gender: DemoGender
-    var onNext: () -> Void
-
-    @FocusState private var nameFocused: Bool
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Spacer().frame(height: 24)
-
-                VStack(spacing: 10) {
-                    Text("What should Max\ncall you?")
-                        .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.center)
-                    Text("Personalise your demo experience")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, 32)
-
-                DemoGlassCard {
-                    VStack(spacing: 22) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("YOUR NAME")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .kerning(0.8)
-
-                            TextField("e.g. Alex", text: $name)
-                                .focused($nameFocused)
-                                .font(.system(size: 17))
-                                .foregroundStyle(.primary)
-                                .tint(Color(hex: "#7C3AED"))
-                                .autocorrectionDisabled()
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                                .background(demoFieldBackground)
-                        }
-
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("GENDER")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .kerning(0.8)
-
-                            HStack(spacing: 10) {
-                                ForEach(DemoGender.allCases, id: \.self) { g in
-                                    DemoGenderPill(label: g.label, isSelected: gender == g) {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                            gender = g
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        DemoPrimaryButton(
-                            title: "Continue →",
-                            isDisabled: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        ) {
-                            nameFocused = false
-                            onNext()
-                        }
-                    }
-                }
-                .padding(.horizontal, 24)
-
-                Spacer().frame(height: 60)
-            }
-            .padding(.horizontal)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { nameFocused = true } }
-    }
-}
-
-// MARK: - Slide 2: Voice ───────────────────────────────────────────────────────
-
-private struct Slide2: View {
-    @Binding var voice: DemoVoice
-    var onNext: () -> Void
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                Spacer().frame(height: 24)
-
-                VStack(spacing: 10) {
-                    Text("How should\nMax sound?")
-                        .font(.system(size: 32, weight: .bold))
-                        .foregroundStyle(.primary)
-                        .multilineTextAlignment(.center)
-                    Text("Choose the voice Max will use to reply")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, 32)
-
-                DemoGlassCard {
-                    VStack(spacing: 16) {
-                        ForEach(DemoVoice.allCases, id: \.self) { v in
-                            DemoVoiceCard(option: v, isSelected: voice == v) {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    voice = v
-                                }
-                            }
-                        }
-
-                        DemoPrimaryButton(title: "Continue →") { onNext() }
-                    }
-                }
-                .padding(.horizontal, 24)
-
-                Spacer().frame(height: 60)
-            }
-            .padding(.horizontal)
-        }
-        .scrollBounceBehavior(.basedOnSize)
-    }
-}
-
-// MARK: - Slide 3: Ready ───────────────────────────────────────────────────────
-
-private struct Slide3: View {
-    var name: String
-    var voice: DemoVoice
-    var isLaunching: Bool
-    var onStart: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            OrbView(state: .idle, size: 110)
-                .padding(.bottom, 28)
-                .shadow(color: Color(hex: "#7C3AED").opacity(0.25), radius: 40)
-
-            DemoGlassCard {
-                VStack(spacing: 18) {
-                    VStack(spacing: 6) {
-                        Text("You're all set\(name.isEmpty ? "" : ", \(name)")!")
-                            .font(.system(size: 24, weight: .bold))
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.center)
-                        Text("Max is ready to assist you")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    HStack(spacing: 12) {
-                        SummaryPill(icon: "person.fill", label: name.isEmpty ? "Guest" : name)
-                        SummaryPill(icon: voice.symbolName, label: voice.label)
-                    }
-                    .frame(maxWidth: .infinity)
-
-                    Rectangle()
-                        .fill(
-                            LinearGradient(
-                                colors: [.clear, Color.black.opacity(0.08), .clear],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
-                        .frame(height: 0.5)
-
-                    DemoPrimaryButton(
-                        title: isLaunching ? "Starting…" : "Start exploring Max",
-                        isLoading: isLaunching
-                    ) {
-                        onStart()
-                    }
-
-                    Text("All features included · No account required")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-            }
-            .padding(.horizontal, 24)
-
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Supporting Views ─────────────────────────────────────────────────────
-
-private struct DemoGlassCard<Content: View>: View {
-    @ViewBuilder var content: () -> Content
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(.ultraThinMaterial)
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Color.white.opacity(0.55))
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        stops: [
-                            .init(color: Color.black.opacity(0.08), location: 0.0),
-                            .init(color: Color.black.opacity(0.03), location: 1.0)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.0
-                )
-        }
-        .overlay(content().padding(24))
-        .shadow(color: .black.opacity(0.06), radius: 24, x: 0, y: 8)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.06), radius: 40, x: 0, y: 16)
-    }
-}
-
-private struct DemoGenderPill: View {
-    var label: String
-    var isSelected: Bool
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(label)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(isSelected ? .white : .primary)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isSelected
-                              ? LinearGradient(colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
-                                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                              : LinearGradient(colors: [Color.black.opacity(0.04), Color.black.opacity(0.04)],
-                                               startPoint: .top, endPoint: .bottom))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .strokeBorder(
-                                    isSelected ? Color.white.opacity(0.25) : Color.black.opacity(0.08),
-                                    lineWidth: 0.75
-                                )
-                        )
-                )
-        }
-        .buttonStyle(.plain)
-        .shadow(
-            color: isSelected ? Color(hex: "#7C3AED").opacity(0.30) : .clear,
-            radius: 8, x: 0, y: 3
-        )
-    }
-}
-
-private struct DemoVoiceCard: View {
-    var option: DemoVoice
-    var isSelected: Bool
-    var action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            isSelected
-                            ? LinearGradient(
-                                colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                            : LinearGradient(
-                                colors: [Color.black.opacity(0.06), Color.black.opacity(0.04)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 52, height: 52)
-                        .overlay(
-                            Circle().strokeBorder(
-                                isSelected ? Color.white.opacity(0.30) : Color.black.opacity(0.08),
-                                lineWidth: 0.75
-                            )
-                        )
-                    Image(systemName: option.symbolName)
-                        .font(.system(size: 20, weight: .medium))
-                        .foregroundStyle(isSelected ? .white : Color(hex: "#7C3AED"))
-                        .symbolEffect(.variableColor.iterative, isActive: isSelected)
-                }
-                .shadow(
-                    color: isSelected ? Color(hex: "#7C3AED").opacity(0.40) : .clear,
-                    radius: 12, x: 0, y: 4
-                )
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(option.label)
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Text(option.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                ZStack {
-                    Circle()
-                        .fill(isSelected ? Color(hex: "#7C3AED") : Color.black.opacity(0.06))
-                        .frame(width: 24, height: 24)
-                        .overlay(Circle().strokeBorder(
-                            isSelected ? Color.white.opacity(0.3) : Color.black.opacity(0.10),
-                            lineWidth: 0.75
-                        ))
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-            }
-            .padding(16)
-            .background(
-                ZStack {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(isSelected ? Color(hex: "#7C3AED").opacity(0.06) : Color.black.opacity(0.03))
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .strokeBorder(
-                            isSelected
-                            ? LinearGradient(
-                                colors: [Color(hex: "#A78BFA").opacity(0.80), Color(hex: "#7C3AED").opacity(0.30)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            )
-                            : LinearGradient(
-                                colors: [Color.black.opacity(0.08), Color.black.opacity(0.03)],
-                                startPoint: .topLeading, endPoint: .bottomTrailing
-                            ),
-                            lineWidth: isSelected ? 1.5 : 0.75
-                        )
-                }
-            )
-        }
-        .buttonStyle(.plain)
-        .shadow(
-            color: isSelected ? Color(hex: "#7C3AED").opacity(0.12) : .clear,
-            radius: 14, x: 0, y: 5
-        )
-        .animation(.spring(response: 0.3, dampingFraction: 0.72), value: isSelected)
-    }
-}
-
-private struct SummaryPill: View {
+private struct EntryFeatureRow: View {
     var icon: String
-    var label: String
-
-    var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color(hex: "#7C3AED"))
-            Text(label)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            ZStack {
-                Capsule().fill(Color.black.opacity(0.04))
-                Capsule().strokeBorder(Color.black.opacity(0.08), lineWidth: 0.75)
-            }
-        )
-    }
-}
-
-private struct DemoPrimaryButton: View {
     var title: String
-    var isLoading: Bool = false
-    var isDisabled: Bool = false
-    var action: () -> Void
-
+    var detail: String
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                if isLoading {
-                    ProgressView().tint(.white)
-                } else {
-                    Text(title).font(.body.weight(.semibold))
-                }
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon)
+                .font(.body)
+                .foregroundStyle(Color(hex: "#57879B"))
+                .frame(width: 24, height: 24)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title).font(.subheadline.weight(.medium))
+                Text(detail).font(.caption).foregroundStyle(.secondary)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 15)
-        }
-        .background(
-            ZStack {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [Color(hex: "#7C3AED"), Color(hex: "#4F46E5")],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        )
-                    )
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [.white.opacity(0.22), .clear],
-                            startPoint: .top,
-                            endPoint: UnitPoint(x: 0.5, y: 0.5)
-                        )
-                    )
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(
-                        LinearGradient(
-                            colors: [.white.opacity(0.45), .white.opacity(0.08)],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        lineWidth: 0.75
-                    )
-            }
-        )
-        .foregroundStyle(.white)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.35), radius: 12, x: 0, y: 5)
-        .shadow(color: Color(hex: "#7C3AED").opacity(0.12), radius: 28, x: 0, y: 10)
-        .disabled(isLoading || isDisabled)
-        .opacity(isDisabled ? 0.50 : 1.0)
-    }
-}
-
-private var demoFieldBackground: some View {
-    ZStack {
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(.ultraThinMaterial)
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .fill(Color.black.opacity(0.03))
-        RoundedRectangle(cornerRadius: 14, style: .continuous)
-            .strokeBorder(
-                LinearGradient(
-                    colors: [Color.black.opacity(0.10), Color.black.opacity(0.04)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ),
-                lineWidth: 1.0
-            )
-    }
-}
-
-// MARK: - Enums ────────────────────────────────────────────────────────────────
-
-enum DemoGender: String, CaseIterable {
-    case male         = "male"
-    case female       = "female"
-    case preferNotToSay = "prefer_not"
-
-    var label: String {
-        switch self {
-        case .male:           return "Male"
-        case .female:         return "Female"
-        case .preferNotToSay: return "Other"
         }
     }
 }
 
 enum DemoVoice: String, CaseIterable {
     case female = "female"
-    case male   = "male"
-
-    var label: String {
-        switch self {
-        case .female: return "Warm & Feminine"
-        case .male:   return "Clear & Masculine"
-        }
-    }
-
-    var description: String {
-        switch self {
-        case .female: return "Friendly, warm, expressive tone"
-        case .male:   return "Calm, articulate, professional tone"
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        case .female: return "waveform"
-        case .male:   return "waveform.path"
-        }
-    }
+    case male = "male"
+    var label: String { self == .female ? "Warm & Feminine" : "Clear & Masculine" }
 }
 
-// MARK: - Preview
-
 #Preview {
-    DemoOnboardingView()
-        .environmentObject(AuthService.shared)
+    DemoOnboardingView().environmentObject(AuthService.shared)
 }

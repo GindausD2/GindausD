@@ -1,0 +1,40 @@
+MAX AI — SOURCE CODE
+
+Snapshot: be7a1df384d6d18077efb8c2bbdd1c995c3be073
+Packaged originally: 19 October 2026
+Updated: 21 October 2026 — logo-only headers, OpenAI voice, Apple nonce and paid-access verification
+
+Start with README.md.
+
+The current iPhone app is in ios-swift/.
+Backend code is in backend/.
+The Expo preview and earlier Android prototype are also included; they are not at iPhone V1 parity.
+
+This copy includes the latest local Login, Sign Up and Try Demo redesign.
+Chat uses the original styling, with the floating blue orb.
+The entry-screen changes are uploaded to GitHub PR #2. Check its latest Actions run for Xcode verification.
+Generated concept images are design references, not screenshots of this running source.
+
+On iPhone: save this ZIP to Files, then tap it to extract.
+To build the native iPhone app, use Xcode on a Mac or a configured macOS build service.
+Follow docs/V1_STATUS.md for build and configuration steps.
+Copy configuration templates as directed; live secrets and signing credentials are not included.
+
+This download is source code, not an installable iPhone app.
+
+LOGO UPDATE
+The supplied logo has been added to the native iPhone icon, launch screen, shared SwiftUI logo, entry/conversation headers and widget branding.
+branding/ contains the original JPEG, scalable SVG and transparent black/white PNGs.
+The blue voice orb is unchanged. The original chat styling is unchanged.
+The logo update is uploaded to GitHub PR #2; native build evidence is recorded in Actions.
+
+21 OCTOBER RELEASE UPDATE
+Read docs/RELEASE_SETUP.md first for current status and setup.
+Launch price chosen: US $4.99/month; configure the actual Apple product before charging.
+Source now includes OpenAI voice playback with iPhone fallback, account-bound
+Apple subscription verification, nonce-protected sign-in/linking and a Mac IPA export script.
+42 backend tests pass. The Edge entry type-check passes. Native compilation,
+real purchases/voice, signing, TestFlight and the latest screenshots are still pending.
+Guest sign-in is currently disabled in Supabase; it must be enabled for Try Demo.
+The voice quota migration has been applied to the hosted database. The source is
+uploaded to GitHub PR #2. The new Edge Function code has not been deployed.

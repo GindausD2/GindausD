@@ -21,9 +21,9 @@ typealias MaxAttr = MaxActivityAttributes
 
 // MARK: - Brand colors
 
-private let violet      = Color(red: 0.49, green: 0.23, blue: 0.93)
-private let violetDeep  = Color(red: 0.31, green: 0.12, blue: 0.88)
-private let violetLight = Color(red: 0.65, green: 0.55, blue: 0.98)
+private let violet      = Color(red: 0.47, green: 0.71, blue: 0.80)
+private let violetDeep  = Color(red: 0.19, green: 0.37, blue: 0.45)
+private let violetLight = Color(red: 0.76, green: 0.91, blue: 0.96)
 private let red         = Color(red: 0.94, green: 0.27, blue: 0.27)
 private let blue        = Color(red: 0.23, green: 0.51, blue: 0.96)
 private let cardBg      = Color(red: 0.06, green: 0.04, blue: 0.10)
@@ -73,6 +73,7 @@ struct MaxLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
+                    VStack(spacing: 10) {
                     if let alert = context.state.emailAlert {
                         EmailAlertCardView(alert: alert)
                             .padding(.bottom, 10)
@@ -87,6 +88,12 @@ struct MaxLiveActivityWidget: Widget {
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
                             .padding(.bottom, 10)
+                    }
+                    HStack(spacing: 18) {
+                        Link(destination: URL(string: "maxapp://listen")!) { Label("Talk", systemImage: "mic") }
+                        Link(destination: URL(string: "maxapp://briefing")!) { Label("Briefing", systemImage: "sun.horizon") }
+                        Link(destination: URL(string: "maxapp://quick")!) { Label("Plan", systemImage: "clock") }
+                    }.font(.system(size: 12, weight: .medium)).foregroundStyle(violetLight)
                     }
                 }
             } compactLeading: {
@@ -116,6 +123,7 @@ struct MaxLiveActivityWidget: Widget {
                 MaxLogoView(color: .white, width: 24)
             }
             .keylineTint(violet)
+            .widgetURL(URL(string: "maxapp://listen"))
         }
         .supplementalActivityFamilies([.small])
     }
@@ -125,7 +133,7 @@ struct MaxLiveActivityWidget: Widget {
 //
 // Layout mirrors the reference screenshot:
 //   [avatar]  Max                          [time elapsed]
-//   [phase label — accent color]            Claude
+//   [phase label — accent color]            OpenAI
 //
 //   Bold headline transcript text OR tool action card
 //
@@ -159,7 +167,7 @@ private struct MaxLockScreenBody: View {
 
                 Spacer()
 
-                Text("Claude")
+                Text("OpenAI")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.white.opacity(0.45))
             }

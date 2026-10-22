@@ -34,7 +34,7 @@ struct SettingsView: View {
 
     var body: some View {
         ZStack(alignment: .top) {
-            Color(UIColor.systemGroupedBackground).ignoresSafeArea()
+            CompanionCanvas()
 
             VStack(spacing: 0) {
                 // ── Handle + header ───────────────────────────────────────────
@@ -47,17 +47,14 @@ struct SettingsView: View {
 
                         // ── QUICK ACTIONS ─────────────────────────────────────
                         ProfileSection(title: "QUICK ACTIONS") {
-                            ProfileRow(icon: "crown.fill", iconColor: Color(hex: "#F59E0B"),
-                                       title: "Subscription") { showSubscription = true }
-                            Divider().padding(.leading, 56)
-                            ProfileRow(icon: "brain", iconColor: Color(hex: "#7C3AED"),
+                            ProfileRow(icon: "brain", iconColor: Color(hex: "#315E73"),
                                        title: "Memory") { showMemory = true }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.fill", iconColor: Color(hex: "#6B7280"),
                                        title: "Privacy") { showPrivacy = true }
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "waveform", iconColor: Color(hex: "#7C3AED"),
-                                       title: "Island Debug") { showIslandDebug = true }
+                            ProfileRow(icon: "creditcard", iconColor: Color(hex: "#315E73"),
+                                       title: "Subscription") { showSubscription = true }
                         }
 
                         // ── CONFIGURATION ─────────────────────────────────────
@@ -65,34 +62,34 @@ struct SettingsView: View {
                             ProfileRow(icon: "sun.horizon.fill", iconColor: Color(hex: "#F59E0B"),
                                        title: "Morning Briefing") { showBriefing = true }
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#3B82F6"),
+                            ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#315E73"),
                                        title: "Email Reminders") { showEmailConfig = true }
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "person.fill", iconColor: Color(hex: "#10B981"),
+                            ProfileRow(icon: "person.fill", iconColor: Color(hex: "#315E73"),
                                        title: "Assistant") { showAssistant = true }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "circle.lefthalf.filled", iconColor: Color(hex: "#6B7280"),
                                        title: "Appearance") { showAppearance = true }
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "link", iconColor: Color(hex: "#3B82F6"),
+                            ProfileRow(icon: "link", iconColor: Color(hex: "#315E73"),
                                        title: "Device Link") { showDeviceLink = true }
                         }
 
                         // ── ABOUT ─────────────────────────────────────────────
                         ProfileSection(title: "ABOUT") {
-                            ProfileRow(icon: "questionmark.circle.fill", iconColor: Color(hex: "#3B82F6"),
+                            ProfileRow(icon: "questionmark.circle.fill", iconColor: Color(hex: "#315E73"),
                                        title: "Help Center") {
                                 UIApplication.shared.open(URL(string: "mailto:support@getmax.app")!)
                             }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "doc.text.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "Terms of Use") {
-                                UIApplication.shared.open(URL(string: "https://www.anthropic.com/legal/consumer-terms")!)
+                                       title: "AI Provider Policies") {
+                                UIApplication.shared.open(URL(string: "https://openai.com/policies/")!)
                             }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.shield.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "Privacy Policy") {
-                                UIApplication.shared.open(URL(string: "https://www.anthropic.com/legal/privacy")!)
+                                       title: "AI Data Handling") {
+                                UIApplication.shared.open(URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                             }
                             Divider().padding(.leading, 56)
                             HStack {
@@ -154,27 +151,31 @@ struct SettingsView: View {
                                 }, onCompletion: { result in
                                     switch result {
                                     case .success(let auth):
-                                        let credential = auth.credential as? ASAuthorizationAppleIDCredential
-                                        let name = [credential?.fullName?.givenName,
-                                                    credential?.fullName?.familyName]
+                                        guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
+                                              let data = credential.identityToken,
+                                              let token = String(data: data, encoding: .utf8) else {
+                                            authService.authError = "Apple sign-in couldn't complete. Please try again."
+                                            return
+                                        }
+                                        let name = [credential.fullName?.givenName,
+                                                    credential.fullName?.familyName]
                                             .compactMap { $0 }.joined(separator: " ")
-                                        let email = credential?.email
                                         Task {
                                             await authService.signInWithApple(
-                                                name: name.isEmpty ? nil : name,
-                                                email: email
+                                                idToken: token,
+                                                name: name.isEmpty ? nil : name
                                             )
-                                            dismiss()
+                                            if authService.currentUser?.isDemo != true { dismiss() }
                                         }
-                                    case .failure:
-                                        break
+                                    case .failure(let error): authService.authError = error.localizedDescription
                                     }
                                 })
                                 .signInWithAppleButtonStyle(.black)
                                 .frame(height: 50)
                                 .cornerRadius(12)
 
-                                Text("Sign in to sync your data across devices.")
+                                if let error = authService.authError { Text(error).font(.footnote).foregroundStyle(.red) }
+                                Text("Continue with Apple to keep this guest account. Your notes stay on this iPhone.")
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
@@ -189,6 +190,7 @@ struct SettingsView: View {
                 }
             }
         }
+        .presentationCornerRadius(34).presentationDragIndicator(.hidden)
         // ── Destination sheets ────────────────────────────────────────────────
         .sheet(isPresented: $showSubscription) { SubscriptionSheet() }
         .sheet(isPresented: $showMemory)       { MemoryView() }
@@ -206,7 +208,7 @@ struct SettingsView: View {
         .confirmationDialog("Sign out of Max?", isPresented: $showSignOutConfirm, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) { authService.signOut(); dismiss() }
             Button("Cancel", role: .cancel) {}
-        }
+        } message: { Text("Signing out stops voice and cancels scheduled notifications on this iPhone. Your saved notes and conversations stay with your account.") }
         .onAppear {
             profileImage = storage.loadProfilePhoto()
         }
@@ -215,49 +217,7 @@ struct SettingsView: View {
     // MARK: - Sheet Header
 
     private var sheetHeader: some View {
-        ZStack {
-            // Handle
-            VStack {
-                RoundedRectangle(cornerRadius: 3)
-                    .fill(Color.secondary.opacity(0.3))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, 10)
-                Spacer()
-            }
-
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color(UIColor.tertiarySystemFill))
-                            .frame(width: 30, height: 30)
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.top, 4)
-
-                Spacer()
-
-                Text("Settings")
-                    .font(.headline.weight(.semibold))
-                    .padding(.top, 4)
-
-                Spacer()
-
-                // Balance the X button
-                Color.clear
-                    .frame(width: 30, height: 30)
-                    .padding(.trailing, 16)
-                    .padding(.top, 4)
-            }
-        }
-        .frame(height: 50)
-        .background(Color(UIColor.systemGroupedBackground))
+        CompanionSheetHeader(title: "Settings", onClose: { dismiss() })
     }
 
     // MARK: - Profile Header
@@ -309,7 +269,7 @@ struct SettingsView: View {
 
             // Name
             Text(displayName)
-                .font(.system(size: 26, weight: .bold))
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(.primary)
 
             // Plan badge
@@ -317,7 +277,7 @@ struct SettingsView: View {
             HStack(spacing: 4) {
                 Image(systemName: subscribed ? "crown.fill" : "plus")
                     .font(.system(size: 12, weight: .semibold))
-                Text(subscribed ? "Max Pro" : "Free Plan")
+                Text(subscribed ? "Max Pro" : "7-day demo")
                     .font(.subheadline)
             }
             .foregroundStyle(subscribed ? Color(hex: "#F59E0B") : .secondary)
@@ -332,7 +292,7 @@ struct SettingsView: View {
         if !settings.userName.isEmpty { return settings.userName }
         if let name = authService.currentUser?.name, !name.isEmpty { return name }
         if authService.currentUser?.isDemo == true { return "Guest" }
-        return "Max User"
+        return "Guest"
     }
 
     private func saveSettings() {
@@ -357,8 +317,7 @@ private struct ProfileSection<Content: View>: View {
             VStack(spacing: 0) {
                 content()
             }
-            .background(Color(UIColor.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .glassCard(cornerRadius: 24, depth: .regular)
         }
     }
 }
@@ -398,257 +357,38 @@ private struct ProfileRow: View {
 // MARK: - Destination Sheets
 
 private struct SubscriptionSheet: View {
+    @EnvironmentObject private var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @StateObject private var store = StoreKitService.shared
-
-    @State private var selectedPlan: String = StoreKitService.yearlyID
-
-    private let violet = Color(hex: "#7C3AED")
-    private let amber  = Color(hex: "#F59E0B")
-
-    private let features: [(icon: String, title: String, detail: String)] = [
-        ("infinity",        "Unlimited Conversations", "No message caps — talk to Max as much as you want"),
-        ("bolt.fill",       "Priority Responses",      "Faster replies during peak hours"),
-        ("icloud.fill",     "Full iCloud Sync",        "History, memories, and notes across all devices"),
-        ("waveform",        "Advanced Voice",          "Premium neural voices and custom wake phrases"),
-        ("bell.badge.fill", "Smart Notifications",     "Proactive reminders and email alerts")
-    ]
-
     var body: some View {
         NavigationStack {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 24) {
-
-                    // ── Header ──────────────────────────────────────────────
-                    VStack(spacing: 10) {
-                        ZStack {
-                            Circle()
-                                .fill(amber.opacity(0.12))
-                                .frame(width: 88, height: 88)
-                            Image(systemName: "crown.fill")
-                                .font(.system(size: 40))
-                                .foregroundStyle(amber)
-                        }
-                        .padding(.top, 20)
-
-                        Text("Max Pro")
-                            .font(.system(size: 32, weight: .bold))
-                        Text("Everything you need for a truly personal AI assistant.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
-                    }
-
-                    // ── Plan Selector ───────────────────────────────────────
-                    VStack(spacing: 10) {
-                        PlanCard(
-                            id: StoreKitService.yearlyID,
-                            title: "Yearly",
-                            price: store.yearlyProduct?.displayPrice ?? "$119.99",
-                            period: "/ year",
-                            badge: "Save 17%",
-                            isSelected: selectedPlan == StoreKitService.yearlyID,
-                            violet: violet
-                        ) { selectedPlan = StoreKitService.yearlyID }
-
-                        PlanCard(
-                            id: StoreKitService.monthlyID,
-                            title: "Monthly",
-                            price: store.monthlyProduct?.displayPrice ?? "$9.99",
-                            period: "/ month",
-                            badge: nil,
-                            isSelected: selectedPlan == StoreKitService.monthlyID,
-                            violet: violet
-                        ) { selectedPlan = StoreKitService.monthlyID }
-                    }
-                    .padding(.horizontal, 16)
-
-                    // ── Feature List ────────────────────────────────────────
-                    VStack(spacing: 0) {
-                        ForEach(features, id: \.title) { f in
-                            HStack(spacing: 14) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(violet.opacity(0.10))
-                                        .frame(width: 38, height: 38)
-                                    Image(systemName: f.icon)
-                                        .font(.system(size: 17, weight: .medium))
-                                        .foregroundStyle(violet)
-                                }
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(f.title)
-                                        .font(.system(size: 15, weight: .semibold))
-                                    Text(f.detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if store.isSubscribed {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(violet)
-                                        .font(.system(size: 18))
-                                }
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            if f.title != features.last?.title {
-                                Divider().padding(.leading, 72)
-                            }
-                        }
-                    }
-                    .background(Color(UIColor.secondarySystemGroupedBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .padding(.horizontal, 16)
-
-                    // ── Error ───────────────────────────────────────────────
-                    if let err = store.purchaseError {
-                        Text(err)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
-                    }
-
-                    // ── CTA ─────────────────────────────────────────────────
-                    VStack(spacing: 14) {
-                        if store.isSubscribed {
-                            Text("You're subscribed to Max Pro")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(violet)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(violet.opacity(0.10),
-                                            in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .padding(.horizontal, 16)
-                        } else {
-                            Button {
-                                Task {
-                                    let product = selectedPlan == StoreKitService.yearlyID
-                                        ? store.yearlyProduct : store.monthlyProduct
-                                    if let product { await store.purchase(product) }
-                                }
-                            } label: {
-                                Group {
-                                    if store.isLoading {
-                                        ProgressView().tint(.white)
-                                    } else {
-                                        Text(subscribeLabel)
-                                            .font(.body.weight(.semibold))
-                                            .foregroundStyle(.white)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(violet, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            }
-                            .buttonStyle(.plain)
+            ZStack {
+                CompanionCanvas()
+                if authService.currentUser?.isDemo == true {
+                    VStack(spacing: 20) {
+                        MaxLogoView(color: .primary, width: 84)
+                        Text("Your seven-day demo").font(.title2.weight(.semibold))
+                        Text("No payment is needed during your demo. Continue with Apple when you’re ready to subscribe.")
+                        Button("Continue with Apple") { authService.beginDemoUpgrade(); dismiss() }
+                    }.multilineTextAlignment(.center).padding(24)
+                } else if store.isSubscribed {
+                    VStack(spacing: 20) {
+                        MaxLogoView(color: .primary, width: 84)
+                        Text("Your Max subscription is active").font(.title2.weight(.semibold))
+                        Link("Manage subscription", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
+                        Button("Restore Purchases") { Task { await store.restorePurchases() } }
                             .disabled(store.isLoading)
-                            .padding(.horizontal, 16)
-                        }
-
-                        Button {
-                            Task { await store.restorePurchases() }
-                        } label: {
-                            Text("Restore Purchases")
-                                .font(.subheadline)
-                                .foregroundStyle(violet)
-                        }
-                        .disabled(store.isLoading)
-
-                        Text("Subscription auto-renews. Cancel anytime in Settings → Apple ID → Subscriptions.")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 32)
+                        if let error = store.purchaseError { Text(error).font(.footnote).foregroundStyle(.secondary) }
                     }
-                    .padding(.bottom, 40)
+                    .multilineTextAlignment(.center).padding(24)
+                } else {
+                    PlanPage(onBack: { dismiss() })
                 }
             }
-            .background(Color(UIColor.systemGroupedBackground))
             .navigationTitle("Subscription")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }.fontWeight(.semibold)
-            }}
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
         }
-    }
-
-    private var subscribeLabel: String {
-        let price = selectedPlan == StoreKitService.yearlyID
-            ? (store.yearlyProduct?.displayPrice ?? "$119.99")
-            : (store.monthlyProduct?.displayPrice ?? "$9.99")
-        let period = selectedPlan == StoreKitService.yearlyID ? "year" : "month"
-        return "Subscribe — \(price)/\(period)"
-    }
-}
-
-private struct PlanCard: View {
-    let id: String
-    let title: String
-    let price: String
-    let period: String
-    let badge: String?
-    let isSelected: Bool
-    let violet: Color
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .strokeBorder(isSelected ? violet : Color.secondary.opacity(0.3), lineWidth: 2)
-                        .frame(width: 22, height: 22)
-                    if isSelected {
-                        Circle()
-                            .fill(violet)
-                            .frame(width: 12, height: 12)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 8) {
-                        Text(title)
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.primary)
-                        if let badge {
-                            Text(badge)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 3)
-                                .background(violet, in: Capsule())
-                        }
-                    }
-                    Text("Billed \(title.lowercased())")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                HStack(alignment: .lastTextBaseline, spacing: 2) {
-                    Text(price)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.primary)
-                    Text(period)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(isSelected ? violet : Color.clear, lineWidth: 2)
-                    )
-            )
-        }
-        .buttonStyle(.plain)
     }
 }
 
@@ -662,14 +402,14 @@ private struct PrivacySheet: View {
             List {
                 Section {
                     Toggle("Share analytics", isOn: $settings.shareAnalytics)
-                        .tint(Color(hex: "#7C3AED"))
+                        .tint(Color(hex: "#315E73"))
                         .onChange(of: settings.shareAnalytics) { _, _ in onSave() }
                     Toggle("Personalised suggestions", isOn: $settings.personalisedSuggestions)
-                        .tint(Color(hex: "#7C3AED"))
+                        .tint(Color(hex: "#315E73"))
                         .onChange(of: settings.personalisedSuggestions) { _, _ in onSave() }
                 } header: { Text("Data Usage") }
                 Section {
-                    Text("Your conversations are processed by Anthropic's Claude API and are subject to Anthropic's privacy policy.")
+                    Text("When you send a message, Max sends the conversation and relevant saved context to OpenAI through Max's server. Notes and history remain stored on this device. See AI Data Handling for the provider's retention controls.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } header: { Text("Note") }
@@ -715,7 +455,7 @@ private struct IslandDebugSheet: View {
                     )
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color(hex: "#3B82F6"))
+                .tint(Color(hex: "#315E73"))
 
                 Button("Clear Email Alert") {
                     LiveActivityService.shared.clearEmailAlert()
@@ -744,13 +484,8 @@ private struct EmailConfigSheet: View {
         NavigationStack {
             List {
                 Section {
-                    TextField("com.example.app.googleusercontent.com", text: $clientID)
-                        .autocapitalization(.none).autocorrectionDisabled()
-                        .font(.system(.body, design: .monospaced))
-                        .onChange(of: clientID) { _, v in EmailMonitorService.shared.clientID = v }
-                } header: { Text("Google Client ID") }
-                  footer: {
-                    Text("Max will surface unread important emails on your Dynamic Island.")
+                    Text(clientID.isEmpty ? "Email connection is coming soon." : "Connect your account to receive important email reminders.")
+                        .foregroundStyle(.secondary)
                 }
 
                 Section {
@@ -789,11 +524,6 @@ private struct EmailConfigSheet: View {
                     }
                 }
 
-                Section {
-                    Link("Create credentials →",
-                         destination: URL(string: "https://console.cloud.google.com/apis/credentials")!)
-                        .foregroundStyle(Color(hex: "#7C3AED"))
-                }
             }
             .navigationTitle("Email Reminders")
             .navigationBarTitleDisplayMode(.inline)
@@ -819,23 +549,44 @@ private struct AssistantSheet: View {
                         TextField("Name", text: $settings.userName)
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.secondary)
-                            .tint(Color(hex: "#7C3AED"))
+                            .tint(Color(hex: "#315E73"))
                             .onChange(of: settings.userName) { _, _ in onSave() }
                     }
                     Toggle(isOn: $settings.voiceEnabled) {
                         Label("Voice Responses", systemImage: "speaker.wave.2.fill")
                     }
-                    .tint(Color(hex: "#7C3AED"))
+                    .tint(Color(hex: "#315E73"))
                     .onChange(of: settings.voiceEnabled) { _, _ in onSave() }
 
+                    Toggle("Speaking haptics", isOn: Binding(get: { settings.speakingHapticsEnabled ?? true }, set: { settings.speakingHapticsEnabled = $0; onSave() }))
+                        .tint(Color(hex: "#78B5CD"))
+                    Text("Gentle pulses while Max speaks. Tap the orb to hear Max, and tap again to stop.")
+                        .font(.caption).foregroundStyle(.secondary)
+
+                    Toggle("Continuous conversation", isOn: Binding(get: { settings.continuousConversation ?? false }, set: { settings.continuousConversation = $0; onSave() }))
+                        .tint(Color(hex: "#78B5CD"))
+                    Text("When enabled, Max listens again after a spoken reply while this app is open. Tap the stop control to end the conversation.")
+                        .font(.caption).foregroundStyle(.secondary)
                     if settings.voiceEnabled {
+                        Picker("Spoken replies", selection: Binding(get: { settings.voiceProvider ?? "openai" }, set: { settings.voiceProvider = $0; onSave() })) {
+                            Text("OpenAI voice").tag("openai")
+                            Text("iPhone voice").tag("device")
+                        }
+                        if (settings.voiceProvider ?? "openai") == "openai" {
+                            Picker("Voice style", selection: Binding(get: { settings.openAIVoice ?? "marin" }, set: { settings.openAIVoice = $0; onSave() })) {
+                                Text("Marin").tag("marin")
+                                Text("Cedar").tag("cedar")
+                            }
+                            Text("Max’s voice is AI-generated. Spoken text is sent to OpenAI. Up to 3,000 characters per UTC day; longer replies and unavailable voice use your iPhone voice.")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                         Picker(selection: $settings.preferredVoice) {
                             Text("Female").tag("female")
                             Text("Male").tag("male")
                         } label: {
-                            Label("Voice", systemImage: "waveform")
+                            Label("iPhone fallback voice", systemImage: "waveform")
                         }
-                        .tint(Color(hex: "#7C3AED"))
+                        .tint(Color(hex: "#315E73"))
                         .onChange(of: settings.preferredVoice) { _, _ in onSave() }
                     }
                 } header: { Text("Preferences") }
@@ -915,7 +666,7 @@ private struct BriefingSheet: View {
                         }
                     }
                 } footer: {
-                    Text("Max will send you a notification each morning with a summary of your calendar, emails, and top news.")
+                    Text("Max sends a morning notification. Tap it to hear your available calendar, weather, and reminder summary. This is not a system alarm. Gmail must be connected for email counts. Missed-call history is not available to Max.")
                 }
 
                 if settings.briefingEnabled {

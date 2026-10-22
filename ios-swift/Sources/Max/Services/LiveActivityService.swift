@@ -12,7 +12,7 @@ import Foundation
 //   showToolCard(_:)                 ← call after a tool executes to show the action card
 //   clearToolCard()                  ← call to remove the card (e.g. on next listening phase)
 //   keepAlive()                      ← call when a conversation ends (transitions back to idle, stays visible)
-//   refreshStaleDate()               ← call from background task every ~4 hours to extend the 24-hr window
+//   refreshStaleDate()               ← call from background task every ~4 hours to extend the system-managed window
 //   stopPersistentSession()          ← call only on sign-out / user explicitly closes the island
 
 typealias ToolCard = MaxActivityAttributes.ContentState.ToolCard
@@ -24,20 +24,24 @@ final class LiveActivityService {
     private init() {}
 
     private var currentActivity: Activity<MaxActivityAttributes>?
+    private var retiredIDs = Set<String>()
+    private var generation = UUID()
 
-    // MARK: - Persistent 24-hour session
+    // MARK: - Persistent system-managed session
 
     /// Start (or resume) a standby Live Activity that stays in the Dynamic Island
-    /// for up to 24 hours even when the app is closed.
+    /// for up to the system-managed session window even when the app is closed.
     func startPersistentSession() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        if let existing = Activity<MaxActivityAttributes>.activities.first {
+        if let existing = Activity<MaxActivityAttributes>.activities.first(where: { !retiredIDs.contains($0.id) }) {
             currentActivity = existing
+            let version = generation
             Task {
+                guard generation == version, currentActivity?.id == existing.id else { return }
                 await existing.update(.init(
                     state: MaxActivityAttributes.ContentState(phase: .idle, snippet: ""),
-                    staleDate: Date().addingTimeInterval(86400)
+                    staleDate: Date().addingTimeInterval(8 * 3600)
                 ))
             }
             return
@@ -49,7 +53,7 @@ final class LiveActivityService {
         do {
             currentActivity = try Activity.request(
                 attributes: attributes,
-                content: .init(state: standbyState, staleDate: Date().addingTimeInterval(86400)),
+                content: .init(state: standbyState, staleDate: Date().addingTimeInterval(8 * 3600)),
                 pushType: nil
             )
         } catch {
@@ -102,7 +106,7 @@ final class LiveActivityService {
     }
 
     func keepAlive() {
-        guard let activity = currentActivity else {
+        guard currentActivity != nil else {
             startPersistentSession()
             return
         }
@@ -118,7 +122,7 @@ final class LiveActivityService {
             return
         }
         let current = activity.content.state
-        await activity.update(.init(state: current, staleDate: Date().addingTimeInterval(86400)))
+        await activity.update(.init(state: current, staleDate: Date().addingTimeInterval(8 * 3600)))
     }
 
     // MARK: - Email Alerts
@@ -141,22 +145,24 @@ final class LiveActivityService {
     // MARK: - Stop (sign-out / explicit dismiss)
 
     func stopPersistentSession() {
-        Task { await endAll() }
+        let activities = Activity<MaxActivityAttributes>.activities
+        retiredIDs.formUnion(activities.map(\.id))
+        generation = UUID()
+        currentActivity = nil
+        Task {
+            for activity in activities { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
     }
 
     // MARK: - Private
 
     private func push(_ state: MaxActivityAttributes.ContentState) {
         guard let activity = currentActivity else { return }
+        let version = generation
         Task {
-            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(86400)))
+            guard generation == version, currentActivity?.id == activity.id else { return }
+            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(8 * 3600)))
         }
     }
 
-    private func endAll() async {
-        for activity in Activity<MaxActivityAttributes>.activities {
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
-        currentActivity = nil
-    }
 }

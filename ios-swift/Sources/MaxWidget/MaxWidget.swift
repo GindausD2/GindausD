@@ -65,9 +65,9 @@ struct MaxWidgetProvider: TimelineProvider {
 private struct WidgetOrb: View {
     let size: CGFloat
 
-    private let c0 = Color(red: 1.00, green: 0.55, blue: 0.05)
-    private let c1 = Color(red: 0.95, green: 0.35, blue: 0.00)
-    private let c2 = Color(red: 1.00, green: 0.70, blue: 0.10)
+    private let c0 = Color(red: 0.76, green: 0.91, blue: 0.96)
+    private let c1 = Color(red: 0.47, green: 0.71, blue: 0.80)
+    private let c2 = Color(red: 0.95, green: 0.98, blue: 1.00)
 
     var body: some View {
         ZStack {
@@ -116,9 +116,10 @@ private struct SmallWidgetView: View {
             VStack(spacing: 6) {
                 WidgetOrb(size: 56)
 
-                Text("Max")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white)
+                HStack(spacing: 5) {
+                    MaxLogoView(color: .white, width: 24).accessibilityHidden(true)
+                    Text("Max").font(.system(size: 15, weight: .bold))
+                }.foregroundStyle(.white)
 
                 Text("Tap to talk")
                     .font(.system(size: 11, weight: .medium))
@@ -142,9 +143,10 @@ private struct MediumWidgetView: View {
                 // Left: orb + label
                 VStack(spacing: 5) {
                     WidgetOrb(size: 52)
-                    Text("Max")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
+                    HStack(spacing: 5) {
+                        MaxLogoView(color: .white, width: 20).accessibilityHidden(true)
+                        Text("Max").font(.system(size: 13, weight: .bold))
+                    }.foregroundStyle(.white)
                     Text("AI Assistant")
                         .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Color.white.opacity(0.45))
@@ -210,8 +212,10 @@ private struct AccessoryRectangularView: View {
         HStack(spacing: 8) {
             WidgetOrb(size: 24)
             VStack(alignment: .leading, spacing: 1) {
-                Text("Max")
-                    .font(.system(size: 13, weight: .bold))
+                HStack(spacing: 4) {
+                    MaxLogoView(color: .primary, width: 18).accessibilityHidden(true)
+                    Text("Max").font(.system(size: 13, weight: .bold))
+                }
                 Text(entry.lastMessage)
                     .font(.system(size: 11))
                     .lineLimit(2)

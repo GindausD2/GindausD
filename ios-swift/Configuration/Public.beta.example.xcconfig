@@ -1,0 +1,4 @@
+// Copy Public.supabase.example.xcconfig to Public.xcconfig, then use this
+// beta URL while testing. All values are public app configuration.
+#include "Public.supabase.example.xcconfig"
+MAX_API_BASE_URL = https:/$()/omcboajliacdnhrroijb.supabase.co/functions/v1/max-api-beta
