@@ -20,18 +20,18 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <!-- Supplied Max logo centred -->
+                            <!-- Approved glacier-blue Max logo centred -->
                             <imageView opaque="NO" clipsSubviews="YES"
                                        userInteractionEnabled="NO"
                                        contentMode="scaleAspectFit"
-                                       image="LaunchLogo"
+                                       image="MaxLogo"
                                        translatesAutoresizingMaskIntoConstraints="NO"
                                        id="logo-img-01">
                                 <rect key="frame" x="96.5" y="376" width="200" height="100"/>
                             </imageView>
                         </subviews>
                         <viewLayoutGuide key="safeAreaLayoutGuide" id="Bcu-3y-fUS"/>
-                        <!-- System background adapts with the light and dark logo assets -->
+                        <!-- The shared blue logo keeps its original colors on the system background -->
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
                             <constraint firstItem="logo-img-01" firstAttribute="centerX"
@@ -54,7 +54,7 @@
         </scene>
     </scenes>
     <resources>
-        <image name="LaunchLogo" width="600" height="320"/>
+        <image name="MaxLogo" width="1691" height="930"/>
         <systemColor name="systemBackgroundColor">
             <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
         </systemColor>

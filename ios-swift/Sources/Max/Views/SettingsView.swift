@@ -366,14 +366,14 @@ private struct SubscriptionSheet: View {
                 CompanionCanvas()
                 if authService.currentUser?.isDemo == true {
                     VStack(spacing: 20) {
-                        MaxLogoView(color: .primary, width: 84)
+                        MaxLogoView(width: 84)
                         Text("Your seven-day demo").font(.title2.weight(.semibold))
                         Text("No payment is needed during your demo. Continue with Apple when you’re ready to subscribe.")
                         Button("Continue with Apple") { authService.beginDemoUpgrade(); dismiss() }
                     }.multilineTextAlignment(.center).padding(24)
                 } else if store.isSubscribed {
                     VStack(spacing: 20) {
-                        MaxLogoView(color: .primary, width: 84)
+                        MaxLogoView(width: 84)
                         Text("Your Max subscription is active").font(.title2.weight(.semibold))
                         Link("Manage subscription", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
                         Button("Restore Purchases") { Task { await store.restorePurchases() } }

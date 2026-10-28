@@ -68,7 +68,7 @@ struct ProfileHubView: View {
             } else {
                 ZStack {
                     Circle().fill(LinearGradient(colors: [Color(hex: "#E1F2F9"), Color(hex: "#C2E1EF")], startPoint: .topLeading, endPoint: .bottomTrailing))
-                    MaxLogoView(color: Color(hex: "#376A82"), width: 62)
+                    MaxLogoView(width: 62)
                 }.frame(width: 146, height: 146)
             }
         }

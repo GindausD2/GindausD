@@ -10,7 +10,7 @@ struct TranscriptBubble: View {
         HStack(alignment: .top, spacing: 10) {
             if isUser { Spacer(minLength: 48) }
             if !isUser {
-                MaxLogoView(color: Color(hex: "#45768D"), width: 18)
+                MaxLogoView(width: 18)
                     .frame(width: 30, height: 38)
                     .accessibilityHidden(true)
             }

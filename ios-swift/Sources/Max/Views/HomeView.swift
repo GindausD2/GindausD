@@ -203,7 +203,7 @@ struct HomeView: View {
             .accessibilityLabel("New conversation")
 
             Spacer()
-            MaxLogoView(color: .primary, width: 68)
+            MaxLogoView(width: 68)
                 .accessibilityLabel("Max")
             Spacer()
 

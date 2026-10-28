@@ -14,7 +14,7 @@ The native implementation uses Apple speech recognition, optional OpenAI voice p
 
 ## Brand artwork
 
-`branding/` contains the supplied Max logo reference, scalable SVG, transparent black/white PNGs and the reproducible import script. The native app icon, launch screen, shared logo component, entry headers and widget identity use this mark. The blue orb stays the voice control.
+The approved glacier-blue glass logo is in `branding/Max_Logo_Glacier.png`, with a square profile export and an opaque 1024px app icon alongside it. The native app, widgets and Live Activity share the same original-color image asset; the launch screen uses that asset too. See [the artwork guide](branding/README.md). The blue orb stays the voice control.
 
 See [the 21 October release update](docs/RELEASE_SETUP.md) for the chosen $4.99 monthly launch price, implemented source changes, exact checks and remaining live setup. The new voice and subscription endpoints are deployed to a separate [Sandbox beta service](docs/BETA_SETUP.md); the Production endpoint is unchanged.
 

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct CompanionWordmark: View {
     var body: some View {
-        MaxLogoView(color: .primary, width: 82)
+        MaxLogoView(width: 82)
             .accessibilityLabel("Max")
     }
 }
