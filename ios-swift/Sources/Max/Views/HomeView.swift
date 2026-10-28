@@ -152,7 +152,8 @@ struct HomeView: View {
     private func handlePendingShortcut() {
         // Home only exists after the existing authentication/demo/subscription gate.
         guard let action = MaxShortcutRequest.takePending(
-            canEnterHome: !authService.isDemoExpired && authService.currentUser?.allowsAccess(
+            canEnterHome: !authService.isRestoringSession && !authService.isUpgradingDemo &&
+                !authService.isDemoExpired && authService.currentUser?.allowsAccess(
                 hasSubscription: StoreKitService.shared.isSubscribed, at: Date()) == true,
             isActive: scenePhase == .active
         ) else { return }

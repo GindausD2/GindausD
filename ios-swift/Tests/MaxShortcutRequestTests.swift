@@ -33,6 +33,17 @@ final class MaxShortcutRequestTests: XCTestCase {
         }
     }
 
+    func testOldOrUndatedRequestCannotStartAfterUnrelatedLaterLogin() {
+        isolated { defaults in
+            let requestedAt = Date(timeIntervalSince1970: 1_000)
+            MaxShortcutRequest.enqueue(.voice, defaults: defaults, notify: false, now: requestedAt)
+            XCTAssertNil(MaxShortcutRequest.takePending(canEnterHome: true, isActive: true, defaults: defaults, now: requestedAt.addingTimeInterval(301)))
+            XCTAssertNil(MaxShortcutRequest.takePending(canEnterHome: true, isActive: true, defaults: defaults, now: requestedAt))
+            defaults.set(true, forKey: "max.pendingVoiceActivation")
+            XCTAssertNil(MaxShortcutRequest.takePending(canEnterHome: true, isActive: true, defaults: defaults, now: requestedAt))
+        }
+    }
+
     func testLatestExplicitRequestReplacesEarlierRequestWithoutOpeningMicrophone() {
         isolated { defaults in
             MaxShortcutRequest.enqueue(.voice, defaults: defaults, notify: false)

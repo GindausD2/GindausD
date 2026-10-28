@@ -12,7 +12,7 @@ import AppIntents
 struct ActivateMaxIntent: AppIntent {
     static var title: LocalizedStringResource = "Activate Max"
     static var description = IntentDescription(
-        "Activates Max AI on the Dynamic Island and starts listening.",
+        "Opens Max for voice input after login or demo access, with microphone permission.",
         categoryName: "Max AI"
     )
     static var openAppWhenRun: Bool = true
