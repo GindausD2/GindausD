@@ -2,6 +2,7 @@ import SwiftUI
 
 /// A guest can explore before using Apple sign-in or choosing a subscription.
 struct DemoOnboardingView: View {
+    var onClose: (() -> Void)? = nil
     @EnvironmentObject private var authService: AuthService
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
@@ -15,7 +16,7 @@ struct DemoOnboardingView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 24) {
                     HStack {
-                        Button { dismiss() } label: {
+                        Button(action: close) {
                             Image(systemName: "xmark")
                                 .font(.subheadline.weight(.medium))
                                 .frame(width: 44, height: 44)
@@ -24,13 +25,15 @@ struct DemoOnboardingView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Close demo welcome")
                         Spacer()
-                        CompanionWordmark()
+                        Text("Your seven-day demo")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
                         Spacer()
                         Color.clear.frame(width: 44, height: 44)
                     }
                     .disabled(isLaunching)
 
-                    EntryHero(eyebrow: "SEVEN DAYS, A LITTLE LIGHTER", title: "Say hello\nto your Max.", subtitle: "A little time together.\nSee how Max fits into your day.", orbSize: 104)
+                    EntryHero(eyebrow: "SEVEN DAYS, A LITTLE LIGHTER", title: "Say hello\nto your Max.", subtitle: "A little time together.\nSee how Max fits into your day.", logoWidth: 196)
 
                     VStack(alignment: .leading, spacing: 18) {
                         EntryFeatureRow(icon: "bubble.left.and.bubble.right", title: "Talk it through", detail: "Ideas, questions and everyday plans.")
@@ -90,8 +93,12 @@ struct DemoOnboardingView: View {
         Task {
             let started = await authService.startDemo(name: name.trimmingCharacters(in: .whitespacesAndNewlines), voice: voice.rawValue)
             isLaunching = false
-            if started { dismiss() }
+            if started { close() }
         }
+    }
+
+    private func close() {
+        if let onClose { onClose() } else { dismiss() }
     }
 }
 

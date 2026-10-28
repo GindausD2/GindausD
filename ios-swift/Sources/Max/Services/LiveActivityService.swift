@@ -31,20 +31,25 @@ final class LiveActivityService {
 
     /// Start (or resume) a standby Live Activity that stays in the Dynamic Island
     /// for up to the system-managed session window even when the app is closed.
-    func startPersistentSession() {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+    enum StartResult { case started, resumed, disabled, failed }
 
-        if let existing = Activity<MaxActivityAttributes>.activities.first(where: { !retiredIDs.contains($0.id) }) {
+    @discardableResult
+    func startPersistentSession() -> StartResult {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return .disabled }
+
+        if let existing = Activity<MaxActivityAttributes>.activities.first(where: {
+            !retiredIDs.contains($0.id) && ($0.activityState == .active || $0.activityState == .stale)
+        }) {
             currentActivity = existing
             let version = generation
             Task {
                 guard generation == version, currentActivity?.id == existing.id else { return }
                 await existing.update(.init(
-                    state: MaxActivityAttributes.ContentState(phase: .idle, snippet: ""),
+                    state: existing.content.state,
                     staleDate: Date().addingTimeInterval(8 * 3600)
                 ))
             }
-            return
+            return .resumed
         }
 
         let attributes = MaxActivityAttributes(sessionLabel: "Max AI")
@@ -56,8 +61,10 @@ final class LiveActivityService {
                 content: .init(state: standbyState, staleDate: Date().addingTimeInterval(8 * 3600)),
                 pushType: nil
             )
+            return .started
         } catch {
-            // Live Activities not supported on this device/OS — fail silently
+            currentActivity = nil
+            return .failed
         }
     }
 
@@ -67,7 +74,7 @@ final class LiveActivityService {
     func start() {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
 
-        if currentActivity == nil {
+        if currentActivity == nil || currentActivity?.activityState == .ended || currentActivity?.activityState == .dismissed {
             startPersistentSession()
         }
 

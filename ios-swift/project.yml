@@ -19,6 +19,7 @@ targets:
     platform: iOS
     sources:
       - path: Sources/Max
+      - path: Sources/SharedBrand
     configFiles:
       Debug: Configuration/Public.xcconfig
       Release: Configuration/Public.xcconfig
@@ -42,6 +43,8 @@ targets:
     sources:
       - Sources/MaxLiveActivity
       - Sources/Max/LiveActivity/MaxActivityAttributes.swift
+      - Sources/Max/Components/MaxLogoView.swift
+      - Sources/SharedBrand
     info:
       path: Configuration/LiveActivity-Info.plist
       properties:
@@ -61,6 +64,7 @@ targets:
     sources:
       - Sources/MaxWidget
       - Sources/Max/Components/MaxLogoView.swift
+      - Sources/SharedBrand
     info:
       path: Configuration/Widget-Info.plist
       properties:

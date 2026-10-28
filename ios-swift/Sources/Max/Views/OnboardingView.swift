@@ -60,7 +60,7 @@ struct OnboardingView: View {
                         onComplete()
                     }
                 } label: {
-                    Text(page == total - 1 ? "Start Talking to Max" : "Next")
+                    Text(page == total - 1 ? "Back to welcome" : "Next")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)

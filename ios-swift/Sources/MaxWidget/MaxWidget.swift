@@ -117,7 +117,7 @@ private struct SmallWidgetView: View {
                 WidgetOrb(size: 56)
 
                 HStack(spacing: 5) {
-                    MaxLogoView(color: .white, width: 24).accessibilityHidden(true)
+                    MaxLogoView(width: 24).accessibilityHidden(true)
                     Text("Max").font(.system(size: 15, weight: .bold))
                 }.foregroundStyle(.white)
 
@@ -144,7 +144,7 @@ private struct MediumWidgetView: View {
                 VStack(spacing: 5) {
                     WidgetOrb(size: 52)
                     HStack(spacing: 5) {
-                        MaxLogoView(color: .white, width: 20).accessibilityHidden(true)
+                        MaxLogoView(width: 20).accessibilityHidden(true)
                         Text("Max").font(.system(size: 13, weight: .bold))
                     }.foregroundStyle(.white)
                     Text("AI Assistant")
@@ -213,7 +213,7 @@ private struct AccessoryRectangularView: View {
             WidgetOrb(size: 24)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
-                    MaxLogoView(color: .primary, width: 18).accessibilityHidden(true)
+                    MaxLogoView(width: 18).accessibilityHidden(true)
                     Text("Max").font(.system(size: 13, weight: .bold))
                 }
                 Text(entry.lastMessage)
