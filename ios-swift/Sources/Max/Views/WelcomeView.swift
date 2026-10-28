@@ -7,7 +7,9 @@ struct WelcomeView: View {
     @EnvironmentObject private var authService: AuthService
 
     @State private var currentPage: Int
+    @State private var showDemo = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.maxBrandNamespace) private var brandNamespace
 
     init(initialMode: AuthEntryMode? = nil) {
         _currentPage = State(initialValue: initialMode?.page ?? 1)
@@ -19,28 +21,41 @@ struct WelcomeView: View {
                 CompanionCanvas()
                 ambientBlobs
 
-                VStack(spacing: 0) {
-                    navigationControl
-                        .padding(.top, geo.safeAreaInsets.top + 18)
-                        .padding(.bottom, 10)
+                if showDemo {
+                    DemoOnboardingView(onClose: { showDemo = false })
+                        .padding(.top, geo.safeAreaInsets.top)
+                        .padding(.bottom, geo.safeAreaInsets.bottom)
+                        .transition(.opacity)
+                } else {
+                    VStack(spacing: 0) {
+                        navigationControl
+                            .padding(.top, geo.safeAreaInsets.top + 18)
+                            .padding(.bottom, 10)
 
-                    if currentPage == 1 {
-                        WelcomePage(onLogin: { currentPage = 0 }, onSignUp: { currentPage = 2 })
-                    } else if currentPage == 3 {
-                        PlanPage(onBack: {
-                            authService.signOut()
-                            currentPage = 2
-                        })
-                    } else {
-                        TabView(selection: $currentPage) {
-                            LoginPage().tag(0)
-                            SignUpPage(onSignedUp: { currentPage = 3 }).tag(2)
+                        if currentPage == 1 {
+                            WelcomePage(onLogin: { currentPage = 0 }, onSignUp: { currentPage = 2 }, onDemo: { showDemo = true })
+                        } else if currentPage == 3 {
+                            PlanPage(onBack: {
+                                authService.signOut()
+                                currentPage = 2
+                            })
+                        } else {
+                            TabView(selection: $currentPage) {
+                                LoginPage(onDemo: { showDemo = true })
+                                    .environment(\.maxBrandNamespace, currentPage == 0 ? brandNamespace : nil)
+                                    .tag(0)
+                                SignUpPage(onSignedUp: { currentPage = 3 }, onDemo: { showDemo = true })
+                                    .environment(\.maxBrandNamespace, currentPage == 2 ? brandNamespace : nil)
+                                    .tag(2)
+                            }
+                            .tabViewStyle(.page(indexDisplayMode: .never))
+                            .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                         }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
-                        .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
                     }
+                    .transition(.opacity)
                 }
             }
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeInOut(duration: 0.25), value: showDemo)
         }
         .ignoresSafeArea()
         .onAppear {
@@ -98,8 +113,7 @@ struct WelcomeView: View {
             .padding(.horizontal, 24)
             .frame(maxWidth: 460)
         } else {
-            CompanionWordmark()
-                .padding(.vertical, 8)
+            Color.clear.frame(height: 8)
         }
     }
 
@@ -142,7 +156,7 @@ struct DemoUpgradeView: View {
         ZStack {
             CompanionCanvas()
             VStack(spacing: 22) {
-                OrbView(state: .idle, size: 110)
+                MaxEntryBrand(width: 180)
                 Text(authService.isDemoExpired ? "Your seven-day demo has ended" : "Keep Max with you")
                     .font(.title2.weight(.semibold))
                     .multilineTextAlignment(.center)
@@ -231,22 +245,20 @@ private struct LiquidGlassPrimaryButton: View {
 // MARK: - Entry screens
 
 private struct LoginPage: View {
-    @State private var showDemo = false
+    var onDemo: () -> Void
 
     var body: some View {
-        AuthEntryPage(mode: .login, onDemo: { showDemo = true })
-            .fullScreenCover(isPresented: $showDemo) { DemoOnboardingView() }
+        AuthEntryPage(mode: .login, onDemo: onDemo)
     }
 }
 
 private struct SignUpPage: View {
     var onSignedUp: () -> Void
+    var onDemo: () -> Void
     @EnvironmentObject private var authService: AuthService
-    @State private var showDemo = false
 
     var body: some View {
-        AuthEntryPage(mode: .signUp, onDemo: { showDemo = true })
-            .fullScreenCover(isPresented: $showDemo) { DemoOnboardingView() }
+        AuthEntryPage(mode: .signUp, onDemo: onDemo)
             .onChange(of: authService.currentUser) { _, user in
                 if user != nil && user?.isDemo != true { onSignedUp() }
             }
@@ -267,7 +279,7 @@ private struct AuthEntryPage: View {
                     eyebrow: isLogin ? "YOUR SPACE IS HERE" : "MEET YOUR EVERYDAY COMPANION",
                     title: isLogin ? "A little more\nyou, again." : "Make room\nfor what matters.",
                     subtitle: isLogin ? "Pick up your thoughts, plans and little moments with Max." : "A thought, a plan, a little help.\nLet’s make your day feel lighter.",
-                    orbSize: 96
+                    logoWidth: 180
                 )
 
                 VStack(alignment: .leading, spacing: 16) {
@@ -325,16 +337,18 @@ private struct AuthEntryPage: View {
 private struct WelcomePage: View {
     var onLogin: () -> Void
     var onSignUp: () -> Void
+    var onDemo: () -> Void
     @EnvironmentObject private var authService: AuthService
-    @State private var showDemo = false
+    @State private var showTour = false
+    @AppStorage("max:onboarding_complete") private var onboardingComplete = false
 
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 28) {
-                EntryHero(eyebrow: "A LITTLE SPACE FOR YOUR DAY", title: "Life feels lighter.\nWith Max.", subtitle: "Your thoughts. Your plans.\nA companion for the everyday.", orbSize: 164)
+                EntryHero(eyebrow: "A LITTLE SPACE FOR YOUR DAY", title: "Life feels lighter.\nWith Max.", subtitle: "Your thoughts. Your plans.\nA companion for the everyday.", logoWidth: 220)
                 VStack(spacing: 14) {
                     EntryPrimaryButton(title: "Get started", action: onSignUp)
-                    Button { showDemo = true } label: {
+                    Button(action: onDemo) {
                         HStack {
                             Text("Try the 7-day demo").fontWeight(.semibold)
                             Spacer()
@@ -355,13 +369,21 @@ private struct WelcomePage: View {
                 .font(.subheadline)
                 .frame(minHeight: 44)
                 .buttonStyle(.plain)
+                if !onboardingComplete {
+                    Button("See how Max works") { showTour = true }
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(minHeight: 44)
+                }
             }
             .padding(28)
             .frame(maxWidth: 460)
             .frame(maxWidth: .infinity)
         }
         .scrollBounceBehavior(.basedOnSize)
-        .fullScreenCover(isPresented: $showDemo) { DemoOnboardingView() }
+        .fullScreenCover(isPresented: $showTour) {
+            OnboardingView { onboardingComplete = true; showTour = false }
+        }
     }
 }
 
@@ -374,7 +396,6 @@ struct PlanPage: View {
     @State private var selectedPlan: String = StoreKitService.monthlyID
 
     private let violet = Color(hex: "#315E73")
-    private let amber  = Color(hex: "#F59E0B")
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -383,14 +404,7 @@ struct PlanPage: View {
 
                 // Header
                 VStack(spacing: 8) {
-                    ZStack {
-                        Circle()
-                            .fill(amber.opacity(0.12))
-                            .frame(width: 72, height: 72)
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(amber)
-                    }
+                    MaxEntryBrand(width: 180)
                     Text("Choose Your Plan")
                         .font(.system(size: 30, weight: .bold))
                         .foregroundStyle(.primary)

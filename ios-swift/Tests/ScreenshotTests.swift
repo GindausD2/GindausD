@@ -25,6 +25,8 @@ final class ScreenshotTests: XCTestCase {
         let onboarding = UserDefaults.standard.object(forKey: "max:onboarding_complete")
         UserDefaults.standard.set(true, forKey: "max:onboarding_complete")
         defer { UserDefaults.standard.set(onboarding, forKey: "max:onboarding_complete") }
+        try await capture(MaxBrandOpeningView(), name: "Max_Brand_Opening")
+        try await capture(MaxBrandOpeningView(), name: "Max_Brand_Opening_Dark", style: .dark)
         try await capture(WelcomeView(initialMode: .login).environmentObject(AuthService.shared), name: "Max_Glass_Slider_Login")
         try await capture(WelcomeView(initialMode: .signUp).environmentObject(AuthService.shared), name: "Max_Glass_Slider_Signup")
         try await capture(WelcomeView().environmentObject(AuthService.shared), name: "Max_Entry_Welcome")

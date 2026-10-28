@@ -1,9 +1,67 @@
 import SwiftUI
 
-struct CompanionWordmark: View {
+private struct MaxBrandNamespaceKey: EnvironmentKey {
+    static let defaultValue: Namespace.ID? = nil
+}
+
+extension EnvironmentValues {
+    var maxBrandNamespace: Namespace.ID? {
+        get { self[MaxBrandNamespaceKey.self] }
+        set { self[MaxBrandNamespaceKey.self] = newValue }
+    }
+}
+
+/// One artwork identity travels from entry to the home header.
+struct MaxJourneyLogo: View {
+    var width: CGFloat
+    @Environment(\.maxBrandNamespace) private var namespace
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
-        MaxLogoView(width: 82)
+        artwork
+            .frame(width: width, height: width * MaxLogoView.aspectRatio)
             .accessibilityLabel("Max")
+    }
+
+    @ViewBuilder private var artwork: some View {
+        if let namespace, !reduceMotion {
+            Image("MaxLogo")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+                .matchedGeometryEffect(id: "max.entry.logo", in: namespace)
+        } else {
+            Image("MaxLogo")
+                .resizable()
+                .renderingMode(.original)
+                .scaledToFit()
+        }
+    }
+}
+
+struct MaxEntryBrand: View {
+    var width: CGFloat = 220
+
+    var body: some View {
+        VStack(spacing: 14) {
+            MaxJourneyLogo(width: width)
+            Text("Max")
+                .font(.system(.largeTitle, design: .rounded, weight: .semibold))
+                .tracking(-0.8)
+                .foregroundStyle(.primary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Max")
+    }
+}
+
+/// Displayed only while the real saved session is restored; no timed splash.
+struct MaxBrandOpeningView: View {
+    var body: some View {
+        ZStack {
+            CompanionCanvas()
+            MaxEntryBrand()
+        }
     }
 }
 
@@ -11,14 +69,13 @@ struct EntryHero: View {
     var eyebrow: String
     var title: String
     var subtitle: String
-    var orbSize: CGFloat = 120
+    var logoWidth: CGFloat = 204
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         VStack(spacing: 14) {
-            OrbView(state: .idle, size: typeSize.isAccessibilitySize ? 86 : orbSize)
+            MaxEntryBrand(width: typeSize.isAccessibilitySize ? 136 : logoWidth)
                 .padding(.vertical, 8)
-                .accessibilityHidden(true)
             Text(eyebrow)
                 .font(.caption2.weight(.semibold))
                 .tracking(2)

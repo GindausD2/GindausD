@@ -7,7 +7,6 @@ import WidgetKit
 
 struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
-    @AppStorage("max:onboarding_complete") private var onboardingComplete: Bool = false
 
     @ObservedObject private var playback = VoiceService.shared
     @StateObject private var viewModel: HomeViewModel
@@ -93,12 +92,6 @@ struct HomeView: View {
             guard let img else { return }
             pendingImage = img
             capturedImage = nil
-        }
-        .fullScreenCover(isPresented: Binding(
-            get: { !onboardingComplete },
-            set: { if !$0 { onboardingComplete = true } }
-        )) {
-            OnboardingView { onboardingComplete = true }
         }
         .onAppear {
             viewModel.loadMessages()
@@ -203,7 +196,7 @@ struct HomeView: View {
             .accessibilityLabel("New conversation")
 
             Spacer()
-            MaxLogoView(width: 68)
+            MaxJourneyLogo(width: 68)
                 .accessibilityLabel("Max")
             Spacer()
 

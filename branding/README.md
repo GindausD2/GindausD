@@ -8,6 +8,10 @@ The owner approved the glacier-blue glass logo on 28 October 2026. Its ring open
 
 `ios-swift/Sources/SharedBrand/BrandAssets.xcassets` contains the in-app artwork. The app, widget and Live Activity targets all include this catalog and the shared `MaxLogoView`; render it in original colors rather than applying a monochrome tint. The launch storyboard references this same asset.
 
+The launch screen and entry screens place “Max” below the large mark. The real session-restoration view uses this same brand treatment without an artificial splash delay. A root-scoped geometry namespace connects the active entry logo to the compact Home header when the existing access gate allows entry. Failed or cancelled authentication and unavailable subscriptions do not open Home. The demo remains in the same view hierarchy so its logo can make the same transition. Only the selected login/signup page participates in the shared geometry; Reduce Motion uses a short fade instead of the travelling animation.
+
+The introductory tour is optional from the welcome screen rather than covering Home immediately after successful entry. The voice-control orb remains in the assistant interface.
+
 The original black/white references, SVG and path data remain archival sources. `import_logo.py` regenerates only those monochrome exports. It deliberately does not overwrite the approved blue artwork, native view or app icon.
 
 Asset installation and an unsigned build do not establish a signed iPhone install, TestFlight availability or physical-device behavior.

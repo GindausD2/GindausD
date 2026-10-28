@@ -152,33 +152,40 @@ func scheduleBackgroundRefresh() {
 struct RootView: View {
     @EnvironmentObject private var authService: AuthService
     @StateObject private var store = StoreKitService.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var brandNamespace
+
+    private enum Stage: Equatable { case opening, entry, upgrade, home }
+
+    private var stage: Stage {
+        if authService.isRestoringSession { return .opening }
+        if authService.currentUser?.isDemo == true && (authService.isDemoExpired || authService.isUpgradingDemo) { return .upgrade }
+        return showHome ? .home : .entry
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { _ in
-            if authService.isRestoringSession {
-                ProgressView("Opening Max…")
-            } else if authService.currentUser?.isDemo == true && (authService.isDemoExpired || authService.isUpgradingDemo) {
-                DemoUpgradeView().environmentObject(authService)
-            } else if showHome {
-                HomeView()
-                    .id(authService.currentUser?.storageScope ?? "signed-out")
-                    .environmentObject(authService)
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeIn(duration: 0.35)),
-                        removal:   .opacity.animation(.easeOut(duration: 0.25))
-                    ))
-            } else {
-                // WelcomeView handles: login, signup, plan selection, and
-                // returning users who need to resubscribe (jumps to page 3).
-                WelcomeView()
-                    .environmentObject(authService)
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeIn(duration: 0.35)),
-                        removal:   .opacity.animation(.easeOut(duration: 0.25))
-                    ))
+            ZStack {
+                switch stage {
+                case .opening:
+                    MaxBrandOpeningView()
+                        .transition(.opacity)
+                case .upgrade:
+                    DemoUpgradeView()
+                        .transition(.opacity)
+                case .home:
+                    HomeView()
+                        .id(authService.currentUser?.storageScope ?? "signed-out")
+                        .transition(.opacity)
+                case .entry:
+                    // Apple sign-in and subscription/demo access remain gated.
+                    WelcomeView()
+                        .transition(.opacity)
+                }
             }
+            .environment(\.maxBrandNamespace, brandNamespace)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.72, dampingFraction: 0.9), value: stage)
         }
-        .animation(.easeInOut(duration: 0.3), value: showHome)
     }
 
     private var showHome: Bool {
