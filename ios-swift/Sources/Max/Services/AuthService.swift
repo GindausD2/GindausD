@@ -26,7 +26,8 @@ final class AuthService: ObservableObject {
                 widget?.removeObject(forKey: "max:widget_last_message")
                 widget?.removeObject(forKey: "max:widget_last_message_time")
                 WidgetCenter.shared.reloadAllTimelines()
-                for key in ["max.pendingVoiceActivation", "max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
+                for key in ["max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
+                MaxShortcutRequest.accountDidChange(hadPreviousUser: oldValue != nil)
             }
             StorageService.shared.setAccountScope(scope)
             if oldValue?.id != currentUser?.id || oldValue?.isDemo != currentUser?.isDemo {

@@ -44,6 +44,8 @@ final class ScreenshotTests: XCTestCase {
         try await capture(MemoryView(), name: "Max_Profile_Design_Memory_Saved")
         try await capture(SettingsView().environmentObject(AuthService.shared), name: "Max_Profile_Design_Settings")
         try await capture(IslandOverviewView(), name: "Max_Profile_Design_Island")
+        try await capture(IslandOverviewView(), name: "Max_Shortcuts_Setup_Compact", size: CGSize(width: 375, height: 667))
+        try await capture(IslandOverviewView().environment(\.dynamicTypeSize, .accessibility1), name: "Max_Shortcuts_Setup_Large_Text", style: .dark)
         let voiceCapture = TestVoiceCapture()
         let model = HomeViewModel(capture: voiceCapture)
         model.loadMessages()

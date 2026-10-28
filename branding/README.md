@@ -15,3 +15,13 @@ The introductory tour is optional from the welcome screen rather than covering H
 The original black/white references, SVG and path data remain archival sources. `import_logo.py` regenerates only those monochrome exports. It deliberately does not overwrite the approved blue artwork, native view or app icon.
 
 Asset installation and an unsigned build do not establish a signed iPhone install, TestFlight availability or physical-device behavior.
+
+## Compact Home identity and Shortcuts
+
+The Home header uses a 44pt-wide logo; the separate voice orb is 64pt. Entry and launch artwork stay large.
+
+Your space → Dynamic Island explains the Shortcuts connection and opens Max's own App Shortcuts page using Apple's `ShortcutsLink`. `Start Max Island` opens Max and queues a Live Activity request until Home is both accessible and active. It does not request microphone capture. `Activate Max` is the separate direct-voice shortcut. Both requests are consumed once, survive initial login/session restoration, and are cleared on sign-out or an account switch. The access predicate, trial duration, backend and provider settings are unchanged.
+
+Disabled/failed Live Activity requests from the island shortcut show an actionable message. Reopening an existing active/stale activity preserves its conversation phase instead of resetting it to Ready. Ended/dismissed activities are not reused. Live Activities remain temporary and system managed; no always-on background microphone or indefinite island presence is promised. iPhones without Dynamic Island use the Lock Screen presentation.
+
+Acceptance on a signed physical iPhone: run each shortcut with Max terminated and already open; complete login/demo if necessary; confirm only Activate Max requests microphone access; confirm one Live Activity and correct phase after repeated runs; verify disabled Live Activities show the message; verify Talk/Briefing/Plan links, permission denial, sign-out and demo expiry. On supported hardware confirm Dynamic Island, and on other hardware confirm the Lock Screen. Simulator tests verify the request queue and buildable UI only.

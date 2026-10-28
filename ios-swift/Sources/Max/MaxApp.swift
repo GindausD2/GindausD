@@ -40,8 +40,7 @@ struct MaxApp: App {
                     guard url.scheme == "maxapp" else { return }
                     switch url.host {
                     case "listen":
-                        UserDefaults.standard.set(true, forKey: "max.pendingVoiceActivation")
-                        NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+                        MaxShortcutRequest.enqueue(.voice)
                     case "briefing":
                         UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
                         NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
