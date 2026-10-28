@@ -16,20 +16,18 @@ struct WelcomeView: View {
     }
 
     var body: some View {
-        GeometryReader { geo in
+        GeometryReader { _ in
             ZStack {
                 CompanionCanvas()
                 ambientBlobs
 
                 if showDemo {
                     DemoOnboardingView(onClose: { showDemo = false })
-                        .padding(.top, geo.safeAreaInsets.top)
-                        .padding(.bottom, geo.safeAreaInsets.bottom)
                         .transition(.opacity)
                 } else {
                     VStack(spacing: 0) {
                         navigationControl
-                            .padding(.top, geo.safeAreaInsets.top + 18)
+                            .padding(.top, 18)
                             .padding(.bottom, 10)
 
                         if currentPage == 1 {
@@ -57,7 +55,6 @@ struct WelcomeView: View {
             }
             .animation(reduceMotion ? .easeOut(duration: 0.15) : .easeInOut(duration: 0.25), value: showDemo)
         }
-        .ignoresSafeArea()
         .onAppear {
             // Returning signed-in user who hasn't subscribed yet → jump to plan page
             if authService.currentUser != nil && authService.currentUser?.isDemo != true {
