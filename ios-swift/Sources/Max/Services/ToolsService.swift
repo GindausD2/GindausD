@@ -14,7 +14,7 @@ final class ToolsService {
 
     // MARK: - Tool Executor
 
-    func execute(name: String, input: [String: Any], accountScope: String? = nil) async -> String {
+    func execute(name: String, input: [String: Any], accountScope: String? = nil, requireReminderConfirmation: Bool = false) async -> String {
         guard !Task.isCancelled, accountScope == nil || accountScope == StorageService.shared.accountScope else {
             return encodeResult(["error": "Your session changed. Please try again."])
         }
@@ -32,15 +32,15 @@ final class ToolsService {
         case "recall_facts":
             return recallFacts()
         case "schedule_reminder":
-            return await scheduleReminder(input: input)
+            return await scheduleReminder(input: input, confirm: requireReminderConfirmation)
         case "get_reminders":
             return await getReminders()
         case "save_place":
             return await savePlace(input: input)
         case "schedule_location_reminder":
-            return await scheduleLocationReminder(input: input)
+            return await scheduleLocationReminder(input: input, confirm: requireReminderConfirmation)
         case "schedule_context_reminder":
-            return scheduleContextReminder(input: input)
+            return await scheduleContextReminder(input: input, confirm: requireReminderConfirmation)
         case "get_weather":
             return await getWeather(input: input)
         case "book_flight", "book_uber":
@@ -126,6 +126,7 @@ final class ToolsService {
     }
 
     private func rememberFact(input: [String: Any]) -> String {
+        guard StorageService.shared.usesSavedMemory else { return encodeResult(["error": "Memory is paused. This detail was not saved."]) }
         guard let key = input["key"] as? String,
               let value = input["value"] as? String else {
             return encodeResult(["error": "Missing key or value"])
@@ -138,6 +139,7 @@ final class ToolsService {
     }
 
     private func recallFacts() -> String {
+        guard StorageService.shared.usesSavedMemory else { return encodeResult(["facts": [], "message": "Memory is paused."]) }
         let memories = StorageService.shared.recallFacts()
         let isoFormatter = ISO8601DateFormatter()
         let mapped = memories.map { mem -> [String: Any] in
@@ -150,7 +152,7 @@ final class ToolsService {
         return encodeResult(["facts": mapped, "count": memories.count])
     }
 
-    private func scheduleReminder(input: [String: Any]) async -> String {
+    private func scheduleReminder(input: [String: Any], confirm: Bool = false) async -> String {
         let scope = StorageService.shared.accountScope
         let title = input["title"] as? String ?? "Reminder"
         let body = input["body"] as? String ?? ""
@@ -166,6 +168,12 @@ final class ToolsService {
         }
 
         let fireDate = absoluteDate ?? Date().addingTimeInterval(delay)
+        if confirm {
+            let draft = Reminder(title: title, body: body, fireDate: fireDate)
+            guard await ReminderApprovalService.shared.confirm(draft, detail: draft.triggerSummary() + " · " + TimeZone.current.identifier, scope: scope), !Task.isCancelled, StorageService.shared.accountScope == scope else {
+                return encodeResult(["error": "Reminder cancelled. Nothing was scheduled."])
+            }
+        }
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         guard granted else {
@@ -222,12 +230,9 @@ final class ToolsService {
     }
 
     private func getReminders() async -> String {
-        let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
-        let pendingIDs = Set(pending.map(\.identifier))
         let reminders = StorageService.shared.loadReminders()
         let isoFormatter = ISO8601DateFormatter()
-        let now = Date()
-        let upcoming = reminders.filter { $0.triggerKind == "context" || ($0.fireDate > now && pendingIDs.contains($0.id)) }
+        let upcoming = reminders.filter { $0.completedAt == nil }
         let mapped = upcoming.map { rem -> [String: Any] in
             [
                 "id": rem.id,
@@ -616,7 +621,7 @@ final class ToolsService {
         } catch { return encodeResult(["error": "Couldn't locate that address. Please try a fuller address."]) }
     }
 
-    private func scheduleLocationReminder(input: [String: Any]) async -> String {
+    private func scheduleLocationReminder(input: [String: Any], confirm: Bool = false) async -> String {
         let scope = StorageService.shared.accountScope
         guard let name = input["placeName"] as? String, let title = input["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return encodeResult(["error": "Provide a reminder and the name of a saved place."])
@@ -624,6 +629,10 @@ final class ToolsService {
         let matches = StorageService.shared.loadPlaceVisits().filter { $0.destination.caseInsensitiveCompare(name) == .orderedSame && $0.latitude != nil && $0.longitude != nil }
         guard matches.count == 1, let place = matches.first, let latitude = place.latitude, let longitude = place.longitude else {
             return encodeResult(["error": "Save a place with a unique name and address first."])
+        }
+        if confirm {
+            let draft = Reminder(title: title, body: "", fireDate: .distantFuture, triggerKind: "location", placeID: place.id)
+            guard await ReminderApprovalService.shared.confirm(draft, detail: "When iOS detects arrival at \(place.destination), \(place.note ?? "")", scope: scope), !Task.isCancelled, StorageService.shared.accountScope == scope else { return encodeResult(["error": "Reminder cancelled. Nothing was scheduled."]) }
         }
         guard await LocationAccessService.shared.authorize(), CLLocationManager.isMonitoringAvailable(for: CLCircularRegion.self) else {
             return encodeResult(["error": "Allow location access in iPhone Settings to use arrival reminders."])
@@ -645,12 +654,16 @@ final class ToolsService {
         } catch { return encodeResult(["error": "Couldn't save that arrival reminder."]) }
     }
 
-    private func scheduleContextReminder(input: [String: Any]) -> String {
+    private func scheduleContextReminder(input: [String: Any], confirm: Bool = false) async -> String {
+        let scope = StorageService.shared.accountScope
         guard let context = input["context"] as? String, !context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let title = input["title"] as? String, !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return encodeResult(["error": "Provide a named context and a reminder."])
         }
         let reminder = Reminder(title: title, body: "When you check \(context) in Max", fireDate: .distantFuture, triggerKind: "context", contextName: context)
+        if confirm {
+            guard await ReminderApprovalService.shared.confirm(reminder, detail: reminder.triggerSummary(), scope: scope), !Task.isCancelled, StorageService.shared.accountScope == scope else { return encodeResult(["error": "Reminder cancelled. Nothing was scheduled."]) }
+        }
         StorageService.shared.saveReminder(reminder)
         return encodeResult(["success": true, "id": reminder.id, "title": title, "triggerKind": "context", "context": context, "message": "Saved ‘\(title)’. \(reminder.triggerSummary()); it does not monitor your activity."])
     }
@@ -737,3 +750,4 @@ private final class RSSParser: NSObject, XMLParserDelegate {
         currentText = ""
     }
 }
+

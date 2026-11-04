@@ -380,7 +380,7 @@ final class ClaudeService {
         if !conversationHistory.isEmpty { apiMessages = conversationHistory }
         let facts = StorageService.shared.recallFacts().map { "\($0.key): \($0.value)" }
         let cards = StorageService.shared.loadMemoryCards().map(\.content)
-        let remembered = String((facts + cards).joined(separator: "\n").prefix(12000))
+        let remembered = StorageService.shared.usesSavedMemory ? String((facts + cards).joined(separator: "\n").prefix(12000)) : "Saved memory is paused. Do not save or recall personal facts."
         let request = ClaudeRequest(
             model: modelID,
             maxTokens: maxTokens,
@@ -583,7 +583,7 @@ final class ClaudeService {
             guard let data = (call.inputJSON.isEmpty ? "{}" : call.inputJSON).data(using: .utf8),
                   let input = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ClaudeError.invalidResponse }
             assistantBlocks.append(ClaudeRequestBlock(type: "tool_use", id: call.id, name: call.name, input: input.mapValues { AnyCodable($0) }))
-            let result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope)
+            let result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope, requireReminderConfirmation: true)
             results.append(ClaudeRequestBlock(type: "tool_result", toolUseId: call.id, content: result))
         }
         var continuation = apiMessages
@@ -618,3 +618,4 @@ enum ClaudeError: LocalizedError {
         }
     }
 }
+

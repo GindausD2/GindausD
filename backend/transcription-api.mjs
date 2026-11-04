@@ -5,6 +5,7 @@ import { SubscriptionUnavailable } from './apple-subscriptions.mjs';
 
 // The native capture sends only bounded 16 kHz, mono, PCM16 WAV. No client model,
 // prompt, draft, language override or translation operation is accepted.
+// Optional literal vocabulary hints are strictly validated, never instructions.
 export const MAX_TRANSCRIPTION_BYTES = 44 + 16000 * 2 * 120;
 export const VERBATIM_PROMPT = 'Verbatim speech with filler words (um, uh, like), repetitions, false starts and self-corrections preserved. Original spoken languages and wording, including code switching. No translation, paraphrase, summary, grammar correction or unspoken words.';
 
@@ -29,6 +30,15 @@ export function createTranscriptionAPI({ env, fetchImpl, now, verifyPaid, log })
     try {
       const access = await authorizeMax({ request, env, fetchImpl, now, verifyPaid, signal });
       if (access.error) return access.error;
+      let vocabulary = [];
+      const encodedHints = request.headers.get('x-max-vocabulary');
+      if (encodedHints !== null) {
+        try {
+          if (encodedHints.length > 12000 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encodedHints)) throw Error();
+          vocabulary = JSON.parse(Buffer.from(encodedHints, 'base64').toString('utf8'));
+          if (!Array.isArray(vocabulary) || vocabulary.length > 25 || vocabulary.some(word => typeof word !== 'string' || !word.trim() || [...word].length > 64 || /[<>\p{Cc}]/u.test(word)) || new Set(vocabulary.map(word => word.toLowerCase())).size !== vocabulary.length) throw Error();
+        } catch { return apiError(400, 'Use up to 25 distinct vocabulary hints of 1–64 characters, without line breaks or angle brackets.'); }
+      }
       const chunks = []; let bytes = 0;
       for await (const chunk of request.body ?? []) {
         bytes += chunk.byteLength;
@@ -55,6 +65,7 @@ export function createTranscriptionAPI({ env, fetchImpl, now, verifyPaid, log })
       form.set('file', new Blob([wav], { type: 'audio/wav' }), 'dictation.wav');
       form.set('model', env.OPENAI_TRANSCRIBE_MODEL || 'gpt-transcribe');
       form.set('prompt', VERBATIM_PROMPT);
+      for (const word of vocabulary) form.append('keywords[]', word);
       const upstream = await fetchImpl('https://api.openai.com/v1/audio/transcriptions', {
         method: 'POST', headers: { Authorization: 'Bearer ' + env.OPENAI_API_KEY }, body: form, signal,
       });

@@ -59,6 +59,7 @@ struct AppSettings: Codable {
     var openAIVoice: String? = "marin"
     var shareAnalytics: Bool = false
     var personalisedSuggestions: Bool = true
+    var memoryEnabled: Bool? = true
     var briefingEnabled: Bool = false
     var briefingHour: Int = 8
     var briefingMinute: Int = 0
@@ -179,6 +180,7 @@ struct Reminder: Identifiable, Codable {
     var triggerKind: String?
     var contextName: String?
     var placeID: String?
+    var completedAt: Date? = nil
 
     func triggerSummary(place: PlaceVisit? = nil, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         if triggerKind == "location" {
@@ -203,6 +205,13 @@ struct Reminder: Identifiable, Codable {
         self.contextName = contextName
         self.placeID = placeID
     }
+}
+
+struct DailyPriority: Identifiable, Codable {
+    var id = UUID().uuidString
+    var title: String
+    var day: String
+    var completed = false
 }
 
 // MARK: - Conversation (saved history session)
@@ -370,3 +379,4 @@ Resolve ambiguous reminder times, places, and contexts before scheduling. A cont
 V1 does not book flights, Uber rides, purchases, or run advanced autonomous agents.
 Confirm success only after the tool reports success. Include the exact confirmed reminder date/time and time zone, saved arrival place, or explicit context from the tool result. Never describe a Maps search as a confirmed visit.
 """
+

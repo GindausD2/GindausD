@@ -38,6 +38,53 @@ final class StorageService {
     }
 
     // MARK: - Messages
+    var usesSavedMemory: Bool { loadSettings().memoryEnabled ?? true }
+
+    func setMemoryEnabled(_ enabled: Bool, accountScope expected: String) {
+        guard accountScope == expected else { return }
+        var settings = loadSettings(); settings.memoryEnabled = enabled; saveSettings(settings)
+    }
+
+    nonisolated static func dayKey(at date: Date = Date(), calendar: Calendar = .current) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return "\(parts.year ?? 0)-\(parts.month ?? 0)-\(parts.day ?? 0)"
+    }
+
+    func loadPriorities(day: String = StorageService.dayKey()) -> [DailyPriority] {
+        guard let data = readData(for: "max:priorities"), let values = try? decoder.decode([DailyPriority].self, from: data) else { return [] }
+        return values.filter { $0.day == day }
+    }
+
+    @discardableResult
+    func savePriorities(_ values: [DailyPriority], day: String, accountScope expected: String) -> Bool {
+        guard accountScope == expected, values.count <= 3, values.allSatisfy({ $0.day == day && !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.title.count <= 160 }),
+              Set(values.map(\.id)).count == values.count else { return false }
+        var all = (readData(for: "max:priorities").flatMap { try? decoder.decode([DailyPriority].self, from: $0) }) ?? []
+        all.removeAll { $0.day == day }; all.append(contentsOf: values)
+        guard let data = try? encoder.encode(Array(all.suffix(93))) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped("max:priorities")); return true
+    }
+
+    func loadVocabulary() -> [String] {
+        guard let data = readData(for: "max:vocabulary"), let words = try? decoder.decode([String].self, from: data) else { return [] }
+        return words
+    }
+
+    @discardableResult
+    func saveVocabulary(_ words: [String], accountScope expected: String) -> Bool {
+        guard accountScope == expected, words.count <= 25,
+              words.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 64 && $0.rangeOfCharacter(from: CharacterSet(charactersIn: "<>\r\n").union(.controlCharacters)) == nil }),
+              Set(words.map { $0.lowercased() }).count == words.count, let data = try? encoder.encode(words) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped("max:vocabulary")); return true
+    }
+
+    @discardableResult
+    func updateReminder(_ reminder: Reminder, accountScope expected: String) -> Bool {
+        guard accountScope == expected else { return false }
+        var values = loadReminders()
+        guard let index = values.firstIndex(where: { $0.id == reminder.id }), let data = try? encoder.encode(values.enumerated().map { $0.offset == index ? reminder : $0.element }) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped(remindersKey)); return true
+    }
 
     func loadMessages() -> [Message] {
         guard let data = readData(for: messagesKey),
@@ -318,9 +365,12 @@ final class StorageService {
     // MARK: - Clear All
 
     func clearAll() {
+        removeData(for: "max:priorities")
+        removeData(for: "max:vocabulary")
         clearMessages()
         clearMemories()
         removeData(for: notesKey)
         removeData(for: remindersKey)
     }
 }
+

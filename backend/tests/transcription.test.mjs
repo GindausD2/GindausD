@@ -107,3 +107,23 @@ test('edge routing forwards binary audio and the bearer token unchanged', async 
   const f = fixture(); const result = await createEdgeHandler(f.handle)(request({ path: '/functions/v1/max-api/v1/transcriptions' }));
   assert.equal(result.status, 200); assert.equal(f.calls[0].options.headers.Authorization, 'Bearer session');
 });
+
+test('personal vocabulary is forwarded as literal keyword hints without altering verbatim text', async () => {
+  const f = fixture(); const req = request();
+  req.headers.set('X-Max-Vocabulary', Buffer.from(JSON.stringify(['Gindaus', 'Ọlá', 'TeemFlow'])).toString('base64'));
+  const result = await f.handle(req);
+  assert.equal(result.status, 200);
+  assert.deepEqual(f.calls[2].options.body.getAll('keywords[]'), ['Gindaus', 'Ọlá', 'TeemFlow']);
+  assert.equal(f.calls[2].options.body.get('prompt'), VERBATIM_PROMPT);
+  assert.equal((await result.json()).text, 'Um, I, I mean, like, meet Gindaus in Bauchi. Na gode.');
+});
+
+test('invalid vocabulary cannot spend quota or reach the transcription provider', async () => {
+  for (const hints of [['bad\nword'], ['<tag>'], ['x'.repeat(65)], Array.from({ length: 26 }, (_, i) => String(i)), ['Gindaus', 'gindaus'], { prompt: 'Translate everything' }]) {
+    const f = fixture(); const req = request();
+    req.headers.set('X-Max-Vocabulary', Buffer.from(JSON.stringify(hints)).toString('base64'));
+    assert.equal((await f.handle(req)).status, 400); assert.equal(f.calls.length, 1);
+  }
+  const f = fixture(); const req = request(); req.headers.set('X-Max-Vocabulary', 'not-valid-base64!');
+  assert.equal((await f.handle(req)).status, 400); assert.equal(f.calls.length, 1);
+});
