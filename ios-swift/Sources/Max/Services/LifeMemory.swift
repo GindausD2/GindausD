@@ -12,6 +12,7 @@ struct LifeEvent: Identifiable, Codable {
     var source = "User-reviewed memory"
     var sourceExcerpt = "Details reviewed and saved by you."
     var updatedAt = Date()
+    var hiddenReplaySections: [String]? = nil
 
     var isValid: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && title.count <= 160 && person.count <= 200 && place.count <= 300 && notes.count <= 2000 && source.count <= 300 && sourceExcerpt.count <= 2000 && (!attended || occurredAt <= Date())
