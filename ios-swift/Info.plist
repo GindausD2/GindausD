@@ -33,7 +33,7 @@
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Max turns your speech into text for your conversations. Recognition may use Apple’s servers when on-device recognition is unavailable.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Max needs microphone access so you can speak to your assistant hands-free.</string>
+	<string>Max records speech you choose to capture. When you finish, the recording is sent to Max and OpenAI for transcription into your original words.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Max uses your camera so you can show it something and ask about it.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
@@ -131,3 +131,4 @@
 	</array>
 </dict>
 </plist>
+

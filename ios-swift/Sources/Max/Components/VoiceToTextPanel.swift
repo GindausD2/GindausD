@@ -38,7 +38,7 @@ struct VoiceToTextPanel: View {
             .frame(minHeight: 60, maxHeight: 116)
             .accessibilityLabel("Live transcription")
 
-            Text("Review and edit before sending.")
+            Text("Word for word, including fillers and repeats. Recordings go to Max when you finish. Review before sending.")
                 .font(.caption).foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
@@ -64,3 +64,4 @@ struct VoiceToTextPanel: View {
         .glassCard(cornerRadius: 32, depth: .regular)
     }
 }
+

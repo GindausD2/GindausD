@@ -1,6 +1,5 @@
 import Foundation
 import AppIntents
-import ActivityKit
 
 // MARK: - ActivateMaxIntent
 //
@@ -13,16 +12,31 @@ import ActivityKit
 struct ActivateMaxIntent: AppIntent {
     static var title: LocalizedStringResource = "Activate Max"
     static var description = IntentDescription(
-        "Activates Max AI on the Dynamic Island and starts listening.",
+        "Opens Max for voice input after login or demo access, with microphone permission.",
         categoryName: "Max AI"
     )
     static var openAppWhenRun: Bool = true
 
     func perform() async throws -> some IntentResult {
         await MainActor.run {
-            UserDefaults.standard.set(true, forKey: "max.pendingVoiceActivation")
-            NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+            MaxShortcutRequest.enqueue(.voice)
         }
+        return .result()
+    }
+}
+
+/// Opens Max first, allowing its access gate to finish before Home starts the activity.
+/// It deliberately does not open the microphone or promise background listening.
+struct StartMaxIslandIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Max Island"
+    static var description = IntentDescription(
+        "Opens Max and shows its Live Activity controls on supported iPhones, or on the Lock Screen.",
+        categoryName: "Max AI"
+    )
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        await MainActor.run { MaxShortcutRequest.enqueue(.island) }
         return .result()
     }
 }
@@ -33,6 +47,12 @@ struct ActivateMaxIntent: AppIntent {
 
 struct MaxShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: StartMaxIslandIntent(),
+            phrases: ["Show \(.applicationName) Island", "Start \(.applicationName) Island"],
+            shortTitle: "Start Max Island",
+            systemImageName: "capsule"
+        )
         AppShortcut(
             intent: ActivateMaxIntent(),
             phrases: [

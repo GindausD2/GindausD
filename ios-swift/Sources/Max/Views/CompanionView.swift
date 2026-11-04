@@ -12,7 +12,7 @@ struct CompanionView: View {
     @State private var reloadGeneration = UUID()
     @State private var places: [PlaceVisit] = []
     @State private var reminders: [Reminder] = []
-    @State private var tab = "Notes"
+    @State private var tab = "Today"
     @State private var adding = false
     @State private var notice = ""
     @State private var showNotice = false
@@ -23,10 +23,12 @@ struct CompanionView: View {
             List {
                 Section {
                     Picker("Saved things", selection: $tab) {
+                        Text("Today").tag("Today")
                         Text("Notes").tag("Notes"); Text("Places").tag("Places"); Text("Reminders").tag("Reminders")
                     }.pickerStyle(.segmented)
                 }
-                if tab == "Notes" {
+                if tab == "Today" { TodayOverview() }
+                else if tab == "Notes" {
                     Section("Your notes") {
                         if notes.isEmpty { Text("Save an idea, a thought, or something you want to keep.").foregroundStyle(.secondary) }
                         ForEach(notes.sorted { $0.updatedAt > $1.updatedAt }) { note in
@@ -95,10 +97,10 @@ struct CompanionView: View {
             .navigationTitle("Your day")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
-                ToolbarItem(placement: .primaryAction) { Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add \(tab.lowercased())") }
+                ToolbarItem(placement: .primaryAction) { Button { adding = true } label: { Image(systemName: "plus") }.accessibilityLabel("Add \(tab == "Today" ? "reminder" : tab.lowercased())") }
             }
             .onAppear { if accountScope.isEmpty { accountScope = storage.accountScope }; reload() }
-            .sheet(isPresented: $adding) { CompanionAddSheet(section: tab, places: places, accountScope: accountScope) { reload() } }
+            .sheet(isPresented: $adding) { CompanionAddSheet(section: tab == "Today" ? "Reminders" : tab, places: places, accountScope: accountScope) { reload() } }
             .sheet(item: $editing) { SavedMemoryEditor(target: $0, accountScope: accountScope, onSave: reload) }
             .sheet(isPresented: $showMemory) { MemoryView() }
             .sheet(isPresented: $history) { ConversationHistoryView(onNewChat: { history = false }) }
@@ -127,11 +129,9 @@ struct CompanionView: View {
         let scope = storage.accountScope
         let generation = UUID(); reloadGeneration = generation
         Task { @MainActor in
-            let pending = await UNUserNotificationCenter.current().pendingNotificationRequests()
             guard storage.accountScope == scope, reloadGeneration == generation else { return }
-            let ids = Set(pending.map(\.identifier))
             reminders = storage.loadReminders().filter {
-                $0.triggerKind == "context" || ($0.fireDate > Date() && ids.contains($0.id))
+                $0.completedAt == nil
             }.sorted { $0.fireDate < $1.fireDate }
         }
     }
@@ -226,3 +226,4 @@ private struct CompanionAddSheet: View {
         }
     }
 }
+

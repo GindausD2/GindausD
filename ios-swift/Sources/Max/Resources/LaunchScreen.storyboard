@@ -20,18 +20,25 @@
                         <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
                         <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
                         <subviews>
-                            <!-- Supplied Max logo centred -->
+                            <!-- Approved glacier-blue Max logo centred -->
                             <imageView opaque="NO" clipsSubviews="YES"
                                        userInteractionEnabled="NO"
                                        contentMode="scaleAspectFit"
-                                       image="LaunchLogo"
+                                       image="MaxLogo"
                                        translatesAutoresizingMaskIntoConstraints="NO"
                                        id="logo-img-01">
-                                <rect key="frame" x="96.5" y="376" width="200" height="100"/>
+                                <rect key="frame" x="86.5" y="337.5" width="220" height="121"/>
                             </imageView>
+                            <label opaque="NO" userInteractionEnabled="NO"
+                                   contentMode="left" text="Max" textAlignment="center"
+                                   translatesAutoresizingMaskIntoConstraints="NO" id="brand-name-01">
+                                <rect key="frame" x="86.5" y="472.5" width="220" height="44"/>
+                                <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="34"/>
+                                <color key="textColor" systemColor="labelColor"/>
+                            </label>
                         </subviews>
                         <viewLayoutGuide key="safeAreaLayoutGuide" id="Bcu-3y-fUS"/>
-                        <!-- System background adapts with the light and dark logo assets -->
+                        <!-- The shared blue logo keeps its original colors on the system background -->
                         <color key="backgroundColor" systemColor="systemBackgroundColor"/>
                         <constraints>
                             <constraint firstItem="logo-img-01" firstAttribute="centerX"
@@ -39,11 +46,20 @@
                                         id="cx-logo"/>
                             <constraint firstItem="logo-img-01" firstAttribute="centerY"
                                         secondItem="Ze5-6b-2t3" secondAttribute="centerY"
-                                        id="cy-logo"/>
+                                        constant="-28" id="cy-logo"/>
                             <constraint firstItem="logo-img-01" firstAttribute="width"
-                                        constant="200" id="w-logo"/>
+                                        constant="220" id="w-logo"/>
                             <constraint firstItem="logo-img-01" firstAttribute="height"
-                                        constant="100" id="h-logo"/>
+                                        constant="121" id="h-logo"/>
+                            <constraint firstItem="brand-name-01" firstAttribute="centerX"
+                                        secondItem="Ze5-6b-2t3" secondAttribute="centerX" id="cx-brand-name"/>
+                            <constraint firstItem="brand-name-01" firstAttribute="top"
+                                        secondItem="logo-img-01" secondAttribute="bottom"
+                                        constant="14" id="brand-name-top"/>
+                            <constraint firstItem="brand-name-01" firstAttribute="width"
+                                        constant="220" id="w-brand-name"/>
+                            <constraint firstItem="brand-name-01" firstAttribute="height"
+                                        constant="44" id="h-brand-name"/>
                         </constraints>
                     </view>
                 </viewController>
@@ -54,9 +70,12 @@
         </scene>
     </scenes>
     <resources>
-        <image name="LaunchLogo" width="600" height="320"/>
+        <image name="MaxLogo" width="1691" height="930"/>
         <systemColor name="systemBackgroundColor">
             <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
+        <systemColor name="labelColor">
+            <color white="0" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
         </systemColor>
     </resources>
 </document>

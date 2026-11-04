@@ -7,9 +7,10 @@ import WidgetKit
 
 struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
-    @AppStorage("max:onboarding_complete") private var onboardingComplete: Bool = false
 
     @ObservedObject private var playback = VoiceService.shared
+    @ObservedObject private var reminderApproval = ReminderApprovalService.shared
+    @ObservedObject private var lifeApproval = LifeMemoryApproval.shared
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
     @State private var showProfile = false
@@ -18,6 +19,7 @@ struct HomeView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var islandNotice: String?
     @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
     @State private var capturedImage: UIImage? = nil
@@ -69,10 +71,22 @@ struct HomeView: View {
         )) {
             Button("OK", role: .cancel) { viewModel.dictationError = nil }
         } message: { Text(viewModel.dictationError ?? "Please try again.") }
+        .alert("Max controls unavailable", isPresented: Binding(
+            get: { islandNotice != nil },
+            set: { if !$0 { islandNotice = nil } }
+        )) {
+            Button("iPhone settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            }
+            Button("OK", role: .cancel) { islandNotice = nil }
+        } message: { Text(islandNotice ?? "Please try again.") }
         .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
         .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
-        .onChange(of: scenePhase) { _, phase in if phase == .background { viewModel.endConversation() } }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .background { viewModel.endConversation() }
+            if phase == .active { handlePendingShortcut() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
             UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
             if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
@@ -85,29 +99,27 @@ struct HomeView: View {
                 viewModel.startNewChat()
             })
         }
+        .sheet(item: Binding(get: { reminderApproval.pending }, set: { if $0 == nil { reminderApproval.cancel() } })) { proposal in
+            ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
+                .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
+        }
         .fullScreenCover(isPresented: $showCamera) {
             ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
                 .ignoresSafeArea()
+        }
+        .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
+            LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
+                .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
         }
         .onChange(of: capturedImage) { _, img in
             guard let img else { return }
             pendingImage = img
             capturedImage = nil
         }
-        .fullScreenCover(isPresented: Binding(
-            get: { !onboardingComplete },
-            set: { if !$0 { onboardingComplete = true } }
-        )) {
-            OnboardingView { onboardingComplete = true }
-        }
         .onAppear {
             viewModel.loadMessages()
-            liveActivity.startPersistentSession()
-            if UserDefaults.standard.bool(forKey: "max.pendingVoiceActivation") {
-                showProfile = false
-                UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
-                viewModel.activateVoice()
-            }
+            if scenePhase == .active { liveActivity.startPersistentSession() }
+            handlePendingShortcut()
             if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
                 showProfile = false
                 UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
@@ -143,9 +155,34 @@ struct HomeView: View {
         }
         // Start listening when user taps the home screen widget
         .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
-            showProfile = false
-            UserDefaults.standard.removeObject(forKey: "max.pendingVoiceActivation")
+            handlePendingShortcut()
+        }
+    }
+
+    private func handlePendingShortcut() {
+        // Home only exists after the existing authentication/demo/subscription gate.
+        guard let action = MaxShortcutRequest.takePending(
+            canEnterHome: !authService.isRestoringSession && !authService.isUpgradingDemo &&
+                !authService.isDemoExpired && authService.currentUser?.allowsAccess(
+                hasSubscription: StoreKitService.shared.isSubscribed, at: Date()) == true,
+            isActive: scenePhase == .active
+        ) else { return }
+        showProfile = false
+        showCompanion = false
+        showHistory = false
+        showCamera = false
+        composerFocused = false
+        let result = liveActivity.startPersistentSession()
+        if action == .voice {
             viewModel.activateVoice()
+        } else {
+            switch result {
+            case .started, .resumed: break
+            case .disabled:
+                islandNotice = "Allow Live Activities for Max in iPhone settings, then run Start Max Island again."
+            case .failed:
+                islandNotice = "iOS couldn't start Max's Live Activity. Try again while Max is open."
+            }
         }
     }
 
@@ -203,7 +240,7 @@ struct HomeView: View {
             .accessibilityLabel("New conversation")
 
             Spacer()
-            MaxLogoView(color: .primary, width: 68)
+            MaxJourneyLogo(width: 44)
                 .accessibilityLabel("Max")
             Spacer()
 
@@ -348,7 +385,7 @@ struct HomeView: View {
                 .glassCard(cornerRadius: 22, interactive: true)
             Spacer(minLength: 0)
             Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: 88)
+                OrbView(state: viewModel.orbState, size: 64)
             }
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
@@ -813,6 +850,8 @@ final class HomeViewModel: ObservableObject {
     }
 
     func endConversation() {
+        LifeMemoryApproval.shared.cancel()
+        ReminderApprovalService.shared.cancel()
         continuousActive = false
         turnID = UUID()
         voiceInputTask?.cancel(); voiceInputTask = nil
@@ -835,6 +874,10 @@ final class HomeViewModel: ObservableObject {
         guard !startingVoice, !isTranscribing else { return }
         continuousActive = false
         capture.onUtteranceEnd = nil
+        capture.onRecordingLimit = { [weak self] in
+            guard let self, self.isDictating, !self.isTranscribing else { return }
+            self.finishDictation()
+        }
         dictationError = nil
         dictationBaseDraft = inputText
         dictationScope = storage.accountScope
@@ -885,6 +928,7 @@ final class HomeViewModel: ObservableObject {
         inputText = dictationBaseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         inputText += (inputText.isEmpty ? "" : " ") + text
         prefersTextReplyForDraft = true
+        dictationError = capture.transcriptionNotice
     }
 
     private func startListening() {
@@ -899,6 +943,7 @@ final class HomeViewModel: ObservableObject {
                     guard let self, self.continuousActive, self.conversationState == .listening else { return }
                     self.stopListening()
                 }
+                capture.onRecordingLimit = { [weak self] in self?.stopListening() }
                 try await capture.startRecording()
                 guard turnID == activationID else { capture.stopRecording(); return }
                 conversationState = .listening
@@ -921,6 +966,15 @@ final class HomeViewModel: ObservableObject {
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
+                return
+            }
+            if let notice = capture.transcriptionNotice {
+                // A fallback or limited recording always gets a review step,
+                // including direct-voice shortcut sessions.
+                continuousActive = false
+                inputText += (inputText.isEmpty ? "" : " ") + transcription
+                prefersTextReplyForDraft = true
+                dictationError = notice
                 return
             }
             addUserMessage(transcription)
@@ -1015,3 +1069,4 @@ final class HomeViewModel: ObservableObject {
 #Preview {
     HomeView().environmentObject(AuthService.shared)
 }
+

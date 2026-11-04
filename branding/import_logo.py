@@ -1,10 +1,11 @@
-"""Trace the supplied logo into the shared SwiftUI vector and branding assets.
+"""Trace the original monochrome logo into archival branding assets.
 
 No generative redraw: contours follow the reference. Requires numpy, matplotlib,
 Pillow, reportlab and PyMuPDF. The original JPEG remains unchanged.
+The approved glacier-blue release artwork and native assets are not overwritten.
 """
 from pathlib import Path
-import json, shutil
+import json
 import numpy as np
 from PIL import Image
 import matplotlib
@@ -57,49 +58,6 @@ svg=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 {height:.3f}" ro
 (BRAND/'Max_Logo.svg').write_text(svg)
 (BRAND/'Max_Logo_Path.json').write_text(json.dumps({'width':1000,'height':round(height,3),'contours':normalized},indent=2)+'\n')
 
-# The same contour data is used by the app and its widget target.
-arrays=',\n'.join('        ['+', '.join(f'CGPoint(x: {x:g}, y: {y:g})' for x,y in pts)+']' for pts in normalized)
-swift='''import SwiftUI
-
-/// Max's supplied brand mark, traced from branding/Max_Logo_Reference.jpeg.
-/// The detached lower-right curve and ring opening are intentional.
-/// Kept in code so the app and widget share the exact same scalable artwork.
-struct MaxLogoView: View {
-    var color: Color = .white
-    var width: CGFloat = 180
-    static let aspectRatio: CGFloat = HEIGHT / 1000
-
-    var body: some View {
-        MaxBrandShape()
-            .fill(color, style: FillStyle(eoFill: true))
-            .frame(width: width, height: width * Self.aspectRatio)
-            .accessibilityLabel("Max")
-    }
-}
-
-private struct MaxBrandShape: Shape {
-    private static let contours: [[CGPoint]] = [
-ARRAYS
-    ]
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        for contour in Self.contours {
-            guard let first = contour.first else { continue }
-            func point(_ value: CGPoint) -> CGPoint {
-                CGPoint(x: rect.minX + value.x / 1000 * rect.width,
-                        y: rect.minY + value.y / HEIGHT * rect.height)
-            }
-            path.move(to: point(first))
-            for value in contour.dropFirst() { path.addLine(to: point(value)) }
-            path.closeSubpath()
-        }
-        return path
-    }
-}
-'''.replace('HEIGHT',f'{height:.3f}').replace('ARRAYS',arrays)
-(ROOT/'ios-swift/Sources/Max/Components/MaxLogoView.swift').write_text(swift)
-
 def render(output, size, color='#111111', background=None, mark_width=None):
  width_px,height_px=size
  mark_width=mark_width or width_px
@@ -121,10 +79,4 @@ def render(output, size, color='#111111', background=None, mark_width=None):
 
 render(BRAND/'Max_Logo_Black.png',(1200,660),mark_width=1120)
 render(BRAND/'Max_Logo_White.png',(1200,660),color='#FFFFFF',mark_width=1120)
-render(ROOT/'ios-swift/Sources/Max/Assets.xcassets/AppIcon.appiconset/AppIcon.png',(1024,1024),background='#FAFCFD',mark_width=700)
-launch=ROOT/'ios-swift/Sources/Max/Assets.xcassets/LaunchLogo.imageset'
-render(launch/'LaunchLogo.png',(600,320),mark_width=560)
-render(launch/'LaunchLogoDark.png',(600,320),color='#FFFFFF',mark_width=560)
-contents={'images':[{'idiom':'universal','filename':'LaunchLogo.png','scale':'1x'},{'idiom':'universal','filename':'LaunchLogoDark.png','scale':'1x','appearances':[{'appearance':'luminosity','value':'dark'}]}],'info':{'author':'xcode','version':1}}
-(launch/'Contents.json').write_text(json.dumps(contents,indent=2)+'\n')
 print('Traced contours:',len(normalized),'vertices:',sum(map(len,normalized)),'aspect ratio:',height/1000)

@@ -19,6 +19,7 @@ struct SettingsView: View {
     @State private var showSubscription: Bool = false
     @State private var showPrivacy: Bool = false
     @State private var showMemory: Bool = false
+    @State private var showVocabulary = false
     @State private var showIslandDebug: Bool = false
     @State private var showEmailConfig: Bool = false
     @State private var showDeviceLink: Bool = false
@@ -59,6 +60,8 @@ struct SettingsView: View {
 
                         // ── CONFIGURATION ─────────────────────────────────────
                         ProfileSection(title: "CONFIGURATION") {
+                            ProfileRow(icon: "textformat.abc", iconColor: Color(hex: "#315E73"), title: "Voice vocabulary") { showVocabulary = true }
+                            Divider().padding(.leading, 56)
                             ProfileRow(icon: "sun.horizon.fill", iconColor: Color(hex: "#F59E0B"),
                                        title: "Morning Briefing") { showBriefing = true }
                             Divider().padding(.leading, 56)
@@ -193,7 +196,8 @@ struct SettingsView: View {
         .presentationCornerRadius(34).presentationDragIndicator(.hidden)
         // ── Destination sheets ────────────────────────────────────────────────
         .sheet(isPresented: $showSubscription) { SubscriptionSheet() }
-        .sheet(isPresented: $showMemory)       { MemoryView() }
+        .sheet(isPresented: $showMemory, onDismiss: { settings = storage.loadSettings() }) { MemoryView() }
+        .sheet(isPresented: $showVocabulary) { VocabularyView() }
         .sheet(isPresented: $showPrivacy)      { PrivacySheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showIslandDebug)  { IslandDebugSheet() }
         .sheet(isPresented: $showEmailConfig)  { EmailConfigSheet() }
@@ -366,14 +370,14 @@ private struct SubscriptionSheet: View {
                 CompanionCanvas()
                 if authService.currentUser?.isDemo == true {
                     VStack(spacing: 20) {
-                        MaxLogoView(color: .primary, width: 84)
+                        MaxLogoView(width: 84)
                         Text("Your seven-day demo").font(.title2.weight(.semibold))
                         Text("No payment is needed during your demo. Continue with Apple when you’re ready to subscribe.")
                         Button("Continue with Apple") { authService.beginDemoUpgrade(); dismiss() }
                     }.multilineTextAlignment(.center).padding(24)
                 } else if store.isSubscribed {
                     VStack(spacing: 20) {
-                        MaxLogoView(color: .primary, width: 84)
+                        MaxLogoView(width: 84)
                         Text("Your Max subscription is active").font(.title2.weight(.semibold))
                         Link("Manage subscription", destination: URL(string: "https://apps.apple.com/account/subscriptions")!)
                         Button("Restore Purchases") { Task { await store.restorePurchases() } }
@@ -725,3 +729,4 @@ private struct BriefingSheet: View {
     SettingsView()
         .environmentObject(AuthService.shared)
 }
+
