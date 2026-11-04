@@ -7,13 +7,17 @@ enum VerbatimTranscriptionError: Error {
 /// Uses Max's authenticated backend. Provider credentials and transcription
 /// instructions stay on the server; the user's draft is never sent as a hint.
 enum VerbatimTranscriber {
-    static func transcribe(_ audio: Data, baseURL: String, token: String, transaction: String?, session: URLSession = .shared) async throws -> String {
+    static func transcribe(_ audio: Data, baseURL: String, token: String, transaction: String?, vocabulary: [String] = [], session: URLSession = .shared) async throws -> String {
         guard let base = URL(string: baseURL), base.scheme == "https", base.host != nil else { throw VerbatimTranscriptionError.unavailable }
         var request = URLRequest(url: base.appendingPathComponent("v1/transcriptions"))
         request.httpMethod = "POST"
         request.timeoutInterval = 45
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         request.setValue("audio/wav", forHTTPHeaderField: "Content-Type")
+        if !vocabulary.isEmpty {
+            let hints = try JSONEncoder().encode(vocabulary)
+            request.setValue(hints.base64EncodedString(), forHTTPHeaderField: "X-Max-Vocabulary")
+        }
         if let transaction { request.setValue(transaction, forHTTPHeaderField: "X-Max-Transaction") }
         request.httpBody = audio
         let (data, response) = try await session.data(for: request)

@@ -95,6 +95,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         request.taskHint = .dictation
+        request.contextualStrings = StorageService.shared.loadVocabulary()
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         recognitionRequest = request
         let thisRecognition = UUID(); recognitionID = thisRecognition
@@ -141,6 +142,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         guard recognitionRequest != nil else { return nil }
         let finishingID = recognitionID
         let scope = StorageService.shared.accountScope
+        let vocabulary = StorageService.shared.loadVocabulary()
         silenceTask?.cancel(); silenceTask = nil
         audioEngine.stop()
         if inputTapInstalled { audioEngine.inputNode.removeTap(onBus: 0); inputTapInstalled = false }
@@ -161,7 +163,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
                     let transaction = await StoreKitService.shared.signedTransactionProof()
                     try Task.checkCancellation()
                     guard self.recognitionID == finishingID, StorageService.shared.accountScope == scope else { return nil }
-                    return try await VerbatimTranscriber.transcribe(audio, baseURL: kMaxAPIBaseURL, token: session.token, transaction: transaction)
+                    return try await VerbatimTranscriber.transcribe(audio, baseURL: kMaxAPIBaseURL, token: session.token, transaction: transaction, vocabulary: vocabulary)
                 } catch {
                     guard !Task.isCancelled, self.recognitionID == finishingID, StorageService.shared.accountScope == scope else { return nil }
                     if case VerbatimTranscriptionError.demoExpired = error {
