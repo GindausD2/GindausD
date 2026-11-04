@@ -33,10 +33,11 @@ final class ToolsService {
             guard input["from"] == nil || from != nil, input["until"] == nil || until != nil,
                   from == nil || until == nil || from! < until! else { return encodeResult(["error": "Use valid ISO dates and an exclusive end later than the start."]) }
             let matches = LifeEvent.matching(StorageService.shared.loadLifeEvents(), query: input["query"] as? String ?? "", from: from, to: until)
-            let values: [[String: Any]] = matches.prefix(20).map { event in
-                ["id": event.id, "title": event.title, "person": event.person, "place": event.place, "occurredAt": formatter.string(from: event.occurredAt), "notes": event.notes, "attendance": event.attended ? "confirmed_by_user" : "planned_unconfirmed", "source": event.source, "sourceExcerpt": event.sourceExcerpt, "lastReviewed": formatter.string(from: event.updatedAt)]
+            var values: [[String: Any]] = matches.prefix(20).map { event in
+                ["id": event.id, "title": event.title, "person": event.person, "place": event.place, "occurredAt": formatter.string(from: event.occurredAt), "notes": String(event.notes.prefix(600)), "attendance": event.attended ? "confirmed_by_user" : "planned_unconfirmed", "source": event.source, "sourceExcerpt": String(event.sourceExcerpt.prefix(600)), "lastReviewed": formatter.string(from: event.updatedAt), "excerptClipped": event.notes.count > 600 || event.sourceExcerpt.count > 600]
             }
-            return encodeResult(["events": values, "totalMatches": matches.count, "instructions": "Cite the event's source and date. Multiple plausible people require a clarifying question. Planned entries do not prove attendance. No match means insufficient evidence, not that the meeting never happened."])
+            while !values.isEmpty && encodeResult(["events": values]).utf8.count > 20000 { values.removeLast() }
+            return encodeResult(["events": values, "totalMatches": matches.count, "moreMatches": values.count < matches.count, "instructions": "Cite the event's source and date. Multiple plausible people require a clarifying question. Planned entries do not prove attendance. No match means insufficient evidence, not that the meeting never happened. If moreMatches is true, ask for narrower dates or keywords. Full evidence is available in the Life Memory timeline."])
         case "get_datetime":
             return getDatetime()
         case "save_note":

@@ -43,6 +43,22 @@ final class LifeMemoryTests: XCTestCase {
         XCTAssertTrue(LifeEvent.matching([event], query: "", to: date).isEmpty)
     }
 
+    func testLargeRecallEvidenceStaysWithinBackendContinuationLimit() async throws {
+        try await isolated { scope in
+            let store = StorageService.shared
+            for index in 0..<20 {
+                var event = LifeEvent(title: "Meeting \(index)", person: "Justin", place: "Cafe", occurredAt: Date(), notes: String(repeating: "界", count: 2000))
+                event.sourceExcerpt = String(repeating: "界", count: 2000)
+                XCTAssertTrue(store.saveLifeEvent(event, scope: scope))
+            }
+            let reply = await ToolsService.shared.execute(name: "recall_life_events", input: ["query": "Meeting"])
+            XCTAssertLessThan(reply.utf8.count, 24000)
+            let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: Data(reply.utf8)) as? [String: Any])
+            XCTAssertEqual(json["totalMatches"] as? Int, 20)
+            XCTAssertEqual(json["moreMatches"] as? Bool, true)
+        }
+    }
+
     func testEditsForgetPauseAndAccountIsolation() async throws {
         await isolated { scope in
             let store = StorageService.shared
