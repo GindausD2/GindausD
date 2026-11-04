@@ -22,6 +22,7 @@ final class AuthService: ObservableObject {
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
                 VoiceService.shared.stopRecording(); VoiceService.shared.stopSpeaking()
                 ReminderApprovalService.shared.cancel()
+                LifeMemoryApproval.shared.cancel()
                 LiveActivityService.shared.stopPersistentSession()
                 let widget = UserDefaults(suiteName: "group.com.gindausd.max")
                 widget?.removeObject(forKey: "max:widget_last_message")

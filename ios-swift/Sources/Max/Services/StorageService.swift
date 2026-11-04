@@ -40,6 +40,36 @@ final class StorageService {
     // MARK: - Messages
     var usesSavedMemory: Bool { loadSettings().memoryEnabled ?? true }
 
+    func loadLifeEvents() -> [LifeEvent] {
+        guard let data = readData(for: "max:lifeEvents"), let values = try? decoder.decode([LifeEvent].self, from: data) else { return [] }
+        return values
+    }
+
+    @discardableResult
+    func saveLifeEvent(_ event: LifeEvent, scope: String, replacing: Bool = false) -> Bool {
+        guard accountScope == scope, usesSavedMemory, event.isValid else { return false }
+        var values = loadLifeEvents()
+        if let index = values.firstIndex(where: { $0.id == event.id }) {
+            guard replacing else { return false }
+            values[index] = event
+        } else {
+            guard !replacing, values.count < 1000 else { return false }
+            values.append(event)
+        }
+        guard let data = try? encoder.encode(values) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped("max:lifeEvents")); return true
+    }
+
+    @discardableResult
+    func forgetLifeEvent(id: String, scope: String) -> Bool {
+        guard accountScope == scope else { return false }
+        var values = loadLifeEvents()
+        guard values.contains(where: { $0.id == id }) else { return false }
+        values.removeAll { $0.id == id }
+        guard let data = try? encoder.encode(values) else { return false }
+        UserDefaults.standard.set(data, forKey: scoped("max:lifeEvents")); return true
+    }
+
     func setMemoryEnabled(_ enabled: Bool, accountScope expected: String) {
         guard accountScope == expected else { return }
         var settings = loadSettings(); settings.memoryEnabled = enabled; saveSettings(settings)
@@ -365,6 +395,7 @@ final class StorageService {
     // MARK: - Clear All
 
     func clearAll() {
+        removeData(for: "max:lifeEvents")
         removeData(for: "max:priorities")
         removeData(for: "max:vocabulary")
         clearMessages()

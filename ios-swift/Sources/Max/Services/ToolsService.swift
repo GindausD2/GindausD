@@ -19,6 +19,24 @@ final class ToolsService {
             return encodeResult(["error": "Your session changed. Please try again."])
         }
         switch name {
+        case "propose_life_event":
+            guard StorageService.shared.usesSavedMemory, let title = input["title"] as? String,
+                  let timestamp = input["occurredAt"] as? String, let date = ISO8601DateFormatter().date(from: timestamp) else { return encodeResult(["error": "Memory must be enabled and the event needs a title and an exact date. Ask for missing details."]) }
+            let event = LifeEvent(title: title, person: input["person"] as? String ?? "", place: input["place"] as? String ?? "", occurredAt: date, notes: input["notes"] as? String ?? "")
+            guard let id = await LifeMemoryApproval.shared.propose(event, scope: StorageService.shared.accountScope) else { return encodeResult(["error": "Life memory was not saved. The user cancelled or the account/memory setting changed."]) }
+            return encodeResult(["success": true, "id": id, "message": "The user reviewed and saved the event. Attendance status is in recall_life_events; do not assume it happened."])
+        case "recall_life_events":
+            guard StorageService.shared.usesSavedMemory else { return encodeResult(["error": "Memory is paused."]) }
+            let formatter = ISO8601DateFormatter()
+            let from = (input["from"] as? String).flatMap { formatter.date(from: $0) }
+            let until = (input["until"] as? String).flatMap { formatter.date(from: $0) }
+            guard input["from"] == nil || from != nil, input["until"] == nil || until != nil,
+                  from == nil || until == nil || from! < until! else { return encodeResult(["error": "Use valid ISO dates and an exclusive end later than the start."]) }
+            let matches = LifeEvent.matching(StorageService.shared.loadLifeEvents(), query: input["query"] as? String ?? "", from: from, to: until)
+            let values: [[String: Any]] = matches.prefix(20).map { event in
+                ["id": event.id, "title": event.title, "person": event.person, "place": event.place, "occurredAt": formatter.string(from: event.occurredAt), "notes": event.notes, "attendance": event.attended ? "confirmed_by_user" : "planned_unconfirmed", "source": event.source, "sourceExcerpt": event.sourceExcerpt, "lastReviewed": formatter.string(from: event.updatedAt)]
+            }
+            return encodeResult(["events": values, "totalMatches": matches.count, "instructions": "Cite the event's source and date. Multiple plausible people require a clarifying question. Planned entries do not prove attendance. No match means insufficient evidence, not that the meeting never happened."])
         case "get_datetime":
             return getDatetime()
         case "save_note":
