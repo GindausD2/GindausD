@@ -93,9 +93,15 @@ struct LifeEventEditor: View {
     let onFinish: (String?) -> Void
     @State private var error: String?
     @State private var forget = false
+    @State private var showReplay = false
     var body: some View {
         NavigationStack {
             Form {
+                if existing {
+                    Section {
+                        Button { showReplay = true } label: { Label("Open memory replay", systemImage: "play.rectangle") }
+                    } footer: { Text("Replay uses the saved version. Save your edits before opening it.") }
+                }
                 Section("Review the details") {
                     TextField("Meeting or event", text: $event.title)
                     TextField("People you met", text: $event.person)
@@ -130,6 +136,9 @@ struct LifeEventEditor: View {
                         else { error = "Your account or event changed." }
                     }
                 } message: { Text("This removes the saved event from future memory searches. Existing chat history and the original calendar entry are separate.") }
+                .sheet(isPresented: $showReplay, onDismiss: {
+                    if StorageService.shared.accountScope == scope, let saved = StorageService.shared.loadLifeEvents().first(where: { $0.id == event.id }) { event = saved }
+                }) { MemoryReplayView(eventID: event.id, scope: scope) }
         }.tint(Color(hex: "#315E73"))
     }
 }
