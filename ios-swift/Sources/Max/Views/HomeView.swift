@@ -862,6 +862,10 @@ final class HomeViewModel: ObservableObject {
         guard !startingVoice, !isTranscribing else { return }
         continuousActive = false
         capture.onUtteranceEnd = nil
+        capture.onRecordingLimit = { [weak self] in
+            guard let self, self.isDictating, !self.isTranscribing else { return }
+            self.finishDictation()
+        }
         dictationError = nil
         dictationBaseDraft = inputText
         dictationScope = storage.accountScope
@@ -912,6 +916,7 @@ final class HomeViewModel: ObservableObject {
         inputText = dictationBaseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         inputText += (inputText.isEmpty ? "" : " ") + text
         prefersTextReplyForDraft = true
+        dictationError = capture.transcriptionNotice
     }
 
     private func startListening() {
@@ -926,6 +931,7 @@ final class HomeViewModel: ObservableObject {
                     guard let self, self.continuousActive, self.conversationState == .listening else { return }
                     self.stopListening()
                 }
+                capture.onRecordingLimit = { [weak self] in self?.stopListening() }
                 try await capture.startRecording()
                 guard turnID == activationID else { capture.stopRecording(); return }
                 conversationState = .listening
@@ -948,6 +954,15 @@ final class HomeViewModel: ObservableObject {
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
+                return
+            }
+            if let notice = capture.transcriptionNotice {
+                // A fallback or limited recording always gets a review step,
+                // including direct-voice shortcut sessions.
+                continuousActive = false
+                inputText += (inputText.isEmpty ? "" : " ") + transcription
+                prefersTextReplyForDraft = true
+                dictationError = notice
                 return
             }
             addUserMessage(transcription)
@@ -1042,3 +1057,4 @@ final class HomeViewModel: ObservableObject {
 #Preview {
     HomeView().environmentObject(AuthService.shared)
 }
+

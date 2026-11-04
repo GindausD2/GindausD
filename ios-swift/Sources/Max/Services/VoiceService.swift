@@ -9,10 +9,17 @@ protocol VoiceCapturing: AnyObject {
     var transcriptUpdates: AnyPublisher<String, Never> { get }
     var recordingUpdates: AnyPublisher<Bool, Never> { get }
     var currentTranscript: String { get }
+    var transcriptionNotice: String? { get }
     var onUtteranceEnd: (() -> Void)? { get set }
+    var onRecordingLimit: (() -> Void)? { get set }
     func startRecording() async throws
     func stopAndTranscribe() async -> String?
     func stopRecording()
+}
+
+extension VoiceCapturing {
+    var transcriptionNotice: String? { nil }
+    var onRecordingLimit: (() -> Void)? { get { nil } set {} }
 }
 
 @MainActor
@@ -25,6 +32,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     @Published private(set) var playbackNotice: String?
 
     @Published private(set) var transcript: String = ""
+    @Published private(set) var transcriptionNotice: String?
     var transcriptUpdates: AnyPublisher<String, Never> { $transcript.eraseToAnyPublisher() }
     var recordingUpdates: AnyPublisher<Bool, Never> { $isRecording.eraseToAnyPublisher() }
     var currentTranscript: String { transcript }
@@ -34,7 +42,11 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     private var inputTapInstalled = false
     private var silenceTask: Task<Void, Never>?
     private var recognitionID = UUID()
+    private var recognitionFinish = SpeechRecognitionFinish()
+    private var audioCapture: VerbatimAudioCapture?
+    private var transcriptionTask: Task<String?, Never>?
     var onUtteranceEnd: (() -> Void)?
+    var onRecordingLimit: (() -> Void)?
     private let speechSynthesizer = AVSpeechSynthesizer()
     private var currentUtterance: AVSpeechUtterance?
     private let speakingFeedback = UIImpactFeedbackGenerator(style: .soft)
@@ -63,6 +75,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     func startRecording() async throws {
         stopSpeaking()
         stopRecording()
+        transcriptionNotice = nil
         let permissionID = recognitionID
         let micAllowed = await AVAudioApplication.requestRecordPermission()
         guard recognitionID == permissionID, !Task.isCancelled else { throw CancellationError() }
@@ -75,11 +88,13 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         guard let recognizer = SFSpeechRecognizer(locale: Locale.current), recognizer.isAvailable else { throw VoiceError.unavailable }
         guard UIApplication.shared.applicationState != .background else { throw VoiceError.unavailable }
         transcript = ""
+        recognitionFinish = SpeechRecognitionFinish()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
         try session.setActive(true)
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
+        request.taskHint = .dictation
         request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
         recognitionRequest = request
         let thisRecognition = UUID(); recognitionID = thisRecognition
@@ -88,6 +103,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
                 guard self?.recognitionID == thisRecognition else { return }
                 if let result, let self {
                     self.transcript = result.bestTranscription.formattedString
+                    if result.isFinal { self.recognitionFinish.complete() }
                     self.silenceTask?.cancel()
                     if self.isRecording, self.onUtteranceEnd != nil, !self.transcript.isEmpty {
                         self.silenceTask = Task { @MainActor [weak self] in
@@ -96,14 +112,26 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
                         }
                     }
                 }
-                // Partial results remain available when the recognizer ends a turn.
-                if error != nil, result == nil { self?.stopRecording() }
+                // A preview failure must not throw away captured audio. The final
+                // server transcription can still finish after the user selects Done.
+                if error != nil { self?.recognitionFinish.complete() }
             }
         }
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.sampleRate > 0, format.channelCount > 0 else { stopRecording(); throw VoiceError.unavailable }
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in request.append(buffer) }
+        let capturedAudio = VerbatimAudioCapture(inputFormat: format)
+        audioCapture = capturedAudio
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            request.append(buffer)
+            if capturedAudio?.append(buffer) == true {
+                Task { @MainActor [weak self] in
+                    guard let self, self.recognitionID == thisRecognition, self.isRecording else { return }
+                    self.transcriptionNotice = "Two-minute recording limit reached. Review this draft and continue in another recording."
+                    self.onRecordingLimit?()
+                }
+            }
+        }
         inputTapInstalled = true
         do { audioEngine.prepare(); try audioEngine.start(); isRecording = true }
         catch { stopRecording(); throw error }
@@ -112,20 +140,61 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     func stopAndTranscribe() async -> String? {
         guard recognitionRequest != nil else { return nil }
         let finishingID = recognitionID
+        let scope = StorageService.shared.accountScope
+        silenceTask?.cancel(); silenceTask = nil
         audioEngine.stop()
         if inputTapInstalled { audioEngine.inputNode.removeTap(onBus: 0); inputTapInstalled = false }
+        let audio = audioCapture?.finish()
+        try? AVAudioSession.sharedInstance().setActive(false)
         recognitionRequest?.endAudio()
         isRecording = false
-        // Allow the recognizer's final partial result to arrive without another API call.
-        try? await Task.sleep(for: .milliseconds(250))
-        guard recognitionID == finishingID, !Task.isCancelled else { return nil }
-        let result = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        await recognitionFinish.wait()
+        guard recognitionID == finishingID, !Task.isCancelled, StorageService.shared.accountScope == scope else { return nil }
+        let preview = transcript
+        let limitNotice = transcriptionNotice
+        var result = preview
+        if let audio, !kMaxAPIBaseURL.isEmpty, AuthService.shared.currentUser != nil {
+            let pending = Task { @MainActor [weak self] () -> String? in
+                guard let self else { return nil }
+                do {
+                    let session = try await AuthService.shared.managedSession()
+                    let transaction = await StoreKitService.shared.signedTransactionProof()
+                    try Task.checkCancellation()
+                    guard self.recognitionID == finishingID, StorageService.shared.accountScope == scope else { return nil }
+                    return try await VerbatimTranscriber.transcribe(audio, baseURL: kMaxAPIBaseURL, token: session.token, transaction: transaction)
+                } catch {
+                    guard !Task.isCancelled, self.recognitionID == finishingID, StorageService.shared.accountScope == scope else { return nil }
+                    if case VerbatimTranscriptionError.demoExpired = error {
+                        AuthService.shared.markDemoExpired()
+                        return nil
+                    }
+                    if case VerbatimTranscriptionError.subscriptionRequired = error {
+                        self.stopRecording()
+                        await StoreKitService.shared.refreshEntitlements()
+                        return nil
+                    }
+                    self.transcriptionNotice = "Max couldn't finish transcribing. This is the iPhone draft; review it before sending."
+                    return preview
+                }
+            }
+            transcriptionTask = pending
+            let final = await withTaskCancellationHandler { await pending.value } onCancel: { pending.cancel() }
+            guard recognitionID == finishingID, !Task.isCancelled, StorageService.shared.accountScope == scope else { return nil }
+            result = final ?? ""
+        } else {
+            transcriptionNotice = "Using iPhone transcription. Review this draft before sending."
+        }
+        if let limitNotice { transcriptionNotice = [limitNotice, transcriptionNotice].compactMap { $0 }.joined(separator: " ") }
+        transcript = result
         stopRecording()
-        return result.isEmpty ? nil : result
+        return result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : result
     }
 
     func stopRecording() {
         recognitionID = UUID()
+        transcriptionTask?.cancel(); transcriptionTask = nil
+        recognitionFinish.complete()
+        audioCapture?.cancel(); audioCapture = nil
         silenceTask?.cancel(); silenceTask = nil
         audioEngine.stop()
         if inputTapInstalled { audioEngine.inputNode.removeTap(onBus: 0); inputTapInstalled = false }
@@ -343,3 +412,4 @@ private enum VoiceError: LocalizedError {
         }
     }
 }
+
