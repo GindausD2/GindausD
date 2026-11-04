@@ -4,6 +4,7 @@
  */
 
 import * as Notifications from 'expo-notifications';
+import type Anthropic from '@anthropic-ai/sdk';
 import {
   saveNote,
   loadNotes,
@@ -17,7 +18,7 @@ import { Note, UserMemory, Reminder } from '@/types';
 
 // ─── Tool Definitions (sent to Claude API) ────────────────────────────────────
 
-export const TOOL_DEFINITIONS = [
+export const TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: 'save_note',
     description: 'Save a note to the user\'s local storage. Use this when the user wants to save information, ideas, or anything worth keeping.',
@@ -101,7 +102,7 @@ export const TOOL_DEFINITIONS = [
       required: [],
     },
   },
-] as const;
+];
 
 // ─── Tool Handlers ─────────────────────────────────────────────────────────────
 

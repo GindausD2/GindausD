@@ -1,0 +1,117 @@
+name: Verify Max V1
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  server-and-preview:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: max-ci-only
+          POSTGRES_DB: max_verification
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: localhost
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: max-ci-only
+      PGDATABASE: max_verification
+      MAX_DISPOSABLE_DB: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm ci --prefix backend
+      - run: npm test --prefix backend
+      - name: Type-check Supabase Edge Function
+        run: npx --yes deno@2.9.6 check --config backend/deno.json backend/supabase-index.ts
+      - name: Verify Deno voice transport with local fixtures
+        run: npx --yes deno@2.9.6 test --config backend/deno.json --allow-net=127.0.0.1 --allow-env=WS_NO_BUFFER_UTIL,WS_NO_UTF_8_VALIDATE backend/tests/edge-runtime.test.ts
+      - name: Verify quota in disposable PostgreSQL
+        run: |
+          command -v psql || (sudo apt-get update -qq && sudo apt-get install -y postgresql-client)
+          node backend/scripts/test-quota.mjs
+  ios-build:
+    runs-on: macos-15
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: ios-swift
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select Xcode 26
+        run: |
+          sudo xcode-select -s /Applications/Xcode_26.2.app/Contents/Developer
+          xcodebuild -version
+      - name: Install XcodeGen
+        run: brew install xcodegen
+      - name: Generate app and extension project
+        run: |
+          cp Configuration/Public.example.xcconfig Configuration/Public.xcconfig
+          xcodegen generate
+          git diff --exit-code -- Info.plist Configuration/Max.entitlements Configuration/Widget.entitlements
+      - name: Build simulator app and extensions without credentials
+        run: |
+          set -o pipefail
+          xcodebuild -project Max.xcodeproj -scheme Max -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build | tee build.log
+      - name: Build unsigned iPhone app and extensions with device SDK
+        run: |
+          set -o pipefail
+          xcodebuild -project Max.xcodeproj -scheme Max -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -clonedSourcePackagesDirPath build/SourcePackages \
+            -derivedDataPath device-build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
+      - name: Save build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-evidence
+          path: |
+            ios-swift/build.log
+            ios-swift/device-build.log
+          if-no-files-found: ignore
+      - name: Verify packaged app privacy, links, and extensions
+        run: |
+          python3 scripts/verify_bundle.py \
+            build/Build/Products/Debug-iphonesimulator/Max.app \
+            device-build/Build/Products/Release-iphoneos/Max.app
+      - name: Run native V1 regression tests on simulator
+        env:
+          TEST_RUNNER_MAX_EXPORT_UPDATED_UI: '1'
+        run: |
+          set -o pipefail
+          xcodebuild -project Max.xcodeproj -scheme Max -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath build -resultBundlePath V1Tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO test | tee tests.log
+      - name: Save native test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-test-evidence
+          path: |
+            ios-swift/tests.log
+            ios-swift/V1Tests.xcresult
+          if-no-files-found: ignore

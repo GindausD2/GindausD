@@ -29,25 +29,25 @@ let package = Package(
             targets: ["MaxWidget"]
         )
     ],
-    dependencies: [],
+    dependencies: [.package(url: "https://github.com/supabase/supabase-swift.git", from: "2.0.0")],
     targets: [
         // ── Main app ─────────────────────────────────────────────────────────
         .executableTarget(
             name: "Max",
-            dependencies: [],
+            dependencies: [.product(name: "Supabase", package: "supabase-swift")],
             path: "Sources/Max",
             resources: [
                 .process("Resources")
-            ],
-            linkerSettings: [
-                .linkedFramework("AppIntents"),
-                .linkedFramework("WidgetKit")
             ],
             swiftSettings: [
                 .enableUpcomingFeature("BareSlashRegexLiterals"),
                 .enableUpcomingFeature("ConciseMagicFile"),
                 .enableUpcomingFeature("ImplicitOpenExistentials"),
                 .enableUpcomingFeature("ForwardTrailingClosures")
+            ],
+            linkerSettings: [
+                .linkedFramework("AppIntents"),
+                .linkedFramework("WidgetKit")
             ]
         ),
 

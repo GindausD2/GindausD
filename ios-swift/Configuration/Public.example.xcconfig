@@ -1,0 +1,8 @@
+// Copy to Public.xcconfig. These are public app settings, never a provider API key.
+MAX_API_BASE_URL = https:/$()/your-max-backend.example
+SUPABASE_URL = https:/$()/your-project.supabase.co
+SUPABASE_ANON_KEY = your-supabase-publishable-or-anon-key
+// Optional iOS OAuth client configured for com.gindausd.max and Gmail read-only access.
+GOOGLE_CLIENT_ID =
+// Set your signing team locally or in Xcode.
+DEVELOPMENT_TEAM =

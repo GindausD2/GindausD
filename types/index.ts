@@ -41,6 +41,7 @@ export interface AssistantSettings {
   apiKey: string;
   assistantName: string;
   voiceEnabled: boolean;
+  speakingHapticsEnabled?: boolean;
   voiceSpeed: number;
   voicePitch: number;
   userName: string;

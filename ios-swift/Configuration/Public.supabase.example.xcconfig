@@ -1,0 +1,9 @@
+// Max.ai project public configuration. Copy to Public.xcconfig for a signed build.
+// Supabase publishable keys are public; never place provider or service-role secrets here.
+MAX_API_BASE_URL = https:/$()/omcboajliacdnhrroijb.supabase.co/functions/v1/max-api
+SUPABASE_URL = https:/$()/omcboajliacdnhrroijb.supabase.co
+SUPABASE_ANON_KEY = sb_publishable_aXf0X3H8dE5OacoS2zRcQQ_vHZjmMQv
+// Optional Gmail integration; unrelated to Sign in with Apple.
+GOOGLE_CLIENT_ID =
+// Set your Apple Developer signing team locally or in Xcode.
+DEVELOPMENT_TEAM =

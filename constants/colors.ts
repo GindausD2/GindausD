@@ -1,48 +1,9 @@
 export const Colors = {
-  // Backgrounds
-  background: '#0A0A0F',
-  surface: '#12121A',
-  card: '#1A1A2E',
-  cardHover: '#1E1E35',
-  inputBg: '#16162A',
-
-  // Brand
-  primary: '#7C3AED',
-  primaryLight: '#9D5FFF',
-  primaryDark: '#5B21B6',
-  secondary: '#06B6D4',
-  secondaryLight: '#22D3EE',
-  accent: '#F59E0B',
-
-  // Messages
-  userBubble: '#7C3AED',
-  userBubbleText: '#FFFFFF',
-  aiBubble: '#1E293B',
-  aiBubbleText: '#F1F5F9',
-
-  // Text
-  textPrimary: '#F1F5F9',
-  textSecondary: '#94A3B8',
-  textMuted: '#64748B',
-  textLink: '#7C3AED',
-
-  // System
-  border: '#1E293B',
-  borderFocus: '#7C3AED',
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-
-  // Overlays
-  overlay: 'rgba(0,0,0,0.7)',
-  shimmer: 'rgba(255,255,255,0.05)',
-
-  // Gradients (as stops)
-  gradientStart: '#7C3AED',
-  gradientEnd: '#06B6D4',
-
-  // Status bar
-  statusBar: 'light',
+  background: '#F4F1EB', surface: '#FAF8F4', card: '#FFFFFF', cardHover: '#EEEAE3', inputBg: '#EFEBE5',
+  primary: '#292D2B', primaryLight: '#59615A', primaryDark: '#191C1A', secondary: '#778578', secondaryLight: '#596F60', accent: '#B69B72',
+  userBubble: '#E4E8E1', userBubbleText: '#292D2B', aiBubble: '#FFFFFF', aiBubbleText: '#292D2B',
+  textPrimary: '#292D2B', textSecondary: '#686D67', textMuted: '#777C76', textLink: '#596F60',
+  border: '#DEDCD5', borderFocus: '#596F60', success: '#596F60', warning: '#967342', error: '#AB433B',
+  overlay: 'rgba(24,28,25,0.28)', shimmer: 'rgba(255,255,255,0.45)', gradientStart: '#F7F5EF', gradientEnd: '#DCE4DB', statusBar: 'dark',
 } as const;
-
 export type ColorKey = keyof typeof Colors;

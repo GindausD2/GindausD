@@ -21,9 +21,9 @@ typealias MaxAttr = MaxActivityAttributes
 
 // MARK: - Brand colors
 
-private let violet      = Color(red: 0.49, green: 0.23, blue: 0.93)
-private let violetDeep  = Color(red: 0.31, green: 0.12, blue: 0.88)
-private let violetLight = Color(red: 0.65, green: 0.55, blue: 0.98)
+private let violet      = Color(red: 0.47, green: 0.71, blue: 0.80)
+private let violetDeep  = Color(red: 0.19, green: 0.37, blue: 0.45)
+private let violetLight = Color(red: 0.76, green: 0.91, blue: 0.96)
 private let red         = Color(red: 0.94, green: 0.27, blue: 0.27)
 private let blue        = Color(red: 0.23, green: 0.51, blue: 0.96)
 private let cardBg      = Color(red: 0.06, green: 0.04, blue: 0.10)
@@ -47,7 +47,7 @@ struct MaxLiveActivityWidget: Widget {
             DynamicIsland {
                 // ── Expanded (long-press on the pill) ─────────────────────────
                 DynamicIslandExpandedRegion(.leading) {
-                    MaxLogoView(color: .white, width: 56)
+                    MaxLogoView(width: 56)
                         .padding(.leading, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
@@ -73,6 +73,7 @@ struct MaxLiveActivityWidget: Widget {
                     }
                 }
                 DynamicIslandExpandedRegion(.bottom) {
+                    VStack(spacing: 10) {
                     if let alert = context.state.emailAlert {
                         EmailAlertCardView(alert: alert)
                             .padding(.bottom, 10)
@@ -88,10 +89,16 @@ struct MaxLiveActivityWidget: Widget {
                             .padding(.horizontal, 20)
                             .padding(.bottom, 10)
                     }
+                    HStack(spacing: 18) {
+                        Link(destination: URL(string: "maxapp://listen")!) { Label("Talk", systemImage: "mic") }
+                        Link(destination: URL(string: "maxapp://briefing")!) { Label("Briefing", systemImage: "sun.horizon") }
+                        Link(destination: URL(string: "maxapp://quick")!) { Label("Plan", systemImage: "clock") }
+                    }.font(.system(size: 12, weight: .medium)).foregroundStyle(violetLight)
+                    }
                 }
             } compactLeading: {
                 // ── Compact: triple moon logo ─────────────────────────────────
-                MaxLogoView(color: .white, width: 32)
+                MaxLogoView(width: 32)
                     .padding(.leading, 2)
             } compactTrailing: {
                 // ── Compact: email badge → tool icon → phase icon (priority order)
@@ -113,9 +120,10 @@ struct MaxLiveActivityWidget: Widget {
                 }
             } minimal: {
                 // ── Minimal: just the center ring of the logo at tiny size ────
-                MaxLogoView(color: .white, width: 24)
+                MaxLogoView(width: 24)
             }
             .keylineTint(violet)
+            .widgetURL(URL(string: "maxapp://listen"))
         }
         .supplementalActivityFamilies([.small])
     }
@@ -125,7 +133,7 @@ struct MaxLiveActivityWidget: Widget {
 //
 // Layout mirrors the reference screenshot:
 //   [avatar]  Max                          [time elapsed]
-//   [phase label — accent color]            Claude
+//   [phase label — accent color]            OpenAI
 //
 //   Bold headline transcript text OR tool action card
 //
@@ -151,7 +159,7 @@ private struct MaxLockScreenBody: View {
 
             // ── Row 1: triple moon logo + app name + source ───────────────────
             HStack(spacing: 10) {
-                MaxLogoView(color: .white, width: 52)
+                MaxLogoView(width: 52)
 
                 Text("Max")
                     .font(.system(size: 16, weight: .bold))
@@ -159,7 +167,7 @@ private struct MaxLockScreenBody: View {
 
                 Spacer()
 
-                Text("Claude")
+                Text("OpenAI")
                     .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.white.opacity(0.45))
             }
@@ -216,7 +224,7 @@ private struct MaxStandByView: View {
 
     var body: some View {
         HStack(spacing: 24) {
-            MaxLogoView(color: .white, width: 80)
+            MaxLogoView(width: 80)
 
             VStack(alignment: .leading, spacing: 6) {
                 Text("Max")
@@ -348,52 +356,7 @@ private struct EmailAlertCardView: View {
     }
 }
 
-// MARK: - Max Logo View (triple moon — mirrored from MaxLogoView in main target)
-//
-// Widget extensions cannot import views from the main app target,
-// so the canvas drawing is duplicated here.
-
-private struct MaxLogoView: View {
-    var color: Color = .white
-    var width: CGFloat
-
-    private var height: CGFloat { width * 50 / 100 }
-
-    var body: some View {
-        Canvas(opaque: false, colorMode: .linear) { context, size in
-            let u = size.width / 100.0
-
-            func ellipse(cx: CGFloat, cy: CGFloat, r: CGFloat) -> Path {
-                Path(ellipseIn: CGRect(
-                    x: (cx - r) * u, y: (cy - r) * u,
-                    width: 2 * r * u, height: 2 * r * u
-                ))
-            }
-
-            // Left crescent (opens right, tips kiss center ring)
-            context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 18, cy: 25, r: 24), with: .color(color))
-                ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 29, cy: 25, r: 19), with: .color(.black))
-            }
-            // Center ring
-            context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 50, cy: 25, r: 17), with: .color(color))
-                ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 50, cy: 25, r: 10), with: .color(.black))
-            }
-            // Right crescent (opens left, tips kiss center ring)
-            context.drawLayer { ctx in
-                ctx.fill(ellipse(cx: 82, cy: 25, r: 24), with: .color(color))
-                ctx.blendMode = .destinationOut
-                ctx.fill(ellipse(cx: 71, cy: 25, r: 19), with: .color(.black))
-            }
-        }
-        .frame(width: width, height: height)
-    }
-}
-
-// MARK: - Avatar View (violet pill containing the triple moon logo)
+// MARK: - Avatar View (shared glacier-blue brand mark)
 
 private struct MaxAvatarView: View {
     let size: CGFloat
@@ -401,7 +364,7 @@ private struct MaxAvatarView: View {
     private var logoWidth: CGFloat { size * 2.2 }
 
     var body: some View {
-        MaxLogoView(color: .white, width: logoWidth)
+        MaxLogoView(width: logoWidth)
     }
 }
 

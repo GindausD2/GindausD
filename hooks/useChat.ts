@@ -56,7 +56,7 @@ export function useChat(apiKey: string) {
     async (userText: string) => {
       if (!userText.trim() || isLoading) return;
       if (!apiKey) {
-        setError('No API key set. Please add your Anthropic API key in Settings.');
+        setError('Max is not connected yet. Please try again later.');
         return;
       }
 

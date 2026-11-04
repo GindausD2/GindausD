@@ -14,7 +14,13 @@ final class StoreKitService: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var purchaseError: String?
 
-    var isSubscribed: Bool { !purchasedIDs.isEmpty }
+    @Published private(set) var verifiedAccountID: String?
+    @Published private(set) var verifiedUntil: Date?
+    var isSubscribed: Bool {
+        verifiedAccountID == AuthService.shared.currentUser?.id
+            && (verifiedUntil ?? .distantPast) > Date() && !purchasedIDs.isEmpty
+    }
+    private var refreshID = UUID()
 
     private var transactionListener: Task<Void, Error>?
 
@@ -30,7 +36,7 @@ final class StoreKitService: ObservableObject {
 
     func loadProducts() async {
         do {
-            let products = try await Product.products(for: [Self.monthlyID, Self.yearlyID])
+            let products = try await Product.products(for: [Self.monthlyID])
             monthlyProduct = products.first { $0.id == Self.monthlyID }
             yearlyProduct  = products.first { $0.id == Self.yearlyID }
         } catch {
@@ -45,14 +51,21 @@ final class StoreKitService: ObservableObject {
         purchaseError = nil
         defer { isLoading = false }
         do {
-            let result = try await product.purchase()
+            guard let user = AuthService.shared.currentUser, user.isDemo == false,
+                  let userID = user.id,
+                  let accountID = UUID(uuidString: userID) else {
+                purchaseError = "Continue with Apple before subscribing."
+                return
+            }
+            let result = try await product.purchase(options: [.appAccountToken(accountID)])
             switch result {
             case .success(let verification):
                 let tx = try verified(verification)
                 await refreshEntitlements()
                 await tx.finish()
-            case .userCancelled, .pending:
-                break
+            case .pending:
+                purchaseError = "Your purchase is pending approval."
+            case .userCancelled: break
             @unknown default:
                 break
             }
@@ -75,13 +88,67 @@ final class StoreKitService: ObservableObject {
     // MARK: - Entitlements
 
     func refreshEntitlements() async {
-        var active: Set<String> = []
+        let attempt = UUID(); refreshID = attempt
+        let accountID = AuthService.shared.currentUser?.id
+        guard let accountID, AuthService.shared.currentUser?.isDemo == false else { clearVerification(); return }
+        if verifiedAccountID != accountID { clearVerification() }
+        guard let proof = await signedTransactionProof() else { clearVerification(); return }
+        do {
+            let session = try await AuthService.shared.managedSession()
+            guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw URLError(.badURL) }
+            var request = URLRequest(url: base.appendingPathComponent("v1/subscription"))
+            request.httpMethod = "POST"; request.timeoutInterval = 45
+            request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(["signedTransaction": proof])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard refreshID == attempt, AuthService.shared.currentUser?.id == accountID else { return }
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                clearVerification()
+                purchaseError = "Your subscription couldn't be verified. Try Restore Purchases again."
+                return
+            }
+            let value = try JSONDecoder().decode(VerifiedSubscription.self, from: data)
+            guard value.active, [Self.monthlyID, Self.yearlyID].contains(value.productID),
+                  let expiry = Self.parseExpiry(value.expiresAt), expiry > Date() else { throw StoreError.verificationFailed }
+            purchasedIDs = [value.productID]
+            verifiedAccountID = accountID; verifiedUntil = expiry; purchaseError = nil
+        } catch {
+            guard refreshID == attempt, AuthService.shared.currentUser?.id == accountID else { return }
+            clearVerification()
+            purchaseError = "Your subscription couldn't be verified. Please check your connection and try again."
+        }
+    }
+
+    private func clearVerification() {
+        verifiedAccountID = nil; verifiedUntil = nil; purchasedIDs = []
+    }
+
+    func signedTransactionProof() async -> String? {
+        guard let user = AuthService.shared.currentUser, user.isDemo == false,
+                  let userID = user.id,
+              let accountID = UUID(uuidString: userID) else { return nil }
         for await result in Transaction.currentEntitlements {
-            if let tx = try? verified(result), tx.revocationDate == nil {
-                active.insert(tx.productID)
+            if let tx = try? verified(result), tx.revocationDate == nil,
+               !tx.isUpgraded, tx.appAccountToken == accountID,
+               (tx.expirationDate ?? .distantPast) > Date(),
+               [Self.monthlyID, Self.yearlyID].contains(tx.productID),
+               AuthService.shared.currentUser?.id == user.id {
+                return result.jwsRepresentation
             }
         }
-        purchasedIDs = active
+        return nil
+    }
+
+    private struct VerifiedSubscription: Decodable {
+        let active: Bool
+        let productID: String
+        let expiresAt: String
+    }
+    private static func parseExpiry(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: value) ?? ISO8601DateFormatter().date(from: value)
     }
 
     // MARK: - Transaction listener
@@ -100,7 +167,7 @@ final class StoreKitService: ObservableObject {
 
     // MARK: - Verification
 
-    private func verified<T>(_ result: VerificationResult<T>) throws -> T {
+    nonisolated private func verified<T>(_ result: VerificationResult<T>) throws -> T {
         switch result {
         case .unverified: throw StoreError.verificationFailed
         case .verified(let value): return value

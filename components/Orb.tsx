@@ -1,191 +1,59 @@
-import React, { useEffect, useRef } from 'react';
-import { Animated, StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { AccessibilityInfo, Animated, StyleSheet, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-interface OrbProps {
-  /** 'idle' | 'listening' | 'thinking' | 'speaking' */
-  state: 'idle' | 'listening' | 'thinking' | 'speaking';
-  size?: number;
-}
+interface OrbProps { state: 'idle' | 'listening' | 'thinking' | 'speaking'; size?: number }
+const heights = [0.24, 0.43, 0.64, 0.43, 0.24];
 
-export function Orb({ state, size = 140 }: OrbProps) {
-  const pulse = useRef(new Animated.Value(1)).current;
-  const glow = useRef(new Animated.Value(0)).current;
-  const rotate = useRef(new Animated.Value(0)).current;
-
+export function Orb({ state, size = 96 }: OrbProps) {
+  const pulse = useRef(new Animated.Value(0)).current;
+  const bars = useRef(heights.map(() => new Animated.Value(1))).current;
+  const [reducedMotion, setReducedMotion] = useState(true);
   useEffect(() => {
-    let pulseAnim: Animated.CompositeAnimation;
-    let glowAnim: Animated.CompositeAnimation;
-    let rotateAnim: Animated.CompositeAnimation;
-
-    if (state === 'idle') {
-      pulseAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, { toValue: 1.04, duration: 2200, useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 1, duration: 2200, useNativeDriver: true }),
-        ])
-      );
-      glowAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glow, { toValue: 0.3, duration: 2200, useNativeDriver: true }),
-          Animated.timing(glow, { toValue: 0, duration: 2200, useNativeDriver: true }),
-        ])
-      );
-      rotateAnim = Animated.loop(
-        Animated.timing(rotate, { toValue: 1, duration: 12000, useNativeDriver: true })
-      );
-    } else if (state === 'listening') {
-      pulseAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, { toValue: 1.12, duration: 500, useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 0.96, duration: 500, useNativeDriver: true }),
-        ])
-      );
-      glowAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glow, { toValue: 0.8, duration: 500, useNativeDriver: true }),
-          Animated.timing(glow, { toValue: 0.4, duration: 500, useNativeDriver: true }),
-        ])
-      );
-      rotateAnim = Animated.loop(
-        Animated.timing(rotate, { toValue: 1, duration: 4000, useNativeDriver: true })
-      );
-    } else if (state === 'thinking') {
-      pulseAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, { toValue: 1.06, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 0.98, duration: 800, useNativeDriver: true }),
-        ])
-      );
-      glowAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glow, { toValue: 0.6, duration: 800, useNativeDriver: true }),
-          Animated.timing(glow, { toValue: 0.2, duration: 800, useNativeDriver: true }),
-        ])
-      );
-      rotateAnim = Animated.loop(
-        Animated.timing(rotate, { toValue: 1, duration: 3000, useNativeDriver: true })
-      );
-    } else {
-      // speaking
-      pulseAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulse, { toValue: 1.15, duration: 350, useNativeDriver: true }),
-          Animated.timing(pulse, { toValue: 0.95, duration: 350, useNativeDriver: true }),
-        ])
-      );
-      glowAnim = Animated.loop(
-        Animated.sequence([
-          Animated.timing(glow, { toValue: 1, duration: 350, useNativeDriver: true }),
-          Animated.timing(glow, { toValue: 0.5, duration: 350, useNativeDriver: true }),
-        ])
-      );
-      rotateAnim = Animated.loop(
-        Animated.timing(rotate, { toValue: 1, duration: 2000, useNativeDriver: true })
-      );
-    }
-
-    pulseAnim.start();
-    glowAnim.start();
-    rotateAnim.start();
-
-    return () => {
-      pulseAnim.stop();
-      glowAnim.stop();
-      rotateAnim.stop();
-    };
-  }, [state]);
-
-  const spin = rotate.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  });
-
-  // Orb gradient colors by state
-  const gradientColors: Record<string, readonly [string, string, string]> = {
-    idle: ['#C9A97A', '#8B5E3C', '#3B1F0A'],
-    listening: ['#7C3AED', '#4F46E5', '#1E1B4B'],
-    thinking: ['#6B7280', '#374151', '#111827'],
-    speaking: ['#7C3AED', '#9D5FFF', '#4F46E5'],
-  };
-
-  const colors = gradientColors[state] ?? gradientColors.idle;
-
+    let active = true;
+    AccessibilityInfo.isReduceMotionEnabled().then(value => { if (active) setReducedMotion(value); });
+    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', setReducedMotion);
+    return () => { active = false; sub.remove(); };
+  }, []);
+  useEffect(() => {
+    pulse.setValue(0);
+    bars.forEach(bar => bar.setValue(1));
+    if (state === 'idle' || reducedMotion) return;
+    const duration = state === 'speaking' ? 620 : 1100;
+    const breathing = Animated.loop(Animated.sequence([
+      Animated.timing(pulse, { toValue: 1, duration, useNativeDriver: true }),
+      Animated.timing(pulse, { toValue: 0, duration, useNativeDriver: true }),
+    ]));
+    const waves = bars.map((bar, index) => Animated.loop(Animated.sequence([
+      Animated.timing(bar, { toValue: 0.5 + index * 0.08, duration: 220 + index * 60, useNativeDriver: true }),
+      Animated.timing(bar, { toValue: 1.2 - index * 0.04, duration: 330 + index * 50, useNativeDriver: true }),
+      Animated.timing(bar, { toValue: 1, duration: 270, useNativeDriver: true }),
+    ])));
+    breathing.start();
+    if (state === 'speaking' || state === 'listening') waves.forEach(wave => wave.start());
+    return () => { breathing.stop(); waves.forEach(wave => wave.stop()); };
+  }, [state, reducedMotion, pulse, bars]);
+  const diameter = size * 1.42;
   return (
-    <View style={[styles.wrapper, { width: size * 1.5, height: size * 1.5 }]}>
-      {/* Outer glow ring */}
-      <Animated.View
-        style={[
-          styles.glowRing,
-          {
-            width: size * 1.4,
-            height: size * 1.4,
-            borderRadius: size * 0.7,
-            opacity: glow,
-            transform: [{ scale: pulse }],
-            backgroundColor: state === 'listening' ? 'rgba(124,58,237,0.15)' : 'rgba(201,169,122,0.15)',
-          },
-        ]}
-      />
-
-      {/* Main orb */}
-      <Animated.View
-        style={[
-          styles.orbOuter,
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            transform: [{ scale: pulse }],
-          },
-        ]}
-      >
-        {/* Rotating gradient inner */}
-        <Animated.View
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              borderRadius: size / 2,
-              overflow: 'hidden',
-              transform: [{ rotate: spin }],
-            },
-          ]}
-        >
-          <LinearGradient
-            colors={colors}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
-          />
-        </Animated.View>
-
-        {/* Highlight */}
-        <View style={[styles.highlight, { width: size * 0.35, height: size * 0.2, borderRadius: size * 0.1 }]} />
+    <View accessible={false} style={{ width: diameter, height: diameter, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View style={[styles.halo, { width: diameter, height: diameter, borderRadius: diameter / 2, opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0.85] }), transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1.04] }) }] }]} />
+      <View style={[styles.glassRing, { width: size * 1.21, height: size * 1.21, borderRadius: size }]} />
+      <Animated.View style={[styles.pearl, { width: size, height: size, borderRadius: size / 2, transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, state === 'speaking' ? 1.035 : 1.018] }) }] }]}>
+        <LinearGradient colors={['#F0FBFF', '#BDE5F4', '#79B9D4', '#538FAA']} locations={[0, 0.4, 0.76, 1]} start={{ x: 0.2, y: 0 }} end={{ x: 0.78, y: 1 }} style={StyleSheet.absoluteFill} />
+        <View style={[styles.reflection, { width: size * 0.66, height: size * 0.3, top: size * 0.08, left: size * 0.13, borderRadius: size }]}>
+          <LinearGradient colors={['rgba(255,255,255,0.85)', 'rgba(255,255,255,0)']} style={StyleSheet.absoluteFill} />
+        </View>
+        <View style={styles.wave}>
+          {heights.map((height, i) => <Animated.View key={i} style={{ width: Math.max(3, size * 0.027), height: size * height * 0.5, borderRadius: 4, backgroundColor: '#315E73', transform: [{ scaleY: bars[i] }] }} />)}
+        </View>
       </Animated.View>
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  wrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glowRing: {
-    position: 'absolute',
-  },
-  orbOuter: {
-    overflow: 'hidden',
-    alignItems: 'center',
-    justifyContent: 'flex-start',
-    paddingTop: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.35,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  highlight: {
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
+  halo: { position: 'absolute', borderWidth: 1, borderColor: '#FFFFFF', backgroundColor: 'rgba(194,231,244,0.2)' },
+  glassRing: { position: 'absolute', borderWidth: 1, borderColor: 'rgba(255,255,255,0.8)', backgroundColor: 'rgba(255,255,255,0.2)' },
+  pearl: { overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.95)', justifyContent: 'center', alignItems: 'center', shadowColor: '#467B94', shadowOpacity: 0.2, shadowRadius: 20, shadowOffset: { width: 0, height: 10 } },
+  reflection: { position: 'absolute', overflow: 'hidden', transform: [{ rotate: '-22deg' }] },
+  wave: { flexDirection: 'row', gap: 4, alignItems: 'center' },
 });

@@ -37,12 +37,22 @@ struct MaxApp: App {
                 .preferredColorScheme(resolvedScheme)
                 // Handle widget deep link: maxapp://listen
                 .onOpenURL { url in
-                    guard url.scheme == "maxapp", url.host == "listen" else { return }
-                    NotificationCenter.default.post(name: .maxWidgetActivate, object: nil)
+                    guard url.scheme == "maxapp" else { return }
+                    switch url.host {
+                    case "listen":
+                        MaxShortcutRequest.enqueue(.voice)
+                    case "briefing":
+                        UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
+                        NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
+                    case "quick":
+                        UserDefaults.standard.set("Help me plan the next hour.", forKey: "max.pendingQuickReply")
+                        NotificationCenter.default.post(name: .maxQuickReply, object: "Help me plan the next hour.")
+                    default: break
+                    }
                 }
                 // Start / stop the persistent Dynamic Island session when auth changes
                 .onChange(of: authService.currentUser) { _, user in
-                    if user != nil {
+                    if user != nil && !authService.isDemoExpired {
                         LiveActivityService.shared.startPersistentSession()
                         scheduleBackgroundRefresh()
                         BriefingService.shared.rescheduleIfNeeded()
@@ -59,8 +69,11 @@ struct MaxApp: App {
                     // When app becomes active, ensure the session is alive + refresh emails
                     if phase == .active && authService.currentUser != nil {
                         authService.expireDemoIfNeeded()
-                        LiveActivityService.shared.startPersistentSession()
-                        Task { await EmailMonitorService.shared.checkAndNotify() }
+                        Task { await StoreKitService.shared.refreshEntitlements() }
+                        if !authService.isDemoExpired {
+                            LiveActivityService.shared.startPersistentSession()
+                            Task { await EmailMonitorService.shared.checkAndNotify() }
+                        }
                     }
                 }
         }
@@ -115,6 +128,7 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if userInfo[BriefingService.userInfoTypeKey] as? String == BriefingService.briefingTypeValue {
             // Post to main thread so HomeView's onReceive picks it up
             DispatchQueue.main.async {
+                UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
                 NotificationCenter.default.post(name: .maxStartBriefing, object: nil)
             }
         }
@@ -137,32 +151,43 @@ func scheduleBackgroundRefresh() {
 struct RootView: View {
     @EnvironmentObject private var authService: AuthService
     @StateObject private var store = StoreKitService.shared
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var brandNamespace
+
+    private enum Stage: Equatable { case opening, entry, upgrade, home }
+
+    private var stage: Stage {
+        if authService.isRestoringSession { return .opening }
+        if authService.currentUser?.isDemo == true && (authService.isDemoExpired || authService.isUpgradingDemo) { return .upgrade }
+        return showHome ? .home : .entry
+    }
 
     var body: some View {
-        Group {
-            if showHome {
-                HomeView()
-                    .environmentObject(authService)
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeIn(duration: 0.35)),
-                        removal:   .opacity.animation(.easeOut(duration: 0.25))
-                    ))
-            } else {
-                // WelcomeView handles: login, signup, plan selection, and
-                // returning users who need to resubscribe (jumps to page 3).
-                WelcomeView()
-                    .environmentObject(authService)
-                    .transition(.asymmetric(
-                        insertion: .opacity.animation(.easeIn(duration: 0.35)),
-                        removal:   .opacity.animation(.easeOut(duration: 0.25))
-                    ))
+        TimelineView(.periodic(from: .now, by: 30)) { _ in
+            ZStack {
+                switch stage {
+                case .opening:
+                    MaxBrandOpeningView()
+                        .transition(.opacity)
+                case .upgrade:
+                    DemoUpgradeView()
+                        .transition(.opacity)
+                case .home:
+                    HomeView()
+                        .id(authService.currentUser?.storageScope ?? "signed-out")
+                        .transition(.opacity)
+                case .entry:
+                    // Apple sign-in and subscription/demo access remain gated.
+                    WelcomeView()
+                        .transition(.opacity)
+                }
             }
+            .environment(\.maxBrandNamespace, brandNamespace)
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.72, dampingFraction: 0.9), value: stage)
         }
-        .animation(.easeInOut(duration: 0.3), value: showHome)
     }
 
     private var showHome: Bool {
-        guard let user = authService.currentUser else { return false }
-        return user.isDemo == true || store.isSubscribed
+        !authService.isDemoExpired && authService.currentUser?.allowsAccess(hasSubscription: store.isSubscribed, at: Date()) == true
     }
 }
