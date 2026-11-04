@@ -21,6 +21,8 @@ final class AuthService: ObservableObject {
                 UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
                 VoiceService.shared.stopRecording(); VoiceService.shared.stopSpeaking()
+                ReminderApprovalService.shared.cancel()
+                LifeMemoryApproval.shared.cancel()
                 LiveActivityService.shared.stopPersistentSession()
                 let widget = UserDefaults(suiteName: "group.com.gindausd.max")
                 widget?.removeObject(forKey: "max:widget_last_message")
@@ -232,3 +234,4 @@ private extension AuthUser {
         self.trialStartedAt = user.isAnonymous ? user.createdAt : nil
     }
 }
+

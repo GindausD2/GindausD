@@ -140,6 +140,51 @@ final class VoiceToTextTests: XCTestCase {
             XCTAssertTrue(model.messages.isEmpty)
         }
     }
+
+    func testVerbatimDraftRetainsFillersRepeatsAndSelfCorrections() async throws {
+        await isolated {
+            let capture = TestVoiceCapture()
+            let model = HomeViewModel(capture: capture)
+            model.loadMessages()
+            model.handleMicTap(); await settle { model.conversationState == .listening }
+            capture.result = "Um, I, I mean, like, meet at two, actually three. Na gode."
+            model.handleMicTap(); await settle { !model.isDictating }
+            XCTAssertEqual(model.inputText, capture.result)
+            XCTAssertTrue(model.messages.isEmpty)
+            XCTAssertTrue(StorageService.shared.loadMessages().isEmpty)
+        }
+    }
+
+    func testFallbackDraftShowsNoticeWithoutAutomaticSend() async throws {
+        await isolated {
+            let capture = TestVoiceCapture()
+            let model = HomeViewModel(capture: capture)
+            model.loadMessages(); model.inputText = "Keep"
+            model.handleMicTap(); await settle { model.conversationState == .listening }
+            capture.result = "these words"
+            capture.transcriptionNotice = "Using iPhone transcription. Review this draft before sending."
+            model.handleMicTap(); await settle { !model.isDictating }
+            XCTAssertEqual(model.inputText, "Keep these words")
+            XCTAssertEqual(model.dictationError, capture.transcriptionNotice)
+            XCTAssertTrue(model.messages.isEmpty)
+        }
+    }
+
+    func testRecordingLimitFinishesIntoDraftInsteadOfSending() async throws {
+        await isolated {
+            let capture = TestVoiceCapture()
+            let model = HomeViewModel(capture: capture)
+            model.loadMessages()
+            model.handleMicTap(); await settle { model.conversationState == .listening }
+            capture.result = "the complete bounded recording"
+            capture.transcriptionNotice = "Two-minute recording limit reached."
+            capture.onRecordingLimit?()
+            await settle { !model.isDictating }
+            XCTAssertEqual(model.inputText, capture.result)
+            XCTAssertEqual(model.dictationError, capture.transcriptionNotice)
+            XCTAssertTrue(model.messages.isEmpty)
+        }
+    }
 }
 
 @MainActor
@@ -149,7 +194,9 @@ final class TestVoiceCapture: VoiceCapturing {
     var transcriptUpdates: AnyPublisher<String, Never> { $text.eraseToAnyPublisher() }
     var recordingUpdates: AnyPublisher<Bool, Never> { $recording.eraseToAnyPublisher() }
     var currentTranscript: String { text }
+    var transcriptionNotice: String?
     var onUtteranceEnd: (() -> Void)?
+    var onRecordingLimit: (() -> Void)?
     var result: String?
     var denied = false
     var startDelay: Duration = .zero
@@ -172,3 +219,4 @@ private enum TestCaptureError: LocalizedError {
     case denied
     var errorDescription: String? { "Microphone permission was denied." }
 }
+

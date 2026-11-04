@@ -9,6 +9,8 @@ struct MemoryView: View {
     @State private var accountScope = ""
     @State private var adding = false
     @State private var editing: SavedMemoryTarget?
+    @State private var memoryEnabled = true
+    @State private var showLifeMemory = false
     private let storage = StorageService.shared
 
     var body: some View {
@@ -16,6 +18,15 @@ struct MemoryView: View {
             CompanionCanvas()
             VStack(spacing: 0) {
                 CompanionSheetHeader(title: "Memory", onClose: { dismiss() }, onAdd: { adding = true })
+                Button { showLifeMemory = true } label: { Label("Life Memory timeline", systemImage: "calendar.badge.clock") }.padding(.vertical, 8)
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Use saved memory", isOn: Binding(get: { memoryEnabled }, set: { enabled in
+                        guard storage.accountScope == accountScope else { return }
+                        memoryEnabled = enabled; storage.setMemoryEnabled(enabled, accountScope: accountScope)
+                    }))
+                    Text(memoryEnabled ? "Edit or forget saved details anytime." : "Memory is paused. Max won't use saved details or save new facts. Existing memories stay here; chat history is separate.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }.padding(.horizontal, 20).padding(.vertical, 12)
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(MemoryCategory.allCases, id: \.self) { category in
@@ -80,6 +91,7 @@ struct MemoryView: View {
         .onAppear { if accountScope.isEmpty { accountScope = storage.accountScope }; reload() }
         .onChange(of: authService.currentUser) { _, _ in reload() }
         .sheet(isPresented: $adding) { AddMemorySheet(category: selectedCategory, accountScope: accountScope, onSave: reload) }
+        .sheet(isPresented: $showLifeMemory) { LifeMemoryView() }
         .sheet(item: $editing) { SavedMemoryEditor(target: $0, accountScope: accountScope, onSave: reload) }
     }
     private var filteredCards: [MemoryCard] {
@@ -88,6 +100,7 @@ struct MemoryView: View {
     private func reload() {
         guard storage.accountScope == accountScope else { cards = []; return }
         cards = storage.loadMemoryCards()
+        memoryEnabled = storage.usesSavedMemory
     }
 }
 
@@ -124,3 +137,4 @@ private struct AddMemorySheet: View {
 }
 
 #Preview { MemoryView() }
+

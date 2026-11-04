@@ -10,6 +10,7 @@ try { publicKeys = JSON.parse(Deno.env.get('SUPABASE_PUBLISHABLE_KEYS') ?? '{}')
 
 const env = {
   OPENAI_API_KEY: Deno.env.get('OPENAI_API_KEY') ?? '',
+  OPENAI_TRANSCRIBE_MODEL: Deno.env.get('OPENAI_TRANSCRIBE_MODEL') ?? 'gpt-transcribe',
   OPENAI_VOICE_MODEL: Deno.env.get('OPENAI_VOICE_MODEL') ?? 'gpt-realtime-2.1-mini',
   APPLE_STORE_ENVIRONMENT: Deno.env.get('APPLE_STORE_ENVIRONMENT') ?? 'Production',
   APPLE_IAP_KEY_ID: Deno.env.get('APPLE_IAP_KEY_ID') ?? '',
@@ -31,3 +32,4 @@ Deno.serve(createEdgeHandler(createHandler({ env, verifyPaid,
     socketFactory: (url: string, settings: any) => new WebSocket(url, settings),
   }),
 })));
+

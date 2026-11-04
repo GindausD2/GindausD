@@ -306,6 +306,8 @@ final class ClaudeService {
         ]
         let v1Names: Set<String> = ["get_datetime", "save_note", "get_notes", "delete_note", "remember_fact", "recall_facts", "schedule_reminder", "get_reminders", "get_calendar_events", "recall_places"]
         let extras = [
+            ToolDefinition(name: "propose_life_event", description: "When the user asks to remember a meeting or event, propose an editable native review. Nothing is saved before the user reviews it. Ask for missing dates or ambiguous people; do not invent details or assume attendance.", inputSchema: InputSchema(type: "object", properties: ["title": PropertyDefinition(type: "string", description: "Event title"), "person": PropertyDefinition(type: "string", description: "People explicitly identified by the user"), "place": PropertyDefinition(type: "string", description: "Place supplied by the user"), "occurredAt": PropertyDefinition(type: "string", description: "ISO8601 event date/time including offset. Ask when unclear."), "notes": PropertyDefinition(type: "string", description: "User-supplied discussion details only")], required: ["title", "occurredAt"])),
+            ToolDefinition(name: "recall_life_events", description: "Search user-reviewed Life Memory events by people, places, topics and optional dates. Query uses all keywords; omit conversational filler. Return supporting sources, distinguish planned from confirmed attendance, and clarify multiple matches. Empty results mean insufficient saved evidence.", inputSchema: InputSchema(type: "object", properties: ["query": PropertyDefinition(type: "string", description: "Keywords, e.g. Justin voice or Cafe Grenel; empty for date-only search"), "from": PropertyDefinition(type: "string", description: "Optional inclusive ISO8601 start"), "until": PropertyDefinition(type: "string", description: "Optional exclusive ISO8601 end")], required: ["query"])),
             ToolDefinition(name: "save_place", description: "Manually save a named place and full address. Never infer that the user visited it.", inputSchema: InputSchema(type: "object", properties: ["name": PropertyDefinition(type: "string", description: "Unique place name"), "address": PropertyDefinition(type: "string", description: "Street, city, country")], required: ["name", "address"])),
             ToolDefinition(name: "schedule_location_reminder", description: "Schedule one arrival reminder for an explicitly saved place.", inputSchema: InputSchema(type: "object", properties: ["title": PropertyDefinition(type: "string", description: "Reminder"), "placeName": PropertyDefinition(type: "string", description: "Exact saved place name")], required: ["title", "placeName"])),
             ToolDefinition(name: "schedule_context_reminder", description: "Save a reminder shown when the user explicitly checks the named context in Max. No background behavior monitoring.", inputSchema: InputSchema(type: "object", properties: ["title": PropertyDefinition(type: "string", description: "Reminder"), "context": PropertyDefinition(type: "string", description: "User supplied context name")], required: ["title", "context"])),
@@ -380,7 +382,7 @@ final class ClaudeService {
         if !conversationHistory.isEmpty { apiMessages = conversationHistory }
         let facts = StorageService.shared.recallFacts().map { "\($0.key): \($0.value)" }
         let cards = StorageService.shared.loadMemoryCards().map(\.content)
-        let remembered = String((facts + cards).joined(separator: "\n").prefix(12000))
+        let remembered = StorageService.shared.usesSavedMemory ? String((facts + cards).joined(separator: "\n").prefix(12000)) : "Saved memory is paused. Do not save or recall personal facts."
         let request = ClaudeRequest(
             model: modelID,
             maxTokens: maxTokens,
@@ -583,7 +585,7 @@ final class ClaudeService {
             guard let data = (call.inputJSON.isEmpty ? "{}" : call.inputJSON).data(using: .utf8),
                   let input = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ClaudeError.invalidResponse }
             assistantBlocks.append(ClaudeRequestBlock(type: "tool_use", id: call.id, name: call.name, input: input.mapValues { AnyCodable($0) }))
-            let result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope)
+            let result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope, requireReminderConfirmation: true)
             results.append(ClaudeRequestBlock(type: "tool_result", toolUseId: call.id, content: result))
         }
         var continuation = apiMessages
@@ -618,3 +620,4 @@ enum ClaudeError: LocalizedError {
         }
     }
 }
+

@@ -16,6 +16,19 @@ function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerSt
   return { calls, handler };
 }
 test('missing server configuration fails closed', async () => { const h = createHandler({ env: {}, fetchImpl: () => { throw Error('must not fetch'); } }); assert.equal((await h(request())).status, 503); });
+test('life-memory tool definitions and source-bearing results survive the authenticated continuation contract', async () => {
+  const f = fixture();
+  const evidence = JSON.stringify({ events: [{ id: 'event-1', person: 'Justin', source: 'User-reviewed memory', attendance: 'planned_unconfirmed' }], totalMatches: 1 });
+  const body = { tools: ['propose_life_event', 'recall_life_events'].map(name => ({ name, description: 'Life memory tool', input_schema: { type: 'object' } })),
+    messages: [{ role: 'user', content: 'Who did I meet about Max?' },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'recall-1', name: 'recall_life_events', input: { query: 'Max' } }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'recall-1', content: evidence }] }] };
+  const response = await f.handler(request(body)); assert.equal(response.status, 200);
+  const forwarded = JSON.parse(f.calls.at(-1).options.body);
+  assert.equal(forwarded.messages.at(-1).content, evidence);
+  assert.deepEqual(forwarded.tools.map(t => t.function.name), ['propose_life_event', 'recall_life_events']);
+  assert.equal(f.calls.filter(c => c.url.includes('/rpc/')).length, 1);
+});
 test('an old Anthropic key cannot silently configure the OpenAI backend', async () => {
   const h = createHandler({ env: { SUPABASE_URL: env.SUPABASE_URL, SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY, ANTHROPIC_API_KEY: 'legacy-secret' }, fetchImpl: () => { throw Error('must not fetch'); } });
   assert.equal((await h(request())).status, 503);
@@ -110,3 +123,4 @@ test('a verified permanent user is not mistaken for an expired guest', async () 
   const f = fixture({ user: { ...guest, is_anonymous: false }, now: () => trialEnd });
   assert.equal((await f.handler(request())).status, 200);
 });
+

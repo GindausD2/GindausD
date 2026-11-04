@@ -9,6 +9,8 @@ struct HomeView: View {
     @EnvironmentObject private var authService: AuthService
 
     @ObservedObject private var playback = VoiceService.shared
+    @ObservedObject private var reminderApproval = ReminderApprovalService.shared
+    @ObservedObject private var lifeApproval = LifeMemoryApproval.shared
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
     @State private var showProfile = false
@@ -97,9 +99,17 @@ struct HomeView: View {
                 viewModel.startNewChat()
             })
         }
+        .sheet(item: Binding(get: { reminderApproval.pending }, set: { if $0 == nil { reminderApproval.cancel() } })) { proposal in
+            ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
+                .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
+        }
         .fullScreenCover(isPresented: $showCamera) {
             ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
                 .ignoresSafeArea()
+        }
+        .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
+            LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
+                .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
         }
         .onChange(of: capturedImage) { _, img in
             guard let img else { return }
@@ -840,6 +850,8 @@ final class HomeViewModel: ObservableObject {
     }
 
     func endConversation() {
+        LifeMemoryApproval.shared.cancel()
+        ReminderApprovalService.shared.cancel()
         continuousActive = false
         turnID = UUID()
         voiceInputTask?.cancel(); voiceInputTask = nil
@@ -862,6 +874,10 @@ final class HomeViewModel: ObservableObject {
         guard !startingVoice, !isTranscribing else { return }
         continuousActive = false
         capture.onUtteranceEnd = nil
+        capture.onRecordingLimit = { [weak self] in
+            guard let self, self.isDictating, !self.isTranscribing else { return }
+            self.finishDictation()
+        }
         dictationError = nil
         dictationBaseDraft = inputText
         dictationScope = storage.accountScope
@@ -912,6 +928,7 @@ final class HomeViewModel: ObservableObject {
         inputText = dictationBaseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         inputText += (inputText.isEmpty ? "" : " ") + text
         prefersTextReplyForDraft = true
+        dictationError = capture.transcriptionNotice
     }
 
     private func startListening() {
@@ -926,6 +943,7 @@ final class HomeViewModel: ObservableObject {
                     guard let self, self.continuousActive, self.conversationState == .listening else { return }
                     self.stopListening()
                 }
+                capture.onRecordingLimit = { [weak self] in self?.stopListening() }
                 try await capture.startRecording()
                 guard turnID == activationID else { capture.stopRecording(); return }
                 conversationState = .listening
@@ -948,6 +966,15 @@ final class HomeViewModel: ObservableObject {
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
+                return
+            }
+            if let notice = capture.transcriptionNotice {
+                // A fallback or limited recording always gets a review step,
+                // including direct-voice shortcut sessions.
+                continuousActive = false
+                inputText += (inputText.isEmpty ? "" : " ") + transcription
+                prefersTextReplyForDraft = true
+                dictationError = notice
                 return
             }
             addUserMessage(transcription)
@@ -1042,3 +1069,4 @@ final class HomeViewModel: ObservableObject {
 #Preview {
     HomeView().environmentObject(AuthService.shared)
 }
+
