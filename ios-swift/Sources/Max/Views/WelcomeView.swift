@@ -340,8 +340,6 @@ private struct WelcomePage: View {
     @State private var showTour = false
     @AppStorage("max:onboarding_complete") private var onboardingComplete = false
 
-    private let glacier = Color(hex: "#315E73")
-
     var body: some View {
         GeometryReader { viewport in
             ScrollView(showsIndicators: false) {
@@ -397,52 +395,112 @@ private struct WelcomePage: View {
     }
 
     private var demoButton: some View {
-        Button(action: onDemo) {
-            HStack(spacing: 12) {
-                Image(systemName: "arrow.right")
-                    .font(.headline)
-                    .frame(width: 44, height: 44)
-                    .foregroundStyle(.white)
-                    .background(glacier, in: Circle())
-                    .accessibilityHidden(true)
-                Text("Try Demo")
-                    .font(.body.weight(.semibold))
-                    .padding(.trailing, 16)
-            }
-            .padding(5)
-            .foregroundStyle(.primary)
-            .glassCard(cornerRadius: 32, interactive: true)
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
+        WelcomeEntrySlider(rightTitle: "Try Demo", onRight: onDemo)
+            .frame(maxWidth: 248)
     }
 
     private var accountPill: some View {
-        HStack(spacing: 0) {
-            accountButton("Log In", action: onLogin)
-            Image(systemName: "plus")
-                .font(.title3.weight(.medium))
-                .frame(width: 44, height: 44)
-                .foregroundStyle(.white)
-                .background(glacier, in: Circle())
-                .accessibilityHidden(true)
-            accountButton("Sign Up", action: onSignUp)
+        WelcomeEntrySlider(leftTitle: "Log In", rightTitle: "Sign Up", onLeft: onLogin, onRight: onSignUp)
+            .frame(maxWidth: 300)
+    }
+}
+
+private struct WelcomeEntrySlider: View {
+    var leftTitle: String? = nil
+    let rightTitle: String
+    var onLeft: (() -> Void)? = nil
+    let onRight: () -> Void
+
+    @Environment(\.isEnabled) private var isEnabled
+    @GestureState private var translation: CGFloat = 0
+    @ScaledMetric(relativeTo: .subheadline) private var trackHeight: CGFloat = 56
+
+    private let inset: CGFloat = 5
+    private let handleSize: CGFloat = 46
+    private var twoWay: Bool { onLeft != nil }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let travel = max(0, geometry.size.width - handleSize - inset * 2)
+            let start = twoWay ? travel / 2 : 0
+            let offset = min(travel, max(0, start + translation))
+
+            ZStack(alignment: .leading) {
+                labels
+                    .frame(maxWidth: .infinity)
+                    .opacity(translation == 0 ? 1 : 0.35)
+
+                handle
+                    .offset(x: inset + offset)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Capsule())
+            .simultaneousGesture(slide(from: start, travel: travel))
         }
-        .padding(5)
-        .frame(maxWidth: 284)
-        .glassCard(cornerRadius: 34, interactive: true)
+        .frame(height: max(56, trackHeight))
+        .glassCard(cornerRadius: max(56, trackHeight) / 2, depth: .ultraThin, interactive: true)
+        .opacity(isEnabled ? 1 : 0.55)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(twoWay ? "Log In or Sign Up" : rightTitle)
+        .accessibilityHint(twoWay ? "Slide left to log in or right to sign up." : "Slide right to open the demo.")
+        .accessibilityActions {
+            if let leftTitle, let onLeft {
+                Button(leftTitle) { if isEnabled { onLeft() } }
+            }
+            Button(rightTitle) { if isEnabled { onRight() } }
+        }
     }
 
-    private func accountButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(.subheadline.weight(.semibold))
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .contentShape(Rectangle())
+    private var labels: some View {
+        HStack(spacing: 0) {
+            if let leftTitle {
+                Text(leftTitle)
+                    .frame(maxWidth: .infinity)
+            }
+            Spacer().frame(width: handleSize + inset)
+            Text(twoWay ? rightTitle : "Slide to Try Demo")
+                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.plain)
+        .font(.subheadline.weight(.semibold))
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 8)
+    }
+
+    private var handle: some View {
+        Image(systemName: twoWay ? "plus" : "arrow.right")
+            .font(.title3.weight(.semibold))
+            .frame(width: handleSize, height: handleSize)
+            .foregroundStyle(.white)
+            .background(
+                LinearGradient(
+                    colors: [Color(hex: "#618EA4"), Color(hex: "#315E73")],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: Circle()
+            )
+            .overlay(Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1))
+            .shadow(color: Color(hex: "#315E73").opacity(0.25), radius: 5, y: 2)
+    }
+
+    private func slide(from start: CGFloat, travel: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .updating($translation) { value, offset, _ in
+                let delta = value.translation
+                if isEnabled && abs(delta.width) > abs(delta.height) {
+                    offset = delta.width
+                }
+            }
+            .onEnded { value in
+                let delta = value.translation
+                guard isEnabled, travel > 0, abs(delta.width) > abs(delta.height) else { return }
+
+                if delta.width >= max(24, (travel - start) * 0.75) {
+                    onRight()
+                } else if let onLeft, -delta.width >= max(24, start * 0.75) {
+                    onLeft()
+                }
+            }
     }
 }
 
