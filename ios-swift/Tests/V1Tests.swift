@@ -30,6 +30,14 @@ final class V1Tests: XCTestCase {
         XCTAssertTrue(linked.allowsAccess(hasSubscription: true, at: Date()))
     }
 
+    func testSignedInNameReplacesStaleDemoGuestName() {
+        let user = AuthUser(name: "  Ada Okafor  ", email: nil, isDemo: false)
+        XCTAssertEqual(user.displayName(preferredName: " guest "), "Ada Okafor")
+        XCTAssertEqual(user.displayName(preferredName: " Ada "), "Ada")
+        XCTAssertNil(AuthUser(name: "Guest", email: nil, isDemo: false).displayName(preferredName: ""))
+        XCTAssertEqual(AuthUser(name: nil, email: nil, isDemo: true).displayName(preferredName: ""), "Guest")
+    }
+
     private func isolated(_ body: () async throws -> Void) async rethrows {
         let previous = StorageService.shared.accountScope
         let scope = "verification-" + UUID().uuidString

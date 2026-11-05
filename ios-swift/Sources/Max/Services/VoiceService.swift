@@ -61,12 +61,12 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         super.init()
         speechSynthesizer.delegate = self
         NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
+            .merge(with: NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification))
             .receive(on: DispatchQueue.main).sink { [weak self] _ in
-                self?.stopRecording(); self?.stopSpeaking()
-            }.store(in: &interruptionSubscriptions)
-        NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)
-            .receive(on: DispatchQueue.main).sink { [weak self] _ in
-                self?.stopRecording(); self?.stopSpeaking()
+                guard let self else { return }
+                // Permission prompts can make the app inactive before a recording exists.
+                if self.recognitionRequest != nil { self.stopRecording() }
+                if self.isSpeaking { self.stopSpeaking() }
             }.store(in: &interruptionSubscriptions)
     }
 
@@ -275,7 +275,6 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
                     guard !Task.isCancelled, self.playbackID == attempt,
                           StorageService.shared.accountScope == scope,
                           UIApplication.shared.applicationState == .active else { return }
-                    self.isPreparingSpeech = false
                     self.playbackNotice = "Using iPhone voice"
                     self.speakOnDevice(clean, preferredVoice: preferredVoice)
                 }
@@ -317,6 +316,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         currentUtterance = utterance
         lastHapticAt = 0
         speakingFeedback.prepare()
+        isPreparingSpeech = true
         isSpeaking = true
         speechSynthesizer.speak(utterance)
     }
@@ -376,6 +376,13 @@ extension VoiceService: AVAudioPlayerDelegate {
 // MARK: - AVSpeechSynthesizerDelegate
 
 extension VoiceService: AVSpeechSynthesizerDelegate {
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+        Task { @MainActor in
+            guard self.currentUtterance === utterance else { return }
+            self.isPreparingSpeech = false
+        }
+    }
+
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
         Task { @MainActor in
             guard self.currentUtterance === utterance, self.isSpeaking,

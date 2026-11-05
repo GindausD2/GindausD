@@ -99,9 +99,11 @@ final class AuthService: ObservableObject {
         return (session.accessToken, userID)
     }
 
-    private func applySession(_ session: Session) {
+    private func applySession(_ session: Session, appleName: String? = nil) {
         let previousID = currentUser?.id
-        currentUser = AuthUser(supabaseUser: session.user)
+        var user = AuthUser(supabaseUser: session.user)
+        if let appleName { user.name = appleName }
+        currentUser = user
         if previousID != currentUser?.id { serverExpiredDemo = false }
         if session.user.isAnonymous {
             if let data = try? JSONEncoder().encode(currentUser) { UserDefaults.standard.set(data, forKey: demoKey) }
@@ -147,6 +149,7 @@ final class AuthService: ObservableObject {
         }
         appleNonce = nil
         isLoading = true; authError = nil
+        defer { isLoading = false }
         do {
             let credentials = OpenIDConnectCredentials(provider: .apple, idToken: idToken, nonce: nonce)
             let session: Session
@@ -156,17 +159,17 @@ final class AuthService: ObservableObject {
             } else {
                 session = try await supabase.auth.signInWithIdToken(credentials: credentials)
             }
-            if let name, !name.isEmpty {
+            let appleName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let appleName, !appleName.isEmpty {
                 _ = try? await supabase.auth.update(
-                    user: UserAttributes(data: ["full_name": .string(name)])
+                    user: UserAttributes(data: ["full_name": .string(appleName)])
                 )
             }
-            applySession(session)
-            if let name, !name.isEmpty { currentUser?.name = name }
+            guard let latest = supabase.auth.currentSession, latest.user.id == session.user.id else { return }
+            applySession(latest, appleName: appleName?.isEmpty == false ? appleName : nil)
         } catch {
             authError = error.localizedDescription
         }
-        isLoading = false
     }
 
     // MARK: - Seven-day guest demo (no Apple identity or purchase required)

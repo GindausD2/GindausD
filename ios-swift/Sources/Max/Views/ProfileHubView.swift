@@ -26,7 +26,7 @@ struct ProfileHubView: View {
                         .padding(.top, 10)
                     Spacer(minLength: 30)
                     portrait
-                    Text("Welcome, \(displayName).")
+                    Text(displayName.map { "Welcome, \($0)." } ?? "Welcome to Max.")
                         .font(.title2.weight(.medium))
                         .tracking(-0.5)
                         .multilineTextAlignment(.center)
@@ -90,11 +90,10 @@ struct ProfileHubView: View {
         }.buttonStyle(.plain).foregroundStyle(.primary)
     }
 
-    private var displayName: String {
-        if !preferredName.isEmpty { return preferredName }
-        let name = authService.currentUser?.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return name.isEmpty ? "Guest" : name
+    private var displayName: String? {
+        authService.currentUser?.displayName(preferredName: preferredName)
     }
+
     private func reloadIdentity() {
         photo = StorageService.shared.loadProfilePhoto()
         preferredName = StorageService.shared.loadSettings().userName.trimmingCharacters(in: .whitespacesAndNewlines)

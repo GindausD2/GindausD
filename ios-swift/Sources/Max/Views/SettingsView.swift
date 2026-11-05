@@ -293,10 +293,7 @@ struct SettingsView: View {
     // MARK: - Helpers
 
     private var displayName: String {
-        if !settings.userName.isEmpty { return settings.userName }
-        if let name = authService.currentUser?.name, !name.isEmpty { return name }
-        if authService.currentUser?.isDemo == true { return "Guest" }
-        return "Guest"
+        authService.currentUser?.displayName(preferredName: settings.userName) ?? "Your account"
     }
 
     private func saveSettings() {

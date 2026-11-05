@@ -1,6 +1,12 @@
 import SwiftUI
 import AuthenticationServices
 
+enum AuthEntryMode {
+    case login, signUp
+
+    var page: Int { self == .login ? 0 : 2 }
+}
+
 // MARK: - Welcome View
 
 struct WelcomeView: View {
@@ -9,7 +15,6 @@ struct WelcomeView: View {
     @State private var currentPage: Int
     @State private var showDemo = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.maxBrandNamespace) private var brandNamespace
 
     init(initialMode: AuthEntryMode? = nil) {
         _currentPage = State(initialValue: initialMode?.page ?? 1)
@@ -37,17 +42,10 @@ struct WelcomeView: View {
                                 authService.signOut()
                                 currentPage = 2
                             })
+                        } else if currentPage == 0 {
+                            LoginPage(onDemo: { showDemo = true })
                         } else {
-                            TabView(selection: $currentPage) {
-                                LoginPage(onDemo: { showDemo = true })
-                                    .environment(\.maxBrandNamespace, currentPage == 0 ? brandNamespace : nil)
-                                    .tag(0)
-                                SignUpPage(onSignedUp: { currentPage = 3 }, onDemo: { showDemo = true })
-                                    .environment(\.maxBrandNamespace, currentPage == 2 ? brandNamespace : nil)
-                                    .tag(2)
-                            }
-                            .tabViewStyle(.page(indexDisplayMode: .never))
-                            .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
+                            SignUpPage(onSignedUp: { currentPage = 3 }, onDemo: { showDemo = true })
                         }
                     }
                     .transition(.opacity)
@@ -88,27 +86,24 @@ struct WelcomeView: View {
         }
     }
 
-    // MARK: - Authentication slider
+    // MARK: - Back to welcome
 
     @ViewBuilder private var navigationControl: some View {
         if currentPage == 0 || currentPage == 2 {
-            HStack(spacing: 12) {
-                Button { currentPage = 1 } label: {
-                    Image(systemName: "arrow.left")
-                        .font(.body.weight(.medium))
-                        .frame(width: 44, height: 44)
-                        .glassCard(cornerRadius: 22, interactive: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back to welcome")
-                AuthModeSlider(selection: Binding(
-                    get: { currentPage == 0 ? .login : .signUp },
-                    set: { currentPage = $0.page; authService.authError = nil }
-                ))
+            Button {
+                authService.authError = nil
+                currentPage = 1
+            } label: {
+                Image(systemName: "arrow.left")
+                    .font(.body.weight(.medium))
+                    .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to welcome")
             .disabled(authService.isLoading)
+            .frame(maxWidth: 412, alignment: .leading)
             .padding(.horizontal, 24)
-            .frame(maxWidth: 460)
         } else {
             Color.clear.frame(height: 8)
         }

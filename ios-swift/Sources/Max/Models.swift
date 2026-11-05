@@ -29,6 +29,16 @@ struct AuthUser: Codable, Equatable {
 
     var storageScope: String { id ?? (isDemo == true ? "demo" : "signed-out") }
 
+    func displayName(preferredName: String) -> String? {
+        for candidate in [preferredName, name ?? ""] {
+            let value = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !value.isEmpty, isDemo == true || value.caseInsensitiveCompare("Guest") != .orderedSame {
+                return value
+            }
+        }
+        return isDemo == true ? "Guest" : nil
+    }
+
     var trialExpiresAt: Date? {
         guard isDemo == true, let trialStartedAt else { return nil }
         return trialStartedAt.addingTimeInterval(7 * 24 * 3600)
