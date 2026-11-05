@@ -1,6 +1,12 @@
 import SwiftUI
 import AuthenticationServices
 
+enum AuthEntryMode {
+    case login, signUp
+
+    var page: Int { self == .login ? 0 : 2 }
+}
+
 // MARK: - Welcome View
 
 struct WelcomeView: View {
@@ -9,7 +15,6 @@ struct WelcomeView: View {
     @State private var currentPage: Int
     @State private var showDemo = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.maxBrandNamespace) private var brandNamespace
 
     init(initialMode: AuthEntryMode? = nil) {
         _currentPage = State(initialValue: initialMode?.page ?? 1)
@@ -37,17 +42,10 @@ struct WelcomeView: View {
                                 authService.signOut()
                                 currentPage = 2
                             })
+                        } else if currentPage == 0 {
+                            LoginPage(onDemo: { showDemo = true })
                         } else {
-                            TabView(selection: $currentPage) {
-                                LoginPage(onDemo: { showDemo = true })
-                                    .environment(\.maxBrandNamespace, currentPage == 0 ? brandNamespace : nil)
-                                    .tag(0)
-                                SignUpPage(onSignedUp: { currentPage = 3 }, onDemo: { showDemo = true })
-                                    .environment(\.maxBrandNamespace, currentPage == 2 ? brandNamespace : nil)
-                                    .tag(2)
-                            }
-                            .tabViewStyle(.page(indexDisplayMode: .never))
-                            .animation(reduceMotion ? nil : .spring(response: 0.45, dampingFraction: 0.85), value: currentPage)
+                            SignUpPage(onSignedUp: { currentPage = 3 }, onDemo: { showDemo = true })
                         }
                     }
                     .transition(.opacity)
@@ -88,27 +86,24 @@ struct WelcomeView: View {
         }
     }
 
-    // MARK: - Authentication slider
+    // MARK: - Back to welcome
 
     @ViewBuilder private var navigationControl: some View {
         if currentPage == 0 || currentPage == 2 {
-            HStack(spacing: 12) {
-                Button { currentPage = 1 } label: {
-                    Image(systemName: "arrow.left")
-                        .font(.body.weight(.medium))
-                        .frame(width: 44, height: 44)
-                        .glassCard(cornerRadius: 22, interactive: true)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Back to welcome")
-                AuthModeSlider(selection: Binding(
-                    get: { currentPage == 0 ? .login : .signUp },
-                    set: { currentPage = $0.page; authService.authError = nil }
-                ))
+            Button {
+                authService.authError = nil
+                currentPage = 1
+            } label: {
+                Image(systemName: "arrow.left")
+                    .font(.body.weight(.medium))
+                    .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to welcome")
             .disabled(authService.isLoading)
+            .frame(maxWidth: 412, alignment: .leading)
             .padding(.horizontal, 24)
-            .frame(maxWidth: 460)
         } else {
             Color.clear.frame(height: 8)
         }
@@ -336,51 +331,231 @@ private struct WelcomePage: View {
     var onSignUp: () -> Void
     var onDemo: () -> Void
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showTour = false
     @AppStorage("max:onboarding_complete") private var onboardingComplete = false
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 28) {
-                EntryHero(eyebrow: "A LITTLE SPACE FOR YOUR DAY", title: "Life feels lighter.\nWith Max.", subtitle: "Your thoughts. Your plans.\nA companion for the everyday.", logoWidth: 220)
-                VStack(spacing: 14) {
-                    EntryPrimaryButton(title: "Get started", action: onSignUp)
-                    Button(action: onDemo) {
-                        HStack {
-                            Text("Try the 7-day demo").fontWeight(.semibold)
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .padding(18)
-                        .glassCard(cornerRadius: 22, interactive: true)
+        GeometryReader { viewport in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: typeSize.isAccessibilitySize ? 20 : min(132, viewport.size.height * 0.17))
+
+                    VStack(spacing: 30) {
+                        MaxJourneyLogo(width: 126)
+                            .accessibilityHidden(true)
+                        Text("Welcome to Max")
+                            .font(.system(.title2, design: .rounded, weight: .semibold))
+                            .accessibilityAddTraits(.isHeader)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(authService.isLoading)
-                    Text("No Apple sign-in or payment for the demo")
-                        .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                    Spacer(minLength: 42)
+
+                    VStack(spacing: 10) {
+                        demoButton
+                        Text("7 days to explore Max")
+                            .font(.footnote.weight(.medium))
+                        Text("No Apple sign-in or payment needed.")
+                            .font(.caption)
+                    }
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 38)
+
+                    VStack(spacing: 8) {
+                        accountPill
+                        if !onboardingComplete {
+                            Button("See how Max works") { showTour = true }
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .frame(minHeight: 44)
+                                .buttonStyle(.plain)
+                        }
+                    }
                 }
-                Button(action: onLogin) {
-                    Text("Already have a space here? ").foregroundStyle(.secondary)
-                    + Text("Log in").bold()
-                }
-                .font(.subheadline)
-                .frame(minHeight: 44)
-                .buttonStyle(.plain)
-                if !onboardingComplete {
-                    Button("See how Max works") { showTour = true }
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(minHeight: 44)
-                }
+                .padding(.horizontal, 24)
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: max(0, viewport.size.height - 40))
+                .padding(.vertical, 20)
+                .disabled(authService.isLoading)
             }
-            .padding(28)
-            .frame(maxWidth: 460)
-            .frame(maxWidth: .infinity)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
         .fullScreenCover(isPresented: $showTour) {
             OnboardingView { onboardingComplete = true; showTour = false }
         }
+    }
+
+    private var demoButton: some View {
+        WelcomeEntrySlider(rightTitle: "Try Demo", onRight: onDemo)
+            .frame(maxWidth: 248)
+    }
+
+    private var accountPill: some View {
+        WelcomeEntrySlider(leftTitle: "Log In", rightTitle: "Sign Up", onLeft: onLogin, onRight: onSignUp)
+            .frame(maxWidth: 300)
+    }
+}
+
+private struct WelcomeEntrySlider: View {
+    var leftTitle: String? = nil
+    let rightTitle: String
+    var onLeft: (() -> Void)? = nil
+    let onRight: () -> Void
+
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var translation: CGFloat = 0
+    @ScaledMetric(relativeTo: .subheadline) private var trackHeight: CGFloat = 56
+
+    private let inset: CGFloat = 5
+    private let handleSize: CGFloat = 46
+    private var twoWay: Bool { onLeft != nil }
+    private var isSliding: Bool { translation != 0 }
+    private let glacierBlue = Color(hex: "#315E73")
+
+    var body: some View {
+        GeometryReader { geometry in
+            let travel = max(0, geometry.size.width - handleSize - inset * 2)
+            let start = twoWay ? travel / 2 : 0
+            let offset = min(travel, max(0, start + translation))
+            let stretch = reduceMotion ? 0 : min(1, abs(offset - start) / handleSize)
+            let extraWidth = min(travel, 26 * stretch)
+            let handleOffset = min(travel - extraWidth, max(0, offset - extraWidth / 2))
+
+            ZStack(alignment: .leading) {
+                labels
+                    .frame(maxWidth: .infinity)
+                    .opacity(isSliding ? 0.65 : 1)
+
+                handle(width: handleSize + extraWidth, stretch: stretch)
+                    .offset(x: inset + handleOffset)
+            }
+            .animation(isSliding || reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.76), value: isSliding)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Capsule())
+            .simultaneousGesture(slide(from: start, travel: travel))
+        }
+        .frame(height: max(56, trackHeight))
+        .background { glassTrack }
+        .opacity(isEnabled ? 1 : 0.55)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(twoWay ? "Log In or Sign Up" : rightTitle)
+        .accessibilityHint(twoWay ? "Slide left to log in or right to sign up." : "Slide right to open the demo.")
+        .accessibilityActions {
+            if let leftTitle, let onLeft {
+                Button(leftTitle) { if isEnabled { onLeft() } }
+            }
+            Button(rightTitle) { if isEnabled { onRight() } }
+        }
+    }
+
+    @ViewBuilder private var glassTrack: some View {
+        if #available(iOS 26, *) {
+            Color.clear
+                .glassEffect(.regular.tint(colorScheme == .dark ? nil : .white.opacity(0.25)), in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(colorScheme == .dark ? 0.30 : 0.85), .white.opacity(0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+                }
+                .shadow(color: glacierBlue.opacity(0.11), radius: 13, y: 6)
+        } else {
+            Color.clear
+                .glassCard(cornerRadius: max(56, trackHeight) / 2, depth: .ultraThin)
+        }
+    }
+
+    private var labels: some View {
+        HStack(spacing: 0) {
+            if let leftTitle {
+                Text(leftTitle)
+                    .frame(maxWidth: .infinity)
+            }
+            Spacer().frame(width: handleSize + inset)
+            Text(twoWay ? rightTitle : "Slide to Try Demo")
+                .frame(maxWidth: .infinity)
+        }
+        .font(.subheadline.weight(.semibold))
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 8)
+    }
+
+    private func handleIcon(width: CGFloat, stretch: CGFloat) -> some View {
+        Image(systemName: twoWay ? "plus" : "arrow.right")
+            .font(.title3.weight(.semibold))
+            .frame(width: width, height: handleSize + 4 * stretch)
+            .foregroundStyle(.white)
+    }
+
+    private func handle(width: CGFloat, stretch: CGFloat) -> some View {
+        Group {
+            if #available(iOS 26, *) {
+                handleIcon(width: width, stretch: stretch)
+                    .glassEffect(.regular.tint(glacierBlue.opacity(1 - 0.26 * Double(stretch))).interactive(), in: Capsule())
+            } else {
+                handleIcon(width: width, stretch: stretch)
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "#618EA4"), glacierBlue],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Capsule()
+                    )
+            }
+        }
+        .overlay {
+            Capsule()
+                .fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.30 + 0.12 * Double(stretch)), .clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottom
+                    )
+                )
+                .overlay {
+                    Capsule().strokeBorder(
+                        LinearGradient(
+                            colors: [.white.opacity(0.90), .white.opacity(0.20), .white.opacity(0.60)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1.5
+                    )
+                }
+                .allowsHitTesting(false)
+        }
+        .shadow(color: glacierBlue.opacity(0.24), radius: 5 + 3 * stretch, y: 2)
+    }
+
+    private func slide(from start: CGFloat, travel: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 10)
+            .updating($translation) { value, offset, _ in
+                let delta = value.translation
+                if isEnabled && abs(delta.width) > abs(delta.height) {
+                    offset = delta.width
+                }
+            }
+            .onEnded { value in
+                let delta = value.translation
+                guard isEnabled, travel > 0, abs(delta.width) > abs(delta.height) else { return }
+
+                if delta.width >= max(24, (travel - start) * 0.75) {
+                    onRight()
+                } else if let onLeft, -delta.width >= max(24, start * 0.75) {
+                    onLeft()
+                }
+            }
     }
 }
 
@@ -625,3 +800,4 @@ extension Color {
 #Preview {
     WelcomeView().environmentObject(AuthService.shared)
 }
+

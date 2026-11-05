@@ -170,6 +170,47 @@ final class VoiceToTextTests: XCTestCase {
         }
     }
 
+    func testConversationMicSendsSpeechWithoutReplacingTypedDraft() async {
+        await isolated {
+            let capture = TestVoiceCapture()
+            let model = HomeViewModel(capture: capture)
+            model.loadMessages()
+            model.inputText = "Keep this draft"
+            model.handleVoiceTap()
+            await settle { model.conversationState == .listening }
+            XCTAssertFalse(model.isDictating)
+            XCTAssertEqual(model.orbState(isPlayingSpeech: false), .listening)
+            capture.result = "What is on my calendar?"
+            model.handleVoiceTap()
+            await settle { model.messages.contains { $0.role == "user" } }
+            XCTAssertEqual(model.messages.first?.content, capture.result)
+            XCTAssertEqual(model.inputText, "Keep this draft")
+            XCTAssertFalse(capture.recording)
+            model.endConversation()
+        }
+    }
+
+    func testVoiceInterruptionEndsListeningWithoutSendingPartialSpeech() async {
+        await isolated {
+            let capture = TestVoiceCapture()
+            let model = HomeViewModel(capture: capture)
+            model.loadMessages()
+            model.handleVoiceTap()
+            await settle { model.conversationState == .listening }
+            capture.text = "unfinished words"
+            capture.recording = false
+            XCTAssertEqual(model.conversationState, .idle)
+            XCTAssertTrue(model.messages.isEmpty)
+        }
+    }
+
+    func testOrbShowsSpeakingOnlyDuringAudioPlayback() {
+        let model = HomeViewModel(capture: TestVoiceCapture())
+        model.conversationState = .speaking
+        XCTAssertEqual(model.orbState(isPlayingSpeech: false), .thinking)
+        XCTAssertEqual(model.orbState(isPlayingSpeech: true), .speaking)
+    }
+
     func testRecordingLimitFinishesIntoDraftInsteadOfSending() async throws {
         await isolated {
             let capture = TestVoiceCapture()

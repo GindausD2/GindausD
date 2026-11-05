@@ -34,6 +34,21 @@ struct HomeView: View {
     }
 
     var body: some View {
+        conversationPresentation
+            .onAppear(perform: restoreConversation)
+            .onChange(of: viewModel.conversationState) { _, state in updateLiveActivity(state) }
+            .onChange(of: viewModel.streamingText) { _, text in updateLiveActivitySnippet(text) }
+            .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+                showProfile = false
+                UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
+                viewModel.startMorningBriefing()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
+                handlePendingShortcut()
+            }
+    }
+
+    private var conversationLayout: some View {
         ZStack {
             CompanionCanvas()
 
@@ -60,103 +75,103 @@ struct HomeView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
         }
-        .onDisappear { viewModel.endConversation() }
-        .onChange(of: viewModel.inputText) { _, text in
-            if !text.isEmpty { isTyping = true }
-        }
-        .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
-        .alert("Voice input unavailable", isPresented: Binding(
-            get: { viewModel.dictationError != nil },
-            set: { if !$0 { viewModel.dictationError = nil } }
-        )) {
-            Button("OK", role: .cancel) { viewModel.dictationError = nil }
-        } message: { Text(viewModel.dictationError ?? "Please try again.") }
-        .alert("Max controls unavailable", isPresented: Binding(
-            get: { islandNotice != nil },
-            set: { if !$0 { islandNotice = nil } }
-        )) {
-            Button("iPhone settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+    }
+
+    private var conversationInteractions: some View {
+        conversationLayout
+            .onDisappear { viewModel.endConversation() }
+            .onChange(of: viewModel.inputText) { _, text in
+                if !text.isEmpty { isTyping = true }
             }
-            Button("OK", role: .cancel) { islandNotice = nil }
-        } message: { Text(islandNotice ?? "Please try again.") }
-        .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
-        .sheet(isPresented: $showCompanion) { CompanionView() }
-        .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background { viewModel.endConversation() }
-            if phase == .active { handlePendingShortcut() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
-            UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
-            if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
-        }
-        .sheet(isPresented: $showHistory) {
-            ConversationHistoryView(onNewChat: {
-                showHistory = false
-                isTyping = false
-                composerFocused = false
-                viewModel.startNewChat()
-            })
-        }
-        .sheet(item: Binding(get: { reminderApproval.pending }, set: { if $0 == nil { reminderApproval.cancel() } })) { proposal in
-            ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
-                .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
-                .ignoresSafeArea()
-        }
-        .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
-            LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
-                .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
-        }
-        .onChange(of: capturedImage) { _, img in
-            guard let img else { return }
-            pendingImage = img
-            capturedImage = nil
-        }
-        .onAppear {
-            viewModel.loadMessages()
-            if scenePhase == .active { liveActivity.startPersistentSession() }
-            handlePendingShortcut()
-            if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
-                showProfile = false
-                UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
-                viewModel.startMorningBriefing()
+            .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
+            .onChange(of: voiceTurnActive) { _, active in if active { composerFocused = false } }
+            .alert("Voice input unavailable", isPresented: Binding(
+                get: { viewModel.dictationError != nil },
+                set: { if !$0 { viewModel.dictationError = nil } }
+            )) {
+                Button("OK", role: .cancel) { viewModel.dictationError = nil }
+            } message: { Text(viewModel.dictationError ?? "Please try again.") }
+            .alert("Max controls unavailable", isPresented: Binding(
+                get: { islandNotice != nil },
+                set: { if !$0 { islandNotice = nil } }
+            )) {
+                Button("iPhone settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                Button("OK", role: .cancel) { islandNotice = nil }
+            } message: { Text(islandNotice ?? "Please try again.") }
+            .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { viewModel.endConversation() }
+                if phase == .active { handlePendingShortcut() }
             }
-            if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
-                showProfile = false
+            .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
                 UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
-                viewModel.inputText = prompt; viewModel.sendTextMessage()
+                if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
             }
-        }
-        // ── Dynamic Island ─────────────────────────────────────────────────────
-        .onChange(of: viewModel.conversationState) { _, newState in
-            switch newState {
-            case .idle:      liveActivity.keepAlive()           // stay visible, back to standby
-            case .listening: liveActivity.start()               // start / transition → listening
-            case .thinking:  liveActivity.update(phase: .thinking)
-            case .speaking:  liveActivity.update(phase: .speaking)
+    }
+
+    private var conversationPresentation: some View {
+        conversationInteractions
+            .sheet(isPresented: $showCompanion) { CompanionView() }
+            .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
+            .sheet(isPresented: $showHistory) {
+                ConversationHistoryView(onNewChat: {
+                    showHistory = false
+                    isTyping = false
+                    composerFocused = false
+                    viewModel.startNewChat()
+                })
             }
-        }
-        .onChange(of: viewModel.streamingText) { _, text in
-            guard viewModel.conversationState == .thinking || viewModel.conversationState == .speaking else { return }
-            liveActivity.update(
-                phase: viewModel.conversationState == .thinking ? .thinking : .speaking,
-                snippet: text
-            )
-        }
-        // Start briefing when user taps the morning notification
-        .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+            .sheet(item: Binding(get: { reminderApproval.pending }, set: { if $0 == nil { reminderApproval.cancel() } })) { proposal in
+                ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
+                    .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
+                    .ignoresSafeArea()
+            }
+            .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
+                LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
+                    .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
+            }
+            .onChange(of: capturedImage) { _, img in
+                guard let img else { return }
+                pendingImage = img
+                capturedImage = nil
+            }
+    }
+
+    private func restoreConversation() {
+        viewModel.loadMessages()
+        if scenePhase == .active { liveActivity.startPersistentSession() }
+        handlePendingShortcut()
+        if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
             showProfile = false
             UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
             viewModel.startMorningBriefing()
         }
-        // Start listening when user taps the home screen widget
-        .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
-            handlePendingShortcut()
+        if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
+            showProfile = false
+            UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
+            viewModel.inputText = prompt
+            viewModel.sendTextMessage()
         }
+    }
+
+    private func updateLiveActivity(_ state: ConversationState) {
+        switch state {
+        case .idle: liveActivity.keepAlive()
+        case .listening: liveActivity.start()
+        case .thinking: liveActivity.update(phase: .thinking)
+        case .speaking: liveActivity.update(phase: .speaking)
+        }
+    }
+
+    private func updateLiveActivitySnippet(_ text: String) {
+        let state = viewModel.conversationState
+        guard state == .thinking || state == .speaking else { return }
+        liveActivity.update(phase: state == .thinking ? .thinking : .speaking, snippet: text)
     }
 
     private func handlePendingShortcut() {
@@ -360,14 +375,14 @@ struct HomeView: View {
 
     private var regularDock: some View {
         VStack(spacing: 8) {
-            if viewModel.conversationState != .idle || viewModel.isTranscribing {
+            if voiceTurnActive {
                 statusPill.transition(.opacity)
             } else if !isTyping {
-                Text(viewModel.inputText.isEmpty ? "Tap the orb to hear Max · AI voice" : "Draft ready · tap Type to edit")
+                Text(viewModel.inputText.isEmpty ? "Tap the mic to talk to Max" : "Draft ready · tap Type to edit")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            if isTyping {
+            if isTyping && !voiceTurnActive {
                 textComposer
             } else {
                 orbDock
@@ -379,18 +394,22 @@ struct HomeView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: isTyping)
     }
 
+    private var voiceTurnActive: Bool {
+        viewModel.conversationState != .idle || viewModel.isTranscribing || viewModel.startingVoice
+    }
+
     private var orbDock: some View {
         HStack(spacing: 12) {
             conversationActions
                 .glassCard(cornerRadius: 22, interactive: true)
             Spacer(minLength: 0)
             Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: 64)
+                OrbView(state: viewModel.orbState(isPlayingSpeech: playback.isSpeaking && !playback.isPreparingSpeech), size: 64)
             }
             .accessibilityLabel(viewModel.orbAccessibilityLabel)
             .accessibilityHint(viewModel.orbAccessibilityHint)
             Spacer(minLength: 0)
-            microphoneButton
+            microphoneButton(dictation: false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
@@ -399,6 +418,8 @@ struct HomeView: View {
     private var conversationActions: some View {
         Menu {
             Button("Type a message", systemImage: "keyboard") { openTextEntry() }
+            Button("Dictate a message", systemImage: "waveform") { viewModel.handleMicTap() }
+                .disabled(voiceTurnActive)
             Button("New conversation", systemImage: "square.and.pencil") {
                 pendingImage = nil
                 composerFocused = false
@@ -418,17 +439,28 @@ struct HomeView: View {
         .accessibilityLabel("Conversation actions")
     }
 
-    private var microphoneButton: some View {
-        Button { viewModel.handleMicTap() } label: {
-            Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
+    private func microphoneButton(dictation: Bool) -> some View {
+        Button {
+            if dictation {
+                viewModel.handleMicTap()
+            } else {
+                composerFocused = false
+                viewModel.handleVoiceTap()
+            }
+        } label: {
+            Image(systemName: voiceTurnActive ? "stop.fill" : "mic.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color(UIColor.systemBackground))
                 .frame(width: 44, height: 44)
                 .background(Color(UIColor.label), in: Circle())
         }
-        .disabled(viewModel.isTranscribing)
-        .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
-        .accessibilityHint("Turn your voice into editable text")
+        .accessibilityLabel(dictation ? "Dictate a message" : voiceButtonLabel)
+        .accessibilityHint(dictation ? "Turn your voice into editable text" : "")
+    }
+
+    private var voiceButtonLabel: String {
+        if viewModel.conversationState == .listening { return "Send voice message" }
+        return voiceTurnActive ? "Stop voice conversation" : "Talk to Max"
     }
 
     private var textComposer: some View {
@@ -464,7 +496,7 @@ struct HomeView: View {
                     .disabled(viewModel.isTranscribing)
                     .accessibilityLabel("Send message")
                 } else {
-                    microphoneButton
+                    microphoneButton(dictation: true)
                 }
             }
             if viewModel.prefersTextReplyForDraft {
@@ -556,12 +588,15 @@ struct HomeView: View {
     }
 
     private var statusText: String {
+        if viewModel.startingVoice { return "Getting the microphone ready…" }
         if viewModel.isTranscribing { return "Transcribing…" }
         switch viewModel.conversationState {
         case .idle:      return "Idle"
-        case .listening: return "Listening…"
+        case .listening: return "Listening… tap to send"
         case .thinking:  return "Thinking…"
-        case .speaking:  return "Speaking…"
+        case .speaking:
+            if playback.isPreparingSpeech { return "Getting Max’s voice ready…" }
+            return playback.playbackNotice ?? "Max is speaking…"
         }
     }
 
@@ -641,6 +676,7 @@ final class HomeViewModel: ObservableObject {
     @Published var streamingText: String = ""
     @Published var isTranscribing: Bool = false
     @Published private(set) var isDictating = false
+    @Published private(set) var startingVoice = false
     @Published private(set) var liveTranscript = ""
     @Published private(set) var prefersTextReplyForDraft = false
     @Published var dictationError: String?
@@ -658,7 +694,6 @@ final class HomeViewModel: ObservableObject {
     private var speechCompletionTask: Task<Void, Never>?
     private var turnID = UUID()
     private var continuousActive = false
-    private var startingVoice = false
     private var loadedScope: String?
     private var streamingMessageId: String? = nil
     private var currentConversationId: String = UUID().uuidString
@@ -672,25 +707,32 @@ final class HomeViewModel: ObservableObject {
             self.liveTranscript = text
         }.store(in: &voiceSubscriptions)
         capture.recordingUpdates.sink { [weak self] recording in
-            guard let self, !recording, self.isDictating, !self.isTranscribing, self.conversationState == .listening else { return }
-            // Recognition errors/interruptions must leave a usable draft, not a stuck microphone.
-            self.completeDictation(self.capture.currentTranscript, expectedTurn: self.turnID, scope: self.dictationScope)
+            guard let self, !recording, !self.isTranscribing, self.conversationState == .listening else { return }
+            if self.isDictating {
+                self.completeDictation(self.capture.currentTranscript, expectedTurn: self.turnID, scope: self.dictationScope)
+            } else {
+                // An interruption ends the listening turn without sending partial speech.
+                self.continuousActive = false
+                self.conversationState = .idle
+            }
         }.store(in: &voiceSubscriptions)
     }
 
-    var orbState: OrbState {
+    func orbState(isPlayingSpeech: Bool) -> OrbState {
+        if startingVoice || isTranscribing { return .thinking }
         switch conversationState {
         case .idle:      return .idle
         case .listening: return .listening
         case .thinking:  return .thinking
-        case .speaking:  return .speaking
+        case .speaking:  return isPlayingSpeech ? .speaking : .thinking
         }
     }
 
     var orbAccessibilityLabel: String {
+        if startingVoice || isTranscribing { return "Cancel voice input" }
         switch conversationState {
         case .idle: return "Hear Max"
-        case .listening: return "Finish voice input"
+        case .listening: return "Send voice message"
         case .thinking: return "Stop response"
         case .speaking: return "Stop Max speaking"
         }
@@ -698,17 +740,7 @@ final class HomeViewModel: ObservableObject {
 
     var orbAccessibilityHint: String {
         if isDictating { return "Finish dictation and review your message before sending" }
-        return conversationState == .idle ? "Tap to hear Max. Use the microphone to dictate." : "Tap to stop"
-    }
-
-    var orbCaption: String {
-        if isDictating {
-            if isTranscribing { return "Finishing your voice draft…" }
-            return conversationState == .listening ? "Tap the orb to finish your draft" : "Getting the microphone ready…"
-        }
-        if voice.isPreparingSpeech { return "Getting Max’s voice ready · tap to stop" }
-        if let notice = voice.playbackNotice, conversationState == .speaking { return notice + " · tap to stop" }
-        return conversationState == .speaking ? "Max is speaking · tap to stop" : "Tap the orb to hear Max · AI voice"
+        return conversationState == .idle && !startingVoice && !isTranscribing ? "Tap to hear Max. Use the microphone to talk to Max." : ""
     }
 
     func loadMessages() {
@@ -790,10 +822,24 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    func handleVoiceTap() {
+        if startingVoice || isTranscribing {
+            endConversation()
+            return
+        }
+        switch conversationState {
+        case .idle: activateVoice()
+        case .listening: stopListening()
+        case .thinking, .speaking: endConversation()
+        }
+    }
+
     func handleOrbTap() {
         if isDictating { handleMicTap(); return }
-        guard !startingVoice, !isTranscribing else { return }
-        guard conversationState == .idle else { handleMicTap(); return }
+        guard conversationState == .idle, !startingVoice, !isTranscribing else {
+            handleVoiceTap()
+            return
+        }
         continuousActive = false
         turnID = UUID()
         let reply = messages.last(where: { $0.role == "assistant" && !$0.isStreaming && !$0.content.isEmpty && !$0.content.hasPrefix("⚠️") && !$0.content.hasPrefix("Error:") })?.content
@@ -855,18 +901,19 @@ final class HomeViewModel: ObservableObject {
         continuousActive = false
         turnID = UUID()
         voiceInputTask?.cancel(); voiceInputTask = nil
+        startingVoice = false
         isDictating = false
         liveTranscript = ""
         dictationScope = nil
         streamTask?.cancel(); streamTask = nil
         speechCompletionTask?.cancel(); speechCompletionTask = nil
+        conversationState = .idle
         voice.stopSpeaking(); capture.stopRecording()
         isTranscribing = false
         streamingText = ""
         messages.removeAll { $0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         for index in messages.indices { messages[index].isStreaming = false }
         streamingMessageId = nil
-        conversationState = .idle
         if loadedScope == storage.accountScope { storage.saveMessages(messages) }
     }
 
@@ -888,10 +935,10 @@ final class HomeViewModel: ObservableObject {
         let scope = storage.accountScope
         voiceInputTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.startingVoice = false }
+            defer { if self.turnID == activationID { self.startingVoice = false } }
             do {
                 try await self.capture.startRecording()
-                guard self.turnID == activationID, self.storage.accountScope == scope, !Task.isCancelled else { self.capture.stopRecording(); return }
+                guard self.turnID == activationID, self.storage.accountScope == scope, !Task.isCancelled else { return }
                 self.conversationState = .listening
             } catch {
                 guard self.turnID == activationID, self.storage.accountScope == scope, !(error is CancellationError) else { return }
@@ -934,43 +981,46 @@ final class HomeViewModel: ObservableObject {
     private func startListening() {
         guard !startingVoice, !isTranscribing else { return }
         startingVoice = true
-        let activationID = turnID
-        Task {
-            defer { startingVoice = false }
+        dictationError = nil
+        let activationID = UUID()
+        turnID = activationID
+        let scope = storage.accountScope
+        voiceInputTask = Task {
+            defer { if turnID == activationID { startingVoice = false } }
             do {
                 continuousActive = storage.loadSettings().continuousConversation ?? false
                 capture.onUtteranceEnd = { [weak self] in
-                    guard let self, self.continuousActive, self.conversationState == .listening else { return }
+                    guard let self, self.continuousActive else { return }
                     self.stopListening()
                 }
                 capture.onRecordingLimit = { [weak self] in self?.stopListening() }
                 try await capture.startRecording()
-                guard turnID == activationID else { capture.stopRecording(); return }
+                guard turnID == activationID, storage.accountScope == scope, !Task.isCancelled else { return }
                 conversationState = .listening
             } catch {
-                guard turnID == activationID, !(error is CancellationError) else { return }
-                conversationState = .idle
-                addSystemError(error.localizedDescription)
+                guard turnID == activationID, storage.accountScope == scope, !(error is CancellationError) else { return }
+                continuousActive = false
+                dictationError = error.localizedDescription
             }
         }
     }
 
     private func stopListening() {
-        guard conversationState == .listening else { return }
-        conversationState = .idle
+        guard conversationState == .listening, !isDictating else { return }
         isTranscribing = true
+        conversationState = .idle
         let listeningID = turnID
-        Task {
+        let scope = storage.accountScope
+        voiceInputTask = Task {
             let transcription = await capture.stopAndTranscribe()
-            guard turnID == listeningID else { return }
+            guard turnID == listeningID, storage.accountScope == scope, !Task.isCancelled else { return }
             isTranscribing = false
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
                 return
             }
             if let notice = capture.transcriptionNotice {
-                // A fallback or limited recording always gets a review step,
-                // including direct-voice shortcut sessions.
+                // A fallback or limited recording always gets a review step.
                 continuousActive = false
                 inputText += (inputText.isEmpty ? "" : " ") + transcription
                 prefersTextReplyForDraft = true
