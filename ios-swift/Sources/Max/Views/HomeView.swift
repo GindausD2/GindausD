@@ -34,6 +34,21 @@ struct HomeView: View {
     }
 
     var body: some View {
+        conversationPresentation
+            .onAppear(perform: restoreConversation)
+            .onChange(of: viewModel.conversationState) { _, state in updateLiveActivity(state) }
+            .onChange(of: viewModel.streamingText) { _, text in updateLiveActivitySnippet(text) }
+            .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+                showProfile = false
+                UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
+                viewModel.startMorningBriefing()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
+                handlePendingShortcut()
+            }
+    }
+
+    private var conversationLayout: some View {
         ZStack {
             CompanionCanvas()
 
@@ -60,104 +75,103 @@ struct HomeView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
         }
-        .onDisappear { viewModel.endConversation() }
-        .onChange(of: viewModel.inputText) { _, text in
-            if !text.isEmpty { isTyping = true }
-        }
-        .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
-        .onChange(of: voiceTurnActive) { _, active in if active { composerFocused = false } }
-        .alert("Voice input unavailable", isPresented: Binding(
-            get: { viewModel.dictationError != nil },
-            set: { if !$0 { viewModel.dictationError = nil } }
-        )) {
-            Button("OK", role: .cancel) { viewModel.dictationError = nil }
-        } message: { Text(viewModel.dictationError ?? "Please try again.") }
-        .alert("Max controls unavailable", isPresented: Binding(
-            get: { islandNotice != nil },
-            set: { if !$0 { islandNotice = nil } }
-        )) {
-            Button("iPhone settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+    }
+
+    private var conversationInteractions: some View {
+        conversationLayout
+            .onDisappear { viewModel.endConversation() }
+            .onChange(of: viewModel.inputText) { _, text in
+                if !text.isEmpty { isTyping = true }
             }
-            Button("OK", role: .cancel) { islandNotice = nil }
-        } message: { Text(islandNotice ?? "Please try again.") }
-        .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
-        .sheet(isPresented: $showCompanion) { CompanionView() }
-        .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background { viewModel.endConversation() }
-            if phase == .active { handlePendingShortcut() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
-            UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
-            if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
-        }
-        .sheet(isPresented: $showHistory) {
-            ConversationHistoryView(onNewChat: {
-                showHistory = false
-                isTyping = false
-                composerFocused = false
-                viewModel.startNewChat()
-            })
-        }
-        .sheet(item: Binding(get: { reminderApproval.pending }, set: { if $0 == nil { reminderApproval.cancel() } })) { proposal in
-            ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
-                .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
-        }
-        .fullScreenCover(isPresented: $showCamera) {
-            ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
-                .ignoresSafeArea()
-        }
-        .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
-            LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
-                .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
-        }
-        .onChange(of: capturedImage) { _, img in
-            guard let img else { return }
-            pendingImage = img
-            capturedImage = nil
-        }
-        .onAppear {
-            viewModel.loadMessages()
-            if scenePhase == .active { liveActivity.startPersistentSession() }
-            handlePendingShortcut()
-            if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
-                showProfile = false
-                UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
-                viewModel.startMorningBriefing()
+            .onChange(of: viewModel.isDictating) { _, active in if active { composerFocused = false } }
+            .onChange(of: voiceTurnActive) { _, active in if active { composerFocused = false } }
+            .alert("Voice input unavailable", isPresented: Binding(
+                get: { viewModel.dictationError != nil },
+                set: { if !$0 { viewModel.dictationError = nil } }
+            )) {
+                Button("OK", role: .cancel) { viewModel.dictationError = nil }
+            } message: { Text(viewModel.dictationError ?? "Please try again.") }
+            .alert("Max controls unavailable", isPresented: Binding(
+                get: { islandNotice != nil },
+                set: { if !$0 { islandNotice = nil } }
+            )) {
+                Button("iPhone settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                Button("OK", role: .cancel) { islandNotice = nil }
+            } message: { Text(islandNotice ?? "Please try again.") }
+            .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .background { viewModel.endConversation() }
+                if phase == .active { handlePendingShortcut() }
             }
-            if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
-                showProfile = false
+            .onReceive(NotificationCenter.default.publisher(for: .maxQuickReply)) { notification in
                 UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
-                viewModel.inputText = prompt; viewModel.sendTextMessage()
+                if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
             }
-        }
-        // ── Dynamic Island ─────────────────────────────────────────────────────
-        .onChange(of: viewModel.conversationState) { _, newState in
-            switch newState {
-            case .idle:      liveActivity.keepAlive()           // stay visible, back to standby
-            case .listening: liveActivity.start()               // start / transition → listening
-            case .thinking:  liveActivity.update(phase: .thinking)
-            case .speaking:  liveActivity.update(phase: .speaking)
+    }
+
+    private var conversationPresentation: some View {
+        conversationInteractions
+            .sheet(isPresented: $showCompanion) { CompanionView() }
+            .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
+            .sheet(isPresented: $showHistory) {
+                ConversationHistoryView(onNewChat: {
+                    showHistory = false
+                    isTyping = false
+                    composerFocused = false
+                    viewModel.startNewChat()
+                })
             }
-        }
-        .onChange(of: viewModel.streamingText) { _, text in
-            guard viewModel.conversationState == .thinking || viewModel.conversationState == .speaking else { return }
-            liveActivity.update(
-                phase: viewModel.conversationState == .thinking ? .thinking : .speaking,
-                snippet: text
-            )
-        }
-        // Start briefing when user taps the morning notification
-        .onReceive(NotificationCenter.default.publisher(for: .maxStartBriefing)) { _ in
+            .sheet(item: Binding(get: { reminderApproval.pending }, set: { if $0 == nil { reminderApproval.cancel() } })) { proposal in
+                ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
+                    .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
+            }
+            .fullScreenCover(isPresented: $showCamera) {
+                ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
+                    .ignoresSafeArea()
+            }
+            .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
+                LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
+                    .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
+            }
+            .onChange(of: capturedImage) { _, img in
+                guard let img else { return }
+                pendingImage = img
+                capturedImage = nil
+            }
+    }
+
+    private func restoreConversation() {
+        viewModel.loadMessages()
+        if scenePhase == .active { liveActivity.startPersistentSession() }
+        handlePendingShortcut()
+        if UserDefaults.standard.bool(forKey: "max.pendingBriefing") {
             showProfile = false
             UserDefaults.standard.removeObject(forKey: "max.pendingBriefing")
             viewModel.startMorningBriefing()
         }
-        // Start listening when user taps the home screen widget
-        .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
-            handlePendingShortcut()
+        if let prompt = UserDefaults.standard.string(forKey: "max.pendingQuickReply") {
+            showProfile = false
+            UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
+            viewModel.inputText = prompt
+            viewModel.sendTextMessage()
         }
+    }
+
+    private func updateLiveActivity(_ state: ConversationState) {
+        switch state {
+        case .idle: liveActivity.keepAlive()
+        case .listening: liveActivity.start()
+        case .thinking: liveActivity.update(phase: .thinking)
+        case .speaking: liveActivity.update(phase: .speaking)
+        }
+    }
+
+    private func updateLiveActivitySnippet(_ text: String) {
+        let state = viewModel.conversationState
+        guard state == .thinking || state == .speaking else { return }
+        liveActivity.update(phase: state == .thinking ? .thinking : .speaking, snippet: text)
     }
 
     private func handlePendingShortcut() {

@@ -71,6 +71,24 @@ final class ScreenshotTests: XCTestCase {
             Message(role: "assistant", content: "Let's start small. What's the one thing you'd like to finish today? We can build the rest around it.")
         ])
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Conversation")
+
+        let liveCapture = TestVoiceCapture()
+        let liveModel = HomeViewModel(capture: liveCapture)
+        liveModel.loadMessages()
+        liveModel.handleVoiceTap()
+        for _ in 0..<100 {
+            if liveModel.conversationState == .listening { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(liveModel.conversationState, .listening)
+        try await capture(HomeView(viewModel: liveModel).environmentObject(AuthService.shared), name: "Max_Conversation_Listening")
+        liveModel.endConversation()
+
+        let auth = AuthService.shared
+        let previousUser = auth.currentUser
+        auth.currentUser = AuthUser(id: scope, name: "Ada Okafor", email: nil, isDemo: false)
+        defer { auth.currentUser = previousUser }
+        try await capture(CompanionProfileSheet().environmentObject(auth), name: "Max_Profile_Signed_In")
     }
 
     private func capture<Content: View>(_ content: Content, name: String, style: UIUserInterfaceStyle = .light, size: CGSize = CGSize(width: 390, height: 844)) async throws {
