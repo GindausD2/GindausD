@@ -412,12 +412,16 @@ private struct WelcomeEntrySlider: View {
     let onRight: () -> Void
 
     @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @GestureState private var translation: CGFloat = 0
     @ScaledMetric(relativeTo: .subheadline) private var trackHeight: CGFloat = 56
 
     private let inset: CGFloat = 5
     private let handleSize: CGFloat = 46
     private var twoWay: Bool { onLeft != nil }
+    private var isSliding: Bool { translation != 0 }
+    private let glacierBlue = Color(hex: "#315E73")
 
     var body: some View {
         GeometryReader { geometry in
@@ -428,17 +432,19 @@ private struct WelcomeEntrySlider: View {
             ZStack(alignment: .leading) {
                 labels
                     .frame(maxWidth: .infinity)
-                    .opacity(translation == 0 ? 1 : 0.35)
+                    .opacity(isSliding ? 0.35 : 1)
 
                 handle
+                    .scaleEffect(isSliding && !reduceMotion ? 1.07 : 1)
                     .offset(x: inset + offset)
             }
+            .animation(isSliding || reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.76), value: isSliding)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .contentShape(Capsule())
             .simultaneousGesture(slide(from: start, travel: travel))
         }
         .frame(height: max(56, trackHeight))
-        .glassCard(cornerRadius: max(56, trackHeight) / 2, depth: .ultraThin, interactive: true)
+        .background { glassTrack }
         .opacity(isEnabled ? 1 : 0.55)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(twoWay ? "Log In or Sign Up" : rightTitle)
@@ -448,6 +454,20 @@ private struct WelcomeEntrySlider: View {
                 Button(leftTitle) { if isEnabled { onLeft() } }
             }
             Button(rightTitle) { if isEnabled { onRight() } }
+        }
+    }
+
+    @ViewBuilder private var glassTrack: some View {
+        if #available(iOS 26, *) {
+            Color.clear
+                .glassEffect(.regular.tint(colorScheme == .dark ? nil : .white.opacity(0.25)), in: Capsule())
+                .overlay {
+                    Capsule().strokeBorder(.white.opacity(colorScheme == .dark ? 0.18 : 0.58), lineWidth: 1)
+                }
+                .shadow(color: glacierBlue.opacity(0.15), radius: 14, y: 7)
+        } else {
+            Color.clear
+                .glassCard(cornerRadius: max(56, trackHeight) / 2, depth: .ultraThin)
         }
     }
 
@@ -466,21 +486,41 @@ private struct WelcomeEntrySlider: View {
         .padding(.horizontal, 8)
     }
 
-    private var handle: some View {
+    private var handleIcon: some View {
         Image(systemName: twoWay ? "plus" : "arrow.right")
             .font(.title3.weight(.semibold))
             .frame(width: handleSize, height: handleSize)
             .foregroundStyle(.white)
-            .background(
+    }
+
+    private var handle: some View {
+        Group {
+            if #available(iOS 26, *) {
+                handleIcon
+                    .glassEffect(.regular.tint(glacierBlue).interactive(), in: Circle())
+            } else {
+                handleIcon
+                    .background(
+                        LinearGradient(
+                            colors: [Color(hex: "#618EA4"), glacierBlue],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        in: Circle()
+                    )
+            }
+        }
+        .overlay {
+            Circle().strokeBorder(
                 LinearGradient(
-                    colors: [Color(hex: "#618EA4"), Color(hex: "#315E73")],
+                    colors: [.white.opacity(0.80), .white.opacity(0.25)],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
-                in: Circle()
+                lineWidth: 1
             )
-            .overlay(Circle().strokeBorder(.white.opacity(0.55), lineWidth: 1))
-            .shadow(color: Color(hex: "#315E73").opacity(0.25), radius: 5, y: 2)
+        }
+        .shadow(color: glacierBlue.opacity(0.27), radius: 5, y: 2)
     }
 
     private func slide(from start: CGFloat, travel: CGFloat) -> some Gesture {
@@ -745,3 +785,4 @@ extension Color {
 #Preview {
     WelcomeView().environmentObject(AuthService.shared)
 }
+
