@@ -336,51 +336,113 @@ private struct WelcomePage: View {
     var onSignUp: () -> Void
     var onDemo: () -> Void
     @EnvironmentObject private var authService: AuthService
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var showTour = false
     @AppStorage("max:onboarding_complete") private var onboardingComplete = false
 
+    private let glacier = Color(hex: "#315E73")
+
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 28) {
-                EntryHero(eyebrow: "A LITTLE SPACE FOR YOUR DAY", title: "Life feels lighter.\nWith Max.", subtitle: "Your thoughts. Your plans.\nA companion for the everyday.", logoWidth: 220)
-                VStack(spacing: 14) {
-                    EntryPrimaryButton(title: "Get started", action: onSignUp)
-                    Button(action: onDemo) {
-                        HStack {
-                            Text("Try the 7-day demo").fontWeight(.semibold)
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .padding(18)
-                        .glassCard(cornerRadius: 22, interactive: true)
+        GeometryReader { viewport in
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    Spacer(minLength: typeSize.isAccessibilitySize ? 20 : min(132, viewport.size.height * 0.17))
+
+                    VStack(spacing: 30) {
+                        MaxJourneyLogo(width: 126)
+                            .accessibilityHidden(true)
+                        Text("Welcome to Max")
+                            .font(.system(.title2, design: .rounded, weight: .semibold))
+                            .accessibilityAddTraits(.isHeader)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(authService.isLoading)
-                    Text("No Apple sign-in or payment for the demo")
-                        .font(.caption).foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                    Spacer(minLength: 42)
+
+                    VStack(spacing: 10) {
+                        demoButton
+                        Text("7 days to explore Max")
+                            .font(.footnote.weight(.medium))
+                        Text("No Apple sign-in or payment needed.")
+                            .font(.caption)
+                    }
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 38)
+
+                    VStack(spacing: 8) {
+                        accountPill
+                        if !onboardingComplete {
+                            Button("See how Max works") { showTour = true }
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .frame(minHeight: 44)
+                                .buttonStyle(.plain)
+                        }
+                    }
                 }
-                Button(action: onLogin) {
-                    Text("Already have a space here? ").foregroundStyle(.secondary)
-                    + Text("Log in").bold()
-                }
-                .font(.subheadline)
-                .frame(minHeight: 44)
-                .buttonStyle(.plain)
-                if !onboardingComplete {
-                    Button("See how Max works") { showTour = true }
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(minHeight: 44)
-                }
+                .padding(.horizontal, 24)
+                .frame(maxWidth: 460)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: max(0, viewport.size.height - 40))
+                .padding(.vertical, 20)
+                .disabled(authService.isLoading)
             }
-            .padding(28)
-            .frame(maxWidth: 460)
-            .frame(maxWidth: .infinity)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
         .fullScreenCover(isPresented: $showTour) {
             OnboardingView { onboardingComplete = true; showTour = false }
         }
+    }
+
+    private var demoButton: some View {
+        Button(action: onDemo) {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.right")
+                    .font(.headline)
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(.white)
+                    .background(glacier, in: Circle())
+                    .accessibilityHidden(true)
+                Text("Try Demo")
+                    .font(.body.weight(.semibold))
+                    .padding(.trailing, 16)
+            }
+            .padding(5)
+            .foregroundStyle(.primary)
+            .glassCard(cornerRadius: 32, interactive: true)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var accountPill: some View {
+        HStack(spacing: 0) {
+            accountButton("Log In", action: onLogin)
+            Image(systemName: "plus")
+                .font(.title3.weight(.medium))
+                .frame(width: 44, height: 44)
+                .foregroundStyle(.white)
+                .background(glacier, in: Circle())
+                .accessibilityHidden(true)
+            accountButton("Sign Up", action: onSignUp)
+        }
+        .padding(5)
+        .frame(maxWidth: 284)
+        .glassCard(cornerRadius: 34, interactive: true)
+    }
+
+    private func accountButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.subheadline.weight(.semibold))
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
