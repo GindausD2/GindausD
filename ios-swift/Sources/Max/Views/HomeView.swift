@@ -15,6 +15,7 @@ struct HomeView: View {
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
     @State private var showProfile = false
+    @State private var showProjectResume = false
     @State private var inspectedMemory: MemoryLink?
     @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
@@ -88,7 +89,7 @@ struct HomeView: View {
             }
             Button("OK", role: .cancel) { islandNotice = nil }
         } message: { Text(islandNotice ?? "Please try again.") }
-        .onChange(of: authService.currentUser) { _, _ in inspectedMemory = nil; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+        .onChange(of: authService.currentUser) { _, _ in showProjectResume = false; inspectedMemory = nil; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
         .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
         .onChange(of: scenePhase) { _, phase in
@@ -150,8 +151,18 @@ struct HomeView: View {
         }
     }
 
-    var body: some View {
+    private var projectPresentations: some View {
         homePresentations
+            .sheet(isPresented: $showProjectResume) {
+                ProjectResumeView(account: StorageService.shared.accountScope)
+            }
+            .sheet(item: $viewModel.thoughtDraft) { draft in
+                AddFactView(account: draft.account, capturedText: draft.text, captureNotice: draft.notice) {}
+            }
+    }
+
+    var body: some View {
+        projectPresentations
         // ── Dynamic Island ─────────────────────────────────────────────────────
         .onChange(of: viewModel.conversationState) { _, newState in
             switch newState {
@@ -194,7 +205,9 @@ struct HomeView: View {
         showCamera = false
         composerFocused = false
         let result = liveActivity.startPersistentSession()
-        if action == .voice {
+        if action == .saveThought {
+            viewModel.startThoughtCapture()
+        } else if action == .voice {
             viewModel.activateVoice()
         } else {
             switch result {
@@ -348,7 +361,7 @@ struct HomeView: View {
             if !compact && !viewModel.isDictating && viewModel.inputText.isEmpty {
                 HStack(spacing: 10) {
                     draftSuggestion("Plan my day", icon: "sun.horizon")
-                    draftSuggestion("Save a thought", icon: "square.and.pencil")
+                    draftSuggestion("Write a thought", icon: "square.and.pencil")
                 }.padding(.top, 10)
             }
             Spacer(minLength: 16)
@@ -360,7 +373,7 @@ struct HomeView: View {
 
     private func draftSuggestion(_ title: String, icon: String) -> some View {
         Button {
-            viewModel.inputText = title == "Save a thought" ? "Remember this: " : "Help me plan my day. "
+            viewModel.inputText = title == "Write a thought" ? "Remember this: " : "Help me plan my day. "
             isTyping = true
             composerFocused = true
         } label: {
@@ -438,6 +451,12 @@ struct HomeView: View {
                 composerFocused = false
                 isTyping = false
                 viewModel.startNewChat()
+            }
+            Button("Save a thought", systemImage: "mic.badge.plus") { viewModel.startThoughtCapture() }
+            Button("Project Resume", systemImage: "arrow.uturn.right") {
+                viewModel.endConversation()
+                composerFocused = false
+                showProjectResume = true
             }
             Button("Attach a photo", systemImage: "photo") { showCamera = true }
             Button("Conversation history", systemImage: "clock.arrow.circlepath") {
@@ -678,6 +697,14 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var liveTranscript = ""
     @Published private(set) var prefersTextReplyForDraft = false
     @Published var dictationError: String?
+    struct ThoughtDraft: Identifiable {
+        let id = UUID()
+        let account: String
+        let text: String
+        let notice: String?
+    }
+    @Published var thoughtDraft: ThoughtDraft?
+    private var capturingThought = false
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
@@ -883,7 +910,19 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    func startThoughtCapture() {
+        guard conversationState == .idle, !startingVoice, !isDictating, !isTranscribing, thoughtDraft == nil else { return }
+        guard storage.usesSavedMemory else {
+            dictationError = "Saved Memory is paused. Turn it on in Your Space → Memory to save a thought."
+            return
+        }
+        capturingThought = true
+        startDictation()
+    }
+
     func endConversation() {
+        capturingThought = false
+        thoughtDraft = nil
         FactApproval.shared.cancel()
         LifeMemoryApproval.shared.cancel()
         ReminderApprovalService.shared.cancel()
@@ -933,6 +972,7 @@ final class HomeViewModel: ObservableObject {
                 self.isDictating = false
                 self.liveTranscript = ""
                 self.dictationScope = nil
+                self.capturingThought = false
                 self.dictationError = error.localizedDescription
             }
         }
@@ -957,9 +997,15 @@ final class HomeViewModel: ObservableObject {
         conversationState = .idle
         liveTranscript = ""
         dictationScope = nil
+        let isThought = capturingThought
+        capturingThought = false
         guard scope == storage.accountScope else { inputText = ""; prefersTextReplyForDraft = false; return }
         let text = result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !text.isEmpty else { dictationError = "Couldn't catch that. Your draft is still here — try again."; return }
+        if isThought {
+            thoughtDraft = ThoughtDraft(account: storage.accountScope, text: text, notice: capture.transcriptionNotice)
+            return
+        }
         inputText = dictationBaseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         inputText += (inputText.isEmpty ? "" : " ") + text
         prefersTextReplyForDraft = true

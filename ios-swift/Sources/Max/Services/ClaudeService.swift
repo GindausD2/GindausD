@@ -333,7 +333,7 @@ final class ClaudeService {
             do {
                 let store = StorageService.shared
                 if imageData == nil, let text = messages.last(where: { $0.role == "user" })?.content,
-                   let (answer, references) = store.answerKnownFact(text) {
+                   let (answer, references) = store.projectResumeAnswer(messages: messages) ?? store.answerKnownFact(text) {
                     try Task.checkCancellation()
                     onChunk(.text(answer))
                     onChunk(.memoryReferences(references))
