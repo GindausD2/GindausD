@@ -10,10 +10,12 @@ struct HomeView: View {
 
     @ObservedObject private var playback = VoiceService.shared
     @ObservedObject private var reminderApproval = ReminderApprovalService.shared
+    @ObservedObject private var factApproval = FactApproval.shared
     @ObservedObject private var lifeApproval = LifeMemoryApproval.shared
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
     @State private var showProfile = false
+    @State private var inspectedMemory: MemoryLink?
     @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -25,6 +27,8 @@ struct HomeView: View {
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
     @FocusState private var composerFocused: Bool
+
+    private struct MemoryLink: Identifiable { let id: String }
 
     private let liveActivity = LiveActivityService.shared
 
@@ -80,7 +84,7 @@ struct HomeView: View {
             }
             Button("OK", role: .cancel) { islandNotice = nil }
         } message: { Text(islandNotice ?? "Please try again.") }
-        .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+        .onChange(of: authService.currentUser) { _, _ in inspectedMemory = nil; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
         .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
         .onChange(of: scenePhase) { _, phase in
@@ -111,6 +115,11 @@ struct HomeView: View {
             LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
                 .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
         }
+        .sheet(item: Binding(get: { factApproval.pending }, set: { if $0 == nil { factApproval.cancel() } })) { proposal in
+            FactReviewView(proposal: proposal) { factApproval.finish(id: proposal.id, value: $0) }
+                .onDisappear { factApproval.finish(id: proposal.id, value: nil) }
+        }
+        .sheet(item: $inspectedMemory) { link in MemoryView(initialFactID: link.id) }
         .onChange(of: capturedImage) { _, img in
             guard let img else { return }
             pendingImage = img
@@ -272,8 +281,21 @@ struct HomeView: View {
                                 .id("empty")
                         } else {
                             ForEach(viewModel.messages) { msg in
-                                TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
-                                    .id(msg.id)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
+                                    ForEach(msg.memoryReferences ?? [], id: \.self) { id in
+                                        if let fact = StorageService.shared.recallFacts().first(where: { $0.id == id }) {
+                                            Button {
+                                                inspectedMemory = MemoryLink(id: id)
+                                            } label: {
+                                                Label("Memory consulted: \(fact.key) · \(fact.scopeLabel)", systemImage: "brain")
+                                                    .font(.caption)
+                                            }
+                                            .padding(.horizontal, 20)
+                                        }
+                                    }
+                                }
+                                .id(msg.id)
                             }
                         }
                     }
@@ -850,6 +872,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     func endConversation() {
+        FactApproval.shared.cancel()
         LifeMemoryApproval.shared.cancel()
         ReminderApprovalService.shared.cancel()
         continuousActive = false
@@ -1019,6 +1042,18 @@ final class HomeViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
                 switch chunk {
+                case .memoryReferences(let ids):
+                    if let index = self.messages.firstIndex(where: { $0.id == streamId }) {
+                        let existing = self.messages[index].memoryReferences ?? []
+                        self.messages[index].memoryReferences = existing + ids.filter { !existing.contains($0) }
+                    }
+                case .replaceText(let text):
+                    fullText = text
+                    self.streamingText = text
+                    if let index = self.messages.firstIndex(where: { $0.id == streamId }) {
+                        self.messages[index].content = text
+                        self.messages[index].memoryReferences = nil
+                    }
                 case .text(let text):
                     fullText += text
                     self.streamingText = fullText

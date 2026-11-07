@@ -1,0 +1,7 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "codex/max-v2-advanced-memory": false
+    }
+  }
+}

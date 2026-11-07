@@ -1,7 +1,7 @@
 name: Verify Max V1
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/max-v2-advanced-memory']
   pull_request:
   workflow_dispatch:
 permissions:

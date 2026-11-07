@@ -204,49 +204,204 @@ final class StorageService {
 
     // MARK: - Memories
 
-    func recallFacts() -> [UserMemory] {
-        guard let data = readData(for: memoriesKey),
-              let memories = try? decoder.decode([UserMemory].self, from: data)
-        else { return [] }
-        return memories
+    private var factLedgerKey: String { "max:factLedgerV2" }
+
+    private func factLedger() -> FactLedger? {
+        if let data = readData(for: factLedgerKey) {
+            return try? JSONDecoder().decode(FactLedger.self, from: data)
+        }
+        guard let data = readData(for: memoriesKey) else { return FactLedger(facts: []) }
+        guard let legacy = try? decoder.decode([UserMemory].self, from: data) else { return nil }
+        return FactLedger(facts: legacy)
+    }
+
+    private func writeFacts(_ ledger: FactLedger) -> Bool {
+        guard let data = try? JSONEncoder().encode(ledger) else { return false }
+        let key = scoped(factLedgerKey)
+        UserDefaults.standard.set(data, forKey: key)
+        guard UserDefaults.standard.data(forKey: key) == data else { return false }
+        removeData(for: memoriesKey)
+        return true
+    }
+
+    var memoryGeneration: UUID? { factLedger()?.generation }
+
+    func recallFacts() -> [UserMemory] { factLedger()?.facts ?? [] }
+
+    // Reviewed changes invalidate old prompt context without deleting the visible chat.
+    func chatContext(_ messages: [Message]) -> [Message] {
+        guard let latest = messages.lastIndex(where: { $0.role == "user" }) else { return messages }
+        guard let cutoff = factLedger()?.transcriptCutoff else { return messages }
+        return messages.enumerated().compactMap { index, message in
+            index == latest || message.timestamp > cutoff ? message : nil
+        }
+    }
+
+    func resolveFact(key: String, value: String, project: String?, userText: String? = nil) -> FactResolution {
+        let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let canonicalKey = MemoryIdentity.key(key)
+        let project = project?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scope = project.flatMap { MemoryIdentity.normalize($0).isEmpty ? nil : $0 }
+        guard !canonicalKey.isEmpty, key.count <= 120, !value.isEmpty, value.count <= 2000,
+              (scope?.count ?? 0) <= 120 else {
+            return .clarify("What exact fact would you like me to remember?")
+        }
+
+        let facts = recallFacts()
+        let allProjects = Array(Set(facts.compactMap(\.project))).sorted()
+        var candidates = facts.filter { MemoryIdentity.key($0.key) == canonicalKey }
+        let wantsProject = userText.map { MemoryIdentity.mentions("project", in: $0) || MemoryIdentity.mentions("this app", in: $0) } ?? false
+        let namedScope = scope.flatMap { name in
+            userText == nil || MemoryIdentity.mentions(name, in: userText ?? "") ? name : nil
+        }
+        let mentionedProjects = userText.map { text in allProjects.filter { MemoryIdentity.mentions($0, in: text) } } ?? []
+        if mentionedProjects.count > 1 {
+            return .clarify("Which project should I update: \(mentionedProjects.joined(separator: ", "))?")
+        }
+        let inferredScope = namedScope ?? mentionedProjects.first
+        if let inferredScope {
+            candidates = candidates.filter { MemoryIdentity.normalize($0.project ?? "") == MemoryIdentity.normalize(inferredScope) }
+        } else if wantsProject || scope != nil {
+            candidates = candidates.filter { $0.project != nil }
+            if allProjects.count > 1 {
+                return .clarify("Which project should I update: \(allProjects.joined(separator: ", "))?")
+            }
+            if allProjects.isEmpty {
+                return .clarify("What is the name of the project I should remember this for?")
+            }
+        } else if userText == nil {
+            candidates = candidates.filter { $0.project == nil }
+        }
+        guard candidates.count <= 1 else {
+            let labels = Array(Set(candidates.map(\.scopeLabel))).sorted()
+            return .clarify("Which saved fact should I update? \(labels.joined(separator: ", ")). You can also choose it directly in Your Space → Memory.")
+        }
+        let previous = candidates.first
+        let destination = previous?.project ?? inferredScope ?? ((wantsProject || scope != nil) ? allProjects.first : nil)
+        return .review(FactProposal(account: accountScope, key: previous?.key ?? key, project: destination,
+                                    value: value, previous: previous, generation: memoryGeneration))
+    }
+
+    func saveApprovedFact(_ proposal: FactProposal, value: String, source: String = "Reviewed in chat") -> String? {
+        guard accountScope == proposal.account, usesSavedMemory, memoryGeneration == proposal.generation else { return nil }
+        return writeFact(key: proposal.key, value: value, project: proposal.project, replacing: proposal.previous?.id, source: source)
+    }
+
+    private func writeFact(key: String, value: String, project: String?, replacing id: String?, source: String) -> String? {
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 2000, var ledger = factLedger() else { return nil }
+        let now = Date()
+        var fact: UserMemory
+        if let id {
+            guard let index = ledger.facts.firstIndex(where: { $0.id == id }) else { return nil }
+            fact = ledger.facts[index]
+            if fact.value != value {
+                let revision = FactRevision(value: fact.value, updatedAt: fact.updatedAt, source: fact.source, supersededAt: now)
+                fact.revisions = (fact.revisions ?? []) + [revision]
+                fact.value = value
+                ledger.transcriptCutoff = now
+            }
+            fact.updatedAt = now
+            fact.source = source
+            ledger.facts[index] = fact
+        } else {
+            guard !ledger.facts.contains(where: {
+                MemoryIdentity.key($0.key) == MemoryIdentity.key(key) &&
+                MemoryIdentity.normalize($0.project ?? "") == MemoryIdentity.normalize(project ?? "")
+            }) else { return nil }
+            fact = UserMemory(key: key, value: value, updatedAt: now, recordID: UUID().uuidString, project: project, source: source)
+            ledger.facts.append(fact)
+            ledger.transcriptCutoff = now
+        }
+        ledger.generation = UUID()
+        return writeFacts(ledger) ? fact.id : nil
     }
 
     func rememberFact(key: String, value: String) {
-        var memories = recallFacts()
-        if let idx = memories.firstIndex(where: { $0.key.lowercased() == key.lowercased() }) {
-            memories[idx] = UserMemory(key: key, value: value, updatedAt: Date())
-        } else {
-            memories.append(UserMemory(key: key, value: value, updatedAt: Date()))
-        }
-        if let data = try? encoder.encode(memories) {
-            UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
+        if case .review(let proposal) = resolveFact(key: key, value: value, project: nil) {
+            _ = writeFact(key: proposal.key, value: value, project: proposal.project, replacing: proposal.previous?.id, source: "Saved fact")
         }
     }
 
     func clearMemories() {
-        removeData(for: memoriesKey)
+        _ = writeFacts(FactLedger(facts: [], transcriptCutoff: Date(), generation: UUID()))
     }
 
-    @discardableResult
+    func updateFact(id: String, value: String, accountScope expected: String) -> Bool {
+        guard expected == accountScope, let fact = recallFacts().first(where: { $0.id == id }) else { return false }
+        return writeFact(key: fact.key, value: value, project: fact.project, replacing: id, source: "Edited in Memory") != nil
+    }
+
     func updateFact(key: String, value: String, accountScope expectedScope: String) -> Bool {
-        guard expectedScope == accountScope else { return false }
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        var facts = recallFacts()
-        guard !trimmed.isEmpty, let index = facts.firstIndex(where: { $0.key.caseInsensitiveCompare(key) == .orderedSame }) else { return false }
-        facts[index].value = trimmed; facts[index].updatedAt = Date()
-        guard let data = try? encoder.encode(facts) else { return false }
-        UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
-        return true
+        let matches = recallFacts().filter { $0.key.caseInsensitiveCompare(key) == .orderedSame }
+        guard matches.count == 1, let fact = matches.first else { return false }
+        return updateFact(id: fact.id, value: value, accountScope: expectedScope)
     }
 
-    @discardableResult
+    func forgetFact(id: String, accountScope expected: String) -> Bool {
+        guard expected == accountScope, var ledger = factLedger(),
+              let index = ledger.facts.firstIndex(where: { $0.id == id }) else { return false }
+        ledger.facts.remove(at: index)
+        ledger.transcriptCutoff = Date()
+        ledger.generation = UUID()
+        return writeFacts(ledger)
+    }
+
     func forgetFact(key: String, accountScope expectedScope: String) -> Bool {
-        guard expectedScope == accountScope else { return false }
+        let matches = recallFacts().filter { $0.key.caseInsensitiveCompare(key) == .orderedSame }
+        guard matches.count == 1, let fact = matches.first else { return false }
+        return forgetFact(id: fact.id, accountScope: expectedScope)
+    }
+
+    func memoryLookup(project: String?, userText: String) -> [UserMemory] {
+        guard usesSavedMemory else { return [] }
         let facts = recallFacts()
-        let remaining = facts.filter { $0.key.caseInsensitiveCompare(key) != .orderedSame }
-        guard remaining.count != facts.count, let data = try? encoder.encode(remaining) else { return false }
-        UserDefaults.standard.set(data, forKey: scoped(memoriesKey))
-        return true
+        let projects = Set(facts.compactMap(\.project))
+        let mentioned = projects.filter { MemoryIdentity.mentions($0, in: userText) }
+        if mentioned.count > 1 { return [] }
+        if let name = mentioned.first {
+            return facts.filter { MemoryIdentity.normalize($0.project ?? "") == MemoryIdentity.normalize(name) }
+        }
+        if let project {
+            // A tool cannot select an unmentioned project when several are possible.
+            guard projects.count == 1, let only = projects.first,
+                  MemoryIdentity.normalize(only) == MemoryIdentity.normalize(project),
+                  ["my project", "this project", "the project"].contains(where: { MemoryIdentity.mentions($0, in: userText) }) else { return [] }
+            return facts.filter { MemoryIdentity.normalize($0.project ?? "") == MemoryIdentity.normalize(only) }
+        }
+        if MemoryIdentity.mentions("project", in: userText) {
+            guard ["my project", "this project", "the project"].contains(where: { MemoryIdentity.mentions($0, in: userText) }),
+                  projects.count == 1, let only = projects.first else { return [] }
+            return facts.filter { MemoryIdentity.normalize($0.project ?? "") == MemoryIdentity.normalize(only) }
+        }
+        return facts.filter { $0.project == nil }
+    }
+
+    func answerKnownFact(_ question: String) -> (String, [String])? {
+        guard usesSavedMemory else { return nil }
+        let normalized = MemoryIdentity.normalize(question)
+        guard ["what ", "which ", "who ", "where ", "when "].contains(where: normalized.hasPrefix),
+              !["should", "next", "try", "remember"].contains(where: { MemoryIdentity.mentions($0, in: question) }) else { return nil }
+        let facts = memoryLookup(project: nil, userText: question)
+        let exact = facts.filter { MemoryIdentity.mentions($0.key, in: question) }
+        let canonicalKeys = ["database", "architecture", "job", "work schedule"]
+        let subject = canonicalKeys.first { MemoryIdentity.mentions($0, in: question) }
+            ?? (MemoryIdentity.mentions("working hours", in: question) ? "work schedule" : nil)
+        var matches = subject.map { key in facts.filter { MemoryIdentity.key($0.key) == key } } ?? exact
+        if matches.isEmpty, subject == nil, normalized.contains(" use") || normalized.contains(" uses"),
+           facts.contains(where: { $0.project != nil }) {
+            matches = facts.filter { MemoryIdentity.key($0.key) == "database" }
+        }
+        if matches.count > 1 { return ("I found conflicting saved facts. Which one should I use?", []) }
+        guard let fact = matches.first else { return nil }
+        if MemoryIdentity.requestsHistory(question) {
+            guard let old = fact.revisions?.last else {
+                return ("I don’t have an earlier version saved. The current value in Memory is \(fact.value).", [fact.id])
+            }
+            return ("Previously, Memory had \(old.value) for \(fact.scopeLabel) · \(fact.key). That version is no longer current. The current value is \(fact.value).", [fact.id])
+        }
+        return ("From Memory · \(fact.scopeLabel) · \(fact.key): \(fact.value)", [fact.id])
     }
 
     // MARK: - MemoryCards
@@ -279,7 +434,7 @@ final class StorageService {
         let trimmed = content.trimmingCharacters(in: .whitespacesAndNewlines)
         var cards = loadMemoryCards()
         guard !trimmed.isEmpty, let index = cards.firstIndex(where: { $0.id == id }) else { return false }
-        cards[index].content = trimmed; cards[index].category = category
+        cards[index].content = trimmed; cards[index].category = category; cards[index].updatedAt = Date()
         saveMemoryCards(cards)
         return true
     }

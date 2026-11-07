@@ -47,9 +47,9 @@ final class ToolsService {
         case "delete_note":
             return deleteNote(input: input)
         case "remember_fact":
-            return rememberFact(input: input)
+            return encodeResult(["error": "Open the memory review in the conversation to save a fact."])
         case "recall_facts":
-            return recallFacts()
+            return encodeResult(["error": "Look up a scoped fact from the conversation."])
         case "schedule_reminder":
             return await scheduleReminder(input: input, confirm: requireReminderConfirmation)
         case "get_reminders":
@@ -144,31 +144,63 @@ final class ToolsService {
         return encodeResult(["success": true, "message": "Note deleted successfully"])
     }
 
-    private func rememberFact(input: [String: Any]) -> String {
-        guard StorageService.shared.usesSavedMemory else { return encodeResult(["error": "Memory is paused. This detail was not saved."]) }
-        guard let key = input["key"] as? String,
-              let value = input["value"] as? String else {
-            return encodeResult(["error": "Missing key or value"])
+    func reviewFact(input: [String: Any], userText: String, accountScope: String) async -> String {
+        let store = StorageService.shared
+        guard store.accountScope == accountScope, !Task.isCancelled, store.usesSavedMemory else {
+            return "Memory is paused or the account changed. Nothing was saved."
         }
-        StorageService.shared.rememberFact(key: key, value: value)
-        return encodeResult([
-            "success": true,
-            "message": "Remembered: \(key) = \(value)"
-        ])
+        guard let key = input["key"] as? String, let value = input["value"] as? String else {
+            return "What exact fact would you like me to remember?"
+        }
+        switch store.resolveFact(key: key, value: value, project: input["project"] as? String, userText: userText) {
+        case .clarify(let question):
+            return question
+        case .review(let proposal):
+            guard let id = await FactApproval.shared.request(proposal),
+                  store.accountScope == accountScope,
+                  let fact = store.recallFacts().first(where: { $0.id == id }) else {
+                return "That fact wasn’t saved."
+            }
+            return "Saved in Memory (\(fact.scopeLabel)): \(fact.key) — \(fact.value)"
+        }
     }
 
-    private func recallFacts() -> String {
-        guard StorageService.shared.usesSavedMemory else { return encodeResult(["facts": [], "message": "Memory is paused."]) }
-        let memories = StorageService.shared.recallFacts()
-        let isoFormatter = ISO8601DateFormatter()
-        let mapped = memories.map { mem -> [String: Any] in
-            [
-                "key": mem.key,
-                "value": mem.value,
-                "updatedAt": isoFormatter.string(from: mem.updatedAt)
-            ]
+    func scopedFacts(input: [String: Any], userText: String) -> (String, [String]) {
+        let store = StorageService.shared
+        guard store.usesSavedMemory else { return (encodeResult(["message": "Saved memory is paused."]), []) }
+        let project = input["project"] as? String
+        let key = (input["key"] as? String).map(MemoryIdentity.key)
+        let matches = store.memoryLookup(project: project, userText: userText)
+            .filter { key == nil || key == "" || MemoryIdentity.key($0.key) == key }
+        let projects = Set(store.recallFacts().compactMap(\.project))
+        let mentions = projects.filter { MemoryIdentity.mentions($0, in: userText) }
+        let projectRequest = project != nil || MemoryIdentity.mentions("project", in: userText)
+        if mentions.count > 1 || (mentions.isEmpty && projects.count > 1 && projectRequest) {
+            return (encodeResult(["clarify": "Ask which project the user means before answering."]), [])
         }
-        return encodeResult(["facts": mapped, "count": memories.count])
+        if Dictionary(grouping: matches, by: { MemoryIdentity.key($0.key) }).values.contains(where: { $0.count > 1 }) {
+            return (encodeResult(["clarify": "Conflicting current facts match. Ask the user to choose or correct them in Memory."]), [])
+        }
+        let formatter = ISO8601DateFormatter()
+        let history = MemoryIdentity.requestsHistory(userText)
+        var rows: [[String: Any]] = []
+        var references: [String] = []
+        for fact in matches.sorted(by: { $0.updatedAt > $1.updatedAt }).prefix(12) {
+            var row: [String: Any] = [
+                "id": fact.id, "key": fact.key, "value": fact.value, "scope": fact.scopeLabel,
+                "updatedAt": formatter.string(from: fact.updatedAt), "source": fact.source ?? "Saved memory"
+            ]
+            if history {
+                row["superseded"] = (fact.revisions ?? []).suffix(4).reversed().map {
+                    ["value": $0.value, "supersededAt": formatter.string(from: $0.supersededAt),
+                     "status": "historical, no longer current"]
+                }
+            }
+            guard encodeResult(["facts": rows + [row]]).utf8.count <= 12000 else { break }
+            rows.append(row)
+            references.append(fact.id)
+        }
+        return (encodeResult(["facts": rows, "message": "These are the saved facts for the requested scope. When empty, say you have no matching saved fact. Do not infer one from old chats, cards, notes, or events."]), references)
     }
 
     private func scheduleReminder(input: [String: Any], confirm: Bool = false) async -> String {
