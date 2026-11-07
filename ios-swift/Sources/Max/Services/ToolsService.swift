@@ -47,9 +47,12 @@ final class ToolsService {
         case "delete_note":
             return deleteNote(input: input)
         case "remember_fact":
+            guard StorageService.shared.usesSavedMemory else {
+                return encodeResult(["error": "Memory is paused. This detail was not saved."])
+            }
             return encodeResult(["error": "Open the memory review in the conversation to save a fact."])
         case "recall_facts":
-            return encodeResult(["error": "Look up a scoped fact from the conversation."])
+            return scopedFacts(input: input, userText: "").0
         case "schedule_reminder":
             return await scheduleReminder(input: input, confirm: requireReminderConfirmation)
         case "get_reminders":
