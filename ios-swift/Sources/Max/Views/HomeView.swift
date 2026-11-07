@@ -14,6 +14,7 @@ struct HomeView: View {
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
     @State private var showProfile = false
+    @State private var showEmailBrief = false
     @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -83,6 +84,7 @@ struct HomeView: View {
         .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
         .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
+        .sheet(isPresented: $showEmailBrief) { EmailBriefView() }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background { viewModel.endConversation() }
             if phase == .active { handlePendingShortcut() }
@@ -404,6 +406,11 @@ struct HomeView: View {
                 composerFocused = false
                 isTyping = false
                 viewModel.startNewChat()
+            }
+            Button("Email Brief", systemImage: "envelope") {
+                viewModel.endConversation()
+                composerFocused = false
+                showEmailBrief = true
             }
             Button("Attach a photo", systemImage: "photo") { showCamera = true }
             Button("Conversation history", systemImage: "clock.arrow.circlepath") {
