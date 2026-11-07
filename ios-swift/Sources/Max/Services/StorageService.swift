@@ -231,6 +231,7 @@ final class StorageService {
     // Reviewed changes invalidate old prompt context without deleting the visible chat.
     func chatContext(_ messages: [Message]) -> [Message] {
         guard let latest = messages.lastIndex(where: { $0.role == "user" }) else { return messages }
+        if isProjectMemoryQuestion(messages[latest].content) { return [messages[latest]] }
         guard let cutoff = factLedger()?.transcriptCutoff else { return messages }
         return messages.enumerated().compactMap { index, message in
             index == latest || message.timestamp > cutoff ? message : nil
@@ -376,6 +377,13 @@ final class StorageService {
             return facts.filter { MemoryIdentity.normalize($0.project ?? "") == MemoryIdentity.normalize(only) }
         }
         return facts.filter { $0.project == nil }
+    }
+
+    func isProjectMemoryQuestion(_ text: String) -> Bool {
+        let normalized = MemoryIdentity.normalize(text)
+        guard ["what ", "which ", "how ", "where ", "when ", "why "].contains(where: normalized.hasPrefix) else { return false }
+        return MemoryIdentity.mentions("project", in: text)
+            || recallFacts().compactMap(\.project).contains { MemoryIdentity.mentions($0, in: text) }
     }
 
     func answerKnownFact(_ question: String) -> (String, [String])? {

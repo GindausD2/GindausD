@@ -634,6 +634,9 @@ final class ClaudeService {
                 let (facts, references) = ToolsService.shared.scopedFacts(input: input, userText: userText)
                 result = facts
                 onChunk(.memoryReferences(references))
+            case "get_notes" where StorageService.shared.isProjectMemoryQuestion(userText),
+                 "recall_life_events" where StorageService.shared.isProjectMemoryQuestion(userText):
+                result = #"{"error":"Use scoped saved facts for this project. Unscoped notes and events are not current project memory."}"#
             default:
                 result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope, requireReminderConfirmation: true)
             }
