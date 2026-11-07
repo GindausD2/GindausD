@@ -37,7 +37,7 @@ struct HomeView: View {
         _isTyping = State(initialValue: !(viewModel?.inputText.isEmpty ?? true))
     }
 
-    var body: some View {
+    private var homeLayout: some View {
         ZStack {
             CompanionCanvas()
 
@@ -64,6 +64,10 @@ struct HomeView: View {
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
         }
+    }
+
+    private var homeLifecycle: some View {
+        homeLayout
         .onDisappear { viewModel.endConversation() }
         .onChange(of: viewModel.inputText) { _, text in
             if !text.isEmpty { isTyping = true }
@@ -95,6 +99,10 @@ struct HomeView: View {
             UserDefaults.standard.removeObject(forKey: "max.pendingQuickReply")
             if let prompt = notification.object as? String { showProfile = false; viewModel.inputText = prompt; viewModel.sendTextMessage() }
         }
+    }
+
+    private var homePresentations: some View {
+        homeLifecycle
         .sheet(isPresented: $showHistory) {
             ConversationHistoryView(onNewChat: {
                 showHistory = false
@@ -140,6 +148,10 @@ struct HomeView: View {
                 viewModel.inputText = prompt; viewModel.sendTextMessage()
             }
         }
+    }
+
+    var body: some View {
+        homePresentations
         // ── Dynamic Island ─────────────────────────────────────────────────────
         .onChange(of: viewModel.conversationState) { _, newState in
             switch newState {
