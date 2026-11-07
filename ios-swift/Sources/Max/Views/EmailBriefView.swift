@@ -1,11 +1,18 @@
 import SwiftUI
 
 struct EmailBriefView: View {
+    private enum Source: String, CaseIterable {
+        case gmail = "Gmail"
+        case appleMail = "Apple Mail"
+    }
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @EnvironmentObject private var auth: AuthService
     @ObservedObject private var email = EmailMonitorService.shared
 
+    @State private var source: Source = .gmail
+    @State private var mailText = ""
+    @State private var mailBrief: EmailBrief?
     @State private var sender = ""
     @State private var results: [BriefEmail] = []
     @State private var selected: BriefEmail?
@@ -16,6 +23,7 @@ struct EmailBriefView: View {
     @State private var busy = false
     @State private var work: Task<Void, Never>?
     @FocusState private var senderFocused: Bool
+    @FocusState private var mailTextFocused: Bool
 
     private let accent = Color(hex: "#315E73")
 
@@ -28,10 +36,22 @@ struct EmailBriefView: View {
                         Text("Catch up before you answer.")
                             .font(.title2.weight(.semibold))
                             .accessibilityAddTraits(.isHeader)
-                        Text("Find an email by sender, then tap it for a private brief.")
-                            .foregroundStyle(.secondary)
+                        Picker("Email source", selection: $source) {
+                            ForEach(Source.allCases, id: \.self) { item in
+                                Text(item.rawValue).tag(item)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .disabled(busy)
+                        .onChange(of: source) { _, _ in
+                            error = nil
+                            senderFocused = false
+                            mailTextFocused = false
+                        }
 
-                        if auth.currentUser == nil || auth.currentUser?.isDemo == true {
+                        if source == .appleMail {
+                            appleMailEntry
+                        } else if auth.currentUser == nil || auth.currentUser?.isDemo == true {
                             Text("Sign in to your Max account to use Email Brief.")
                         } else if email.clientID.isEmpty {
                             Text("Gmail connection is unavailable in this build.")
@@ -42,9 +62,11 @@ struct EmailBriefView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         } else {
+                            Text("Find an email by sender, then tap it for a private brief.")
+                                .foregroundStyle(.secondary)
                             searchField
                             if let selected, let brief {
-                                briefCard(brief, for: selected)
+                                briefCard(brief, title: selected.subject, sender: selected.sender)
                             }
                             if !results.isEmpty {
                                 matches
@@ -55,7 +77,7 @@ struct EmailBriefView: View {
                         }
 
                         if busy {
-                            ProgressView(selected == nil ? "Working…" : "Reading the selected email…")
+                            ProgressView(source == .appleMail ? "Summarizing email…" : "Working…")
                         }
                         if let error {
                             Text(error).font(.footnote).foregroundStyle(.primary)
@@ -84,9 +106,46 @@ struct EmailBriefView: View {
             results = []
             selected = nil
             brief = nil
+            mailText = ""
+            mailBrief = nil
             dismiss()
         }
         .onDisappear { work?.cancel() }
+    }
+
+    private var appleMailEntry: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("In Apple Mail, open the message and copy the text you want to summarize. Then paste it here.")
+                .foregroundStyle(.secondary)
+            if let mailBrief {
+                briefCard(mailBrief, title: "From Apple Mail")
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Message text")
+                    .font(.subheadline.weight(.semibold))
+                TextEditor(text: $mailText)
+                    .frame(minHeight: 120)
+                    .scrollContentBackground(.hidden)
+                    .accessibilityLabel("Message text")
+                    .focused($mailTextFocused)
+                    .onChange(of: mailText) { _, _ in
+                        mailBrief = nil
+                        error = nil
+                    }
+                PasteButton(payloadType: String.self) { values in
+                    mailText = values.joined(separator: "\n\n")
+                }
+                Button("Summarize", systemImage: "text.alignleft", action: summarizeAppleMail)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(mailText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .padding(16)
+            .glassCard(cornerRadius: 22)
+            .disabled(busy)
+            Text("Max processes the pasted text on this device.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private var searchField: some View {
@@ -137,11 +196,13 @@ struct EmailBriefView: View {
         }
     }
 
-    private func briefCard(_ value: EmailBrief, for message: BriefEmail) -> some View {
+    private func briefCard(_ value: EmailBrief, title: String, sender: String? = nil) -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(message.subject).font(.headline).accessibilityAddTraits(.isHeader)
-                Text(message.sender).font(.footnote).foregroundStyle(.secondary)
+                Text(title).font(.headline).accessibilityAddTraits(.isHeader)
+                if let sender {
+                    Text(sender).font(.footnote).foregroundStyle(.secondary)
+                }
             }
             briefSection(value.usedExtracts ? "Key lines from the email" : "Summary", value.summary)
             if !value.requestedOpinion.isEmpty {
@@ -191,6 +252,18 @@ struct EmailBriefView: View {
             try Task.checkCancellation()
             results = matches
             searched = true
+        }
+    }
+
+    private func summarizeAppleMail() {
+        let text = mailText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !busy, !text.isEmpty else { return }
+        mailTextFocused = false
+        mailBrief = nil
+        begin {
+            let result = try await EmailBrief.make(from: text)
+            try Task.checkCancellation()
+            mailBrief = result
         }
     }
 
