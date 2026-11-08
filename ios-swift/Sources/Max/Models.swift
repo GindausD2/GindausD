@@ -9,6 +9,9 @@ struct Message: Identifiable, Codable {
     var timestamp: Date
     var isStreaming: Bool = false
     var memoryReferences: [String]? = nil
+    var isPrivateRecall: Bool? = nil
+    var lifeMemoryReference: String? = nil
+    var peopleRecallChoices: [String]? = nil
 
     init(id: String = UUID().uuidString, role: String, content: String, timestamp: Date = Date(), isStreaming: Bool = false) {
         self.id = id

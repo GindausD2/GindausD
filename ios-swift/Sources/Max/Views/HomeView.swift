@@ -17,6 +17,7 @@ struct HomeView: View {
     @State private var showProfile = false
     @State private var showProjectResume = false
     @State private var inspectedMemory: MemoryLink?
+    @State private var inspectedLifeMemory: MemoryLink?
     @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -29,7 +30,10 @@ struct HomeView: View {
     @State private var pendingImage: UIImage? = nil
     @FocusState private var composerFocused: Bool
 
-    private struct MemoryLink: Identifiable { let id: String }
+    private struct MemoryLink: Identifiable {
+        let id: String
+        var account: String = ""
+    }
 
     private let liveActivity = LiveActivityService.shared
 
@@ -89,7 +93,7 @@ struct HomeView: View {
             }
             Button("OK", role: .cancel) { islandNotice = nil }
         } message: { Text(islandNotice ?? "Please try again.") }
-        .onChange(of: authService.currentUser) { _, _ in showProjectResume = false; inspectedMemory = nil; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+        .onChange(of: authService.currentUser) { _, _ in showProjectResume = false; inspectedMemory = nil; inspectedLifeMemory = nil; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
         .sheet(isPresented: $showCompanion) { CompanionView() }
         .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
         .onChange(of: scenePhase) { _, phase in
@@ -163,6 +167,9 @@ struct HomeView: View {
 
     var body: some View {
         projectPresentations
+            .sheet(item: $inspectedLifeMemory) { link in
+                MemoryReplayView(eventID: link.id, scope: link.account)
+            }
         // ── Dynamic Island ─────────────────────────────────────────────────────
         .onChange(of: viewModel.conversationState) { _, newState in
             switch newState {
@@ -308,6 +315,15 @@ struct HomeView: View {
                             ForEach(viewModel.messages) { msg in
                                 VStack(alignment: .leading, spacing: 4) {
                                     TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
+                                    if let id = msg.lifeMemoryReference {
+                                        Button {
+                                            inspectedLifeMemory = MemoryLink(id: id, account: StorageService.shared.accountScope)
+                                        } label: {
+                                            Label("Open saved meeting", systemImage: "person.crop.rectangle")
+                                                .font(.caption)
+                                        }
+                                        .padding(.horizontal, 20)
+                                    }
                                     ForEach(msg.memoryReferences ?? [], id: \.self) { id in
                                         if let fact = StorageService.shared.recallFacts().first(where: { $0.id == id }) {
                                             Button {
@@ -857,8 +873,9 @@ final class HomeViewModel: ObservableObject {
         guard conversationState == .idle else { handleMicTap(); return }
         continuousActive = false
         turnID = UUID()
-        let reply = messages.last(where: { $0.role == "assistant" && !$0.isStreaming && !$0.content.isEmpty && !$0.content.hasPrefix("⚠️") && !$0.content.hasPrefix("Error:") })?.content
-        playSpeech(reply ?? "Hi, I'm Max. I'm here. What's on your mind?")
+        let reply = messages.last(where: { $0.role == "assistant" && !$0.isStreaming && !$0.content.isEmpty && !$0.content.hasPrefix("⚠️") && !$0.content.hasPrefix("Error:") })
+        guard reply?.isPrivateRecall != true else { return }
+        playSpeech(reply?.content ?? "Hi, I'm Max. I'm here. What's on your mind?")
     }
 
     private func playSpeech(_ text: String, continueListening: Bool = false) {
@@ -1077,7 +1094,30 @@ final class HomeViewModel: ObservableObject {
         storage.saveMessages(messages)
     }
 
+    private func respondToPeopleRecall(_ question: String) -> Bool {
+        guard let current = messages.indices.last, messages[current].role == "user" else { return false }
+        let previous = messages.dropLast().last
+        let choices = previous?.role == "assistant" ? previous?.peopleRecallChoices ?? [] : []
+        let enabled = storage.usesSavedMemory
+        guard let answer = PeopleRecall.answer(question, events: enabled ? storage.loadLifeEvents() : [],
+                                               previousChoices: choices) else { return false }
+        messages[current].isPrivateRecall = true
+        var reply = Message(role: "assistant", content: enabled ? answer.text : "Saved memory is paused. Turn it on to look up a past meeting.")
+        reply.isPrivateRecall = true
+        if enabled {
+            reply.lifeMemoryReference = answer.eventID
+            reply.peopleRecallChoices = answer.choices
+        }
+        messages.append(reply)
+        storage.saveMessages(messages)
+        archiveCurrentConversation()
+        continuousActive = false
+        conversationState = .idle
+        return true
+    }
+
     private func streamResponse(userText: String, imageData: Data? = nil, allowSpeech: Bool = true) {
+        if imageData == nil, respondToPeopleRecall(userText) { return }
         let settings = storage.loadSettings()
         let thisTurn = UUID(); turnID = thisTurn
         conversationState = .thinking
@@ -1089,7 +1129,7 @@ final class HomeViewModel: ObservableObject {
         var fullText = ""
 
         // Keep the last 40 messages (20 exchanges) to stay within token limits
-        let history = messages.filter { $0.id != streamId && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let history = messages.filter { $0.id != streamId && $0.isPrivateRecall != true && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         var trimmed = history.count > 40 ? Array(history.suffix(40)) : history
         if let index = trimmed.lastIndex(where: { $0.role == "user" }) { trimmed[index].content = userText }
 
