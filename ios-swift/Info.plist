@@ -8,6 +8,8 @@
 	<string>$(SUPABASE_URL)</string>
 	<key>SUPABASE_ANON_KEY</key>
 	<string>$(SUPABASE_ANON_KEY)</string>
+	<key>MAX_PRIVACY_POLICY_URL</key>
+	<string>$(MAX_PRIVACY_POLICY_URL)</string>
 	<key>GOOGLE_CLIENT_ID</key>
 	<string>$(GOOGLE_CLIENT_ID)</string>
 	<key>CFBundleIconName</key>

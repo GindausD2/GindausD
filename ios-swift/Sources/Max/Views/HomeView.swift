@@ -14,6 +14,7 @@ struct HomeView: View {
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
     @State private var showProfile = false
+    @State private var showReport = false
     @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -35,6 +36,7 @@ struct HomeView: View {
 
     var body: some View {
         conversationPresentation
+            .sheet(isPresented: $showReport) { SupportContactView(reporting: true) }
             .onAppear(perform: restoreConversation)
             .onChange(of: viewModel.conversationState) { _, state in updateLiveActivity(state) }
             .onChange(of: viewModel.streamingText) { _, text in updateLiveActivitySnippet(text) }
@@ -59,6 +61,7 @@ struct HomeView: View {
                 }
                 transcriptArea
             }
+            .frame(maxWidth: 740)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
@@ -72,6 +75,8 @@ struct HomeView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 12)
             }
+            .frame(maxWidth: 740)
+            .frame(maxWidth: .infinity)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: pendingImage != nil)
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.isDictating)
         }
@@ -427,6 +432,10 @@ struct HomeView: View {
                 viewModel.startNewChat()
             }
             Button("Attach a photo", systemImage: "photo") { showCamera = true }
+            Button("Report a response", systemImage: "flag") {
+                viewModel.endConversation()
+                showReport = true
+            }
             Button("Conversation history", systemImage: "clock.arrow.circlepath") {
                 viewModel.endConversation(); showHistory = true
             }

@@ -13,6 +13,7 @@ final class StoreKitService: ObservableObject {
     @Published var purchasedIDs: Set<String> = []
     @Published var isLoading: Bool = false
     @Published var purchaseError: String?
+    @Published private(set) var restoreMessage: String?
 
     @Published private(set) var verifiedAccountID: String?
     @Published private(set) var verifiedUntil: Date?
@@ -49,6 +50,7 @@ final class StoreKitService: ObservableObject {
     func purchase(_ product: Product) async {
         isLoading = true
         purchaseError = nil
+        restoreMessage = nil
         defer { isLoading = false }
         do {
             guard let user = AuthService.shared.currentUser, user.isDemo == false,
@@ -75,12 +77,19 @@ final class StoreKitService: ObservableObject {
     }
 
     func restorePurchases() async {
+        guard !isLoading, let accountID = AuthService.shared.currentUser?.id else { return }
         isLoading = true
+        purchaseError = nil
+        restoreMessage = nil
         defer { isLoading = false }
         do {
             try await AppStore.sync()
+            guard AuthService.shared.currentUser?.id == accountID else { return }
             await refreshEntitlements()
+            guard AuthService.shared.currentUser?.id == accountID, purchaseError == nil else { return }
+            restoreMessage = isSubscribed ? "Your Max subscription was restored." : "No active subscription was found for this Max account and Apple Account."
         } catch {
+            guard AuthService.shared.currentUser?.id == accountID else { return }
             purchaseError = error.localizedDescription
         }
     }

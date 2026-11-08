@@ -203,6 +203,49 @@ final class AuthService: ObservableObject {
         }
     }
 
+    func deleteAccount(accountID: String, appleCode: String?) async -> String? {
+        guard !isLoading, currentUser?.id == accountID else { return "Your account changed. Try again." }
+        guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else {
+            return "Account deletion is temporarily unavailable."
+        }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let session = try await supabase.auth.session
+            guard session.user.id.uuidString == accountID, currentUser?.id == accountID else { return "Your account changed. Try again." }
+            var request = URLRequest(url: base.appendingPathComponent("v1/account/delete"))
+            request.httpMethod = "POST"
+            request.timeoutInterval = 45
+            request.setValue("Bearer " + session.accessToken, forHTTPHeaderField: "Authorization")
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(appleCode.map { ["appleCode": $0] } ?? [:])
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 204 else {
+                let details = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+                return details?["error"] ?? "Account deletion is temporarily unavailable."
+            }
+
+            // Clear the verified account's local scope even if the active account changed.
+            let defaults = UserDefaults.standard
+            let prefix = "max.account." + accountID + "."
+            let reminderIDs = StorageService.shared.loadReminders(scope: accountID).map(\.id)
+            UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: reminderIDs)
+            UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: reminderIDs)
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+                defaults.removeObject(forKey: key)
+            }
+            SecretStore.set(nil, for: "max.gmail." + accountID + ".access")
+            SecretStore.set(nil, for: "max.gmail." + accountID + ".refresh")
+            if currentUser?.id == accountID {
+                defaults.removeObject(forKey: demoKey)
+                currentUser = nil
+                isUpgradingDemo = false
+                try? await supabase.auth.signOut(scope: .local)
+            }
+            return nil
+        } catch { return "Max couldn’t confirm deletion. Check your connection and try again." }
+    }
+
     // MARK: - Sign Out
 
     func signOut() {

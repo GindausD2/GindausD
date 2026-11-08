@@ -6,3 +6,6 @@ SUPABASE_ANON_KEY = your-supabase-publishable-or-anon-key
 GOOGLE_CLIENT_ID =
 // Set your signing team locally or in Xcode.
 DEVELOPMENT_TEAM =
+
+// Public, app-specific HTTPS privacy policy URL (escape // as /$()/ in xcconfig).
+MAX_PRIVACY_POLICY_URL =

@@ -35,6 +35,7 @@ final class ScreenshotTests: XCTestCase {
         try await capture(WelcomeView(initialMode: .signUp).environmentObject(AuthService.shared).environment(\.dynamicTypeSize, .accessibility1), name: "Max_Entry_Signup_Large_Text")
         try await capture(DemoOnboardingView().environmentObject(AuthService.shared), name: "Max_Entry_Demo_Dark", style: .dark)
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Profile_Design_Home")
+        try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Home_Tablet_Layout", size: CGSize(width: 820, height: 1180))
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Dark", style: .dark)
         try await capture(HomeView().environmentObject(AuthService.shared), name: "Max_Reference_Home_Compact", size: CGSize(width: 375, height: 667))
         try await capture(HomeView().environmentObject(AuthService.shared).environment(\.dynamicTypeSize, .accessibility1), name: "Max_Reference_Home_Large_Text")

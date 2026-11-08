@@ -1,7 +1,7 @@
 name: Verify Max V1
 on:
   push:
-    branches: [main]
+    branches: [main, 'codex/max-v1-app-review']
   pull_request:
   workflow_dispatch:
 permissions:

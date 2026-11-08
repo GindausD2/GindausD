@@ -170,6 +170,7 @@ struct DemoUpgradeView: View {
                 if !authService.isDemoExpired {
                     Button("Back to my demo") { authService.cancelDemoUpgrade() }
                 }
+                AccountDeletionButton()
             }
             .padding(30)
             .frame(maxWidth: 440)
@@ -301,7 +302,10 @@ private struct AuthEntryPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .glassCard(cornerRadius: 28)
 
-                Button(action: onDemo) {
+                Button {
+                    authService.authError = nil
+                    onDemo()
+                } label: {
                     HStack(spacing: 8) {
                         Text("Just looking around?").foregroundStyle(.secondary)
                         Text("Try demo").fontWeight(.semibold)
@@ -677,6 +681,9 @@ struct PlanPage: View {
                             .foregroundStyle(violet)
                     }
                     .disabled(store.isLoading)
+                    if let message = store.restoreMessage {
+                        Text(message).font(.footnote).foregroundStyle(.secondary)
+                    }
 
                     Text("Includes up to 100 AI requests and 3,000 OpenAI voice characters per UTC day. Each tool continuation counts as a request. Max’s voice is AI-generated.")
                         .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -684,6 +691,9 @@ struct PlanPage: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
+                    Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                    PrivacyPolicyLink()
+                    AccountDeletionButton()
                 }
                 .padding(.bottom, 16)
 

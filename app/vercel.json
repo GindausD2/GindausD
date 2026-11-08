@@ -1,0 +1,7 @@
+{
+  "git": {
+    "deploymentEnabled": {
+      "codex/max-v1-app-review": false
+    }
+  }
+}

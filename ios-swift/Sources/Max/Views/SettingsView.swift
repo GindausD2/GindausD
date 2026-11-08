@@ -22,7 +22,7 @@ struct SettingsView: View {
     @State private var showVocabulary = false
     @State private var showIslandDebug: Bool = false
     @State private var showEmailConfig: Bool = false
-    @State private var showDeviceLink: Bool = false
+    @State private var showSupport = false
     @State private var showBriefing: Bool = false
     @State private var showAssistant: Bool = false
     @State private var showAppearance: Bool = false
@@ -64,26 +64,24 @@ struct SettingsView: View {
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "sun.horizon.fill", iconColor: Color(hex: "#F59E0B"),
                                        title: "Morning Briefing") { showBriefing = true }
-                            Divider().padding(.leading, 56)
-                            ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#315E73"),
-                                       title: "Email Reminders") { showEmailConfig = true }
+                            if !EmailMonitorService.shared.clientID.isEmpty {
+                                Divider().padding(.leading, 56)
+                                ProfileRow(icon: "envelope.fill", iconColor: Color(hex: "#315E73"),
+                                           title: "Email Reminders") { showEmailConfig = true }
+                            }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "person.fill", iconColor: Color(hex: "#315E73"),
                                        title: "Assistant") { showAssistant = true }
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "circle.lefthalf.filled", iconColor: Color(hex: "#6B7280"),
                                        title: "Appearance") { showAppearance = true }
-                            Divider().padding(.leading, 56)
-                            ProfileRow(icon: "link", iconColor: Color(hex: "#315E73"),
-                                       title: "Device Link") { showDeviceLink = true }
                         }
 
                         // ── ABOUT ─────────────────────────────────────────────
                         ProfileSection(title: "ABOUT") {
                             ProfileRow(icon: "questionmark.circle.fill", iconColor: Color(hex: "#315E73"),
-                                       title: "Help Center") {
-                                UIApplication.shared.open(URL(string: "mailto:support@getmax.app")!)
-                            }
+                                       title: "Max Support") { showSupport = true }
+                            PrivacyPolicyLink().padding(.horizontal, 16)
                             Divider().padding(.leading, 56)
                             ProfileRow(icon: "doc.text.fill", iconColor: Color(hex: "#6B7280"),
                                        title: "AI Provider Policies") {
@@ -107,7 +105,7 @@ struct SettingsView: View {
                                         .frame(width: 28)
                                 }
                                 Spacer()
-                                Text("1.0.0 (1)")
+                                Text(versionLabel)
                                     .font(.body)
                                     .foregroundStyle(.secondary)
                             }
@@ -131,6 +129,8 @@ struct SettingsView: View {
                             }
 
                             Divider()
+                            AccountDeletionButton().padding(.vertical, 14).frame(maxWidth: .infinity)
+                            Divider()
 
                             Button {
                                 showSignOutConfirm = true
@@ -150,7 +150,7 @@ struct SettingsView: View {
                         if authService.currentUser?.isDemo == true {
                             VStack(spacing: 10) {
                                 SignInWithAppleButton(.signIn, onRequest: { req in
-                                    req.requestedScopes = [.fullName, .email]
+                                    authService.prepareAppleSignIn(req)
                                 }, onCompletion: { result in
                                     switch result {
                                     case .success(let auth):
@@ -170,7 +170,9 @@ struct SettingsView: View {
                                             )
                                             if authService.currentUser?.isDemo != true { dismiss() }
                                         }
-                                    case .failure(let error): authService.authError = error.localizedDescription
+                                    case .failure(let error):
+                                        authService.cancelAppleSignIn()
+                                        authService.authError = error.localizedDescription
                                     }
                                 })
                                 .signInWithAppleButtonStyle(.black)
@@ -203,7 +205,7 @@ struct SettingsView: View {
         .sheet(isPresented: $showEmailConfig)  { EmailConfigSheet() }
         .sheet(isPresented: $showAssistant)    { AssistantSheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showAppearance)   { AppearanceSheet(appearance: $appearance, settings: $settings, onSave: saveSettings) }
-        .sheet(isPresented: $showDeviceLink)   { DeviceLinkView() }
+        .sheet(isPresented: $showSupport) { SupportContactView(reporting: false) }
         .sheet(isPresented: $showBriefing)     { BriefingSheet(settings: $settings, onSave: saveSettings) }
         .confirmationDialog("Clear all messages?", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("Clear History", role: .destructive) { onClearHistory?(); dismiss() }
@@ -216,6 +218,12 @@ struct SettingsView: View {
         .onAppear {
             profileImage = storage.loadProfilePhoto()
         }
+    }
+
+    private var versionLabel: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—"
+        return "\(version) (\(build))"
     }
 
     // MARK: - Sheet Header
@@ -380,6 +388,7 @@ private struct SubscriptionSheet: View {
                         Button("Restore Purchases") { Task { await store.restorePurchases() } }
                             .disabled(store.isLoading)
                         if let error = store.purchaseError { Text(error).font(.footnote).foregroundStyle(.secondary) }
+                        if let message = store.restoreMessage { Text(message).font(.footnote).foregroundStyle(.secondary) }
                     }
                     .multilineTextAlignment(.center).padding(24)
                 } else {
@@ -485,7 +494,7 @@ private struct EmailConfigSheet: View {
         NavigationStack {
             List {
                 Section {
-                    Text(clientID.isEmpty ? "Email connection is coming soon." : "Connect your account to receive important email reminders.")
+                    Text("Connect your account to receive important email reminders.")
                         .foregroundStyle(.secondary)
                 }
 

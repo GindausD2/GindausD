@@ -19,6 +19,9 @@ const env = {
   APPLE_APP_ID: Deno.env.get('APPLE_APP_ID') ?? '',
   APPLE_ROOT_CERTIFICATES_BASE64: Deno.env.get('APPLE_ROOT_CERTIFICATES_BASE64') ?? '',
   OPENAI_MODEL: Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.4-mini',
+  MAX_APPLE_SIGN_IN_CLIENT_ID: Deno.env.get('MAX_APPLE_SIGN_IN_CLIENT_ID') ?? '',
+  MAX_APPLE_SIGN_IN_CLIENT_SECRET: Deno.env.get('MAX_APPLE_SIGN_IN_CLIENT_SECRET') ?? '',
+  SUPABASE_SERVICE_ROLE_KEY: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
   SUPABASE_URL: Deno.env.get('SUPABASE_URL') ?? '',
   SUPABASE_ANON_KEY: Deno.env.get('MAX_SUPABASE_PUBLIC_KEY') ?? publicKeys.default ?? Deno.env.get('SUPABASE_ANON_KEY') ?? '',
 };
