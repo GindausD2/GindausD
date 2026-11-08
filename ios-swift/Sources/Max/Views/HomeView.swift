@@ -315,15 +315,7 @@ struct HomeView: View {
                             ForEach(viewModel.messages) { msg in
                                 VStack(alignment: .leading, spacing: 4) {
                                     TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
-                                    if let id = msg.lifeMemoryReference {
-                                        Button {
-                                            inspectedLifeMemory = MemoryLink(id: id, account: StorageService.shared.accountScope)
-                                        } label: {
-                                            Label("Open saved meeting", systemImage: "person.crop.rectangle")
-                                                .font(.caption)
-                                        }
-                                        .padding(.horizontal, 20)
-                                    }
+                                    meetingLinks(for: msg)
                                     ForEach(msg.memoryReferences ?? [], id: \.self) { id in
                                         if let fact = StorageService.shared.recallFacts().first(where: { $0.id == id }) {
                                             Button {
@@ -350,6 +342,21 @@ struct HomeView: View {
                 .onChange(of: viewModel.streamingText) { _, _ in
                     if let last = viewModel.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
+            }
+        }
+    }
+
+    private func meetingLinks(for message: Message) -> some View {
+        let ids = message.lifeMemoryReference.map { [$0] } ?? message.followUpMeetingReferences ?? []
+        return ForEach(ids, id: \.self) { id in
+            if let meeting = StorageService.shared.loadLifeEvents().first(where: { $0.id == id }) {
+                Button {
+                    inspectedLifeMemory = MemoryLink(id: id, account: StorageService.shared.accountScope)
+                } label: {
+                    Label("Open saved meeting: \(meeting.title)", systemImage: "person.crop.rectangle")
+                        .font(.caption)
+                }
+                .padding(.horizontal, 20)
             }
         }
     }
@@ -1094,6 +1101,50 @@ final class HomeViewModel: ObservableObject {
         storage.saveMessages(messages)
     }
 
+    private func respondToFollowUps(_ question: String) -> Bool {
+        guard let person = FollowUps.requestedPerson(question),
+              let current = messages.indices.last, messages[current].role == "user" else { return false }
+        let enabled = storage.usesSavedMemory
+        let open = enabled ? FollowUps.open(for: person, reminders: storage.loadReminders()) : []
+        let people = Set(open.compactMap { $0.followUpPerson.map(MemoryIdentity.normalize) })
+        let shown = Array(open.prefix(10))
+        let text: String
+        if !enabled {
+            text = "Saved Memory is paused. Turn it on to look up personal follow-ups."
+        } else if people.count > 1 {
+            text = "More than one person matches. Ask again with their full name."
+        } else if shown.isEmpty {
+            text = "I found no open follow-ups for that person."
+        } else {
+            let name = shown.first?.followUpPerson ?? person
+            let lines = shown.map { reminder in
+                "• \(reminder.title) — \(reminder.fireDate < Date() ? "Overdue · " : "")\(reminder.triggerSummary())"
+            }
+            let more = open.count > shown.count ? "\nMore follow-ups are in Reminders." : ""
+            text = "Open follow-ups with \(name)\n\n" + lines.joined(separator: "\n") + more
+        }
+        var reply = Message(role: "assistant", content: text)
+        if people.count == 1 {
+            let savedIDs = Set(storage.loadLifeEvents().map(\.id))
+            var seen: Set<String> = []
+            reply.followUpMeetingReferences = shown.compactMap(\.followUpMeetingID)
+                .filter { savedIDs.contains($0) && seen.insert($0).inserted }
+        }
+        appendPrivateMemoryReply(reply, userIndex: current)
+        return true
+    }
+
+    private func appendPrivateMemoryReply(_ message: Message, userIndex: Int) {
+        messages[userIndex].isPrivateRecall = true
+        var reply = message
+        reply.isPrivateRecall = true
+        messages.append(reply)
+        storage.saveMessages(messages)
+        archiveCurrentConversation()
+        continuousActive = false
+        conversationState = .idle
+    }
+
     private func respondToPeopleRecall(_ question: String) -> Bool {
         guard let current = messages.indices.last, messages[current].role == "user" else { return false }
         let previous = messages.dropLast().last
@@ -1101,23 +1152,17 @@ final class HomeViewModel: ObservableObject {
         let enabled = storage.usesSavedMemory
         guard let answer = PeopleRecall.answer(question, events: enabled ? storage.loadLifeEvents() : [],
                                                previousChoices: choices) else { return false }
-        messages[current].isPrivateRecall = true
         var reply = Message(role: "assistant", content: enabled ? answer.text : "Saved memory is paused. Turn it on to look up a past meeting.")
-        reply.isPrivateRecall = true
         if enabled {
             reply.lifeMemoryReference = answer.eventID
             reply.peopleRecallChoices = answer.choices
         }
-        messages.append(reply)
-        storage.saveMessages(messages)
-        archiveCurrentConversation()
-        continuousActive = false
-        conversationState = .idle
+        appendPrivateMemoryReply(reply, userIndex: current)
         return true
     }
 
     private func streamResponse(userText: String, imageData: Data? = nil, allowSpeech: Bool = true) {
-        if imageData == nil, respondToPeopleRecall(userText) { return }
+        if imageData == nil, respondToFollowUps(userText) || respondToPeopleRecall(userText) { return }
         let settings = storage.loadSettings()
         let thisTurn = UUID(); turnID = thisTurn
         conversationState = .thinking

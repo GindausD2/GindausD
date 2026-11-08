@@ -187,12 +187,13 @@ final class ClaudeService {
             ),
             ToolDefinition(
                 name: "schedule_reminder",
-                description: "Schedule a reminder notification.",
+                description: "Schedule a reminder notification after native confirmation. When the user explicitly asks to follow up with a person, send them something, or reminds themselves of a promise to them, include followUpPerson as the exact name spoken by the user. Ask for the due time if unclear.",
                 inputSchema: InputSchema(
                     type: "object",
                     properties: [
                         "title": PropertyDefinition(type: "string", description: "Reminder title"),
                         "body": PropertyDefinition(type: "string", description: "Reminder body text"),
+                        "followUpPerson": PropertyDefinition(type: "string", description: "Optional exact recipient named in the user’s request for a personal follow-up, including a request awaiting a due-time clarification"),
                         "fireAt": PropertyDefinition(type: "string", description: "Future ISO8601 timestamp with timezone; provide this or minutesFromNow"),
                         "minutesFromNow": PropertyDefinition(type: "string", description: "Positive minutes from now; provide this or fireAt")
                     ],
@@ -630,6 +631,14 @@ final class ClaudeService {
                 onChunk(.replaceText(answer))
                 onChunk(.done)
                 return
+            case "schedule_reminder":
+                let timingReply = userText.contains(where: \.isNumber)
+                    || ["morning", "afternoon", "evening", "noon", "midnight", "tomorrow", "monday", "tuesday",
+                        "wednesday", "thursday", "friday", "saturday", "sunday"].contains { MemoryIdentity.mentions($0, in: userText) }
+                let priorRequest = timingReply ? messages.filter { $0.role == "user" }.dropLast().last?.content : nil
+                result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope,
+                                                           requireReminderConfirmation: true,
+                                                           userText: [priorRequest, userText].compactMap { $0 }.joined(separator: "\n"))
             case "recall_facts":
                 let (facts, references) = ToolsService.shared.scopedFacts(input: input, userText: userText)
                 result = facts
@@ -638,7 +647,7 @@ final class ClaudeService {
                  "recall_life_events" where StorageService.shared.isProjectMemoryQuestion(userText):
                 result = #"{"error":"Use scoped saved facts for this project. Unscoped notes and events are not current project memory."}"#
             default:
-                result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope, requireReminderConfirmation: true)
+                result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope, requireReminderConfirmation: true, userText: userText)
             }
             guard StorageService.shared.memoryGeneration == memoryGeneration else { throw ClaudeError.memoryChanged }
             results.append(ClaudeRequestBlock(type: "tool_result", toolUseId: call.id, content: result))

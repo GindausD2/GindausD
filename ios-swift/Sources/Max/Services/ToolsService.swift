@@ -14,7 +14,7 @@ final class ToolsService {
 
     // MARK: - Tool Executor
 
-    func execute(name: String, input: [String: Any], accountScope: String? = nil, requireReminderConfirmation: Bool = false) async -> String {
+    func execute(name: String, input: [String: Any], accountScope: String? = nil, requireReminderConfirmation: Bool = false, userText: String? = nil) async -> String {
         guard !Task.isCancelled, accountScope == nil || accountScope == StorageService.shared.accountScope else {
             return encodeResult(["error": "Your session changed. Please try again."])
         }
@@ -54,7 +54,7 @@ final class ToolsService {
         case "recall_facts":
             return scopedFacts(input: input, userText: "").0
         case "schedule_reminder":
-            return await scheduleReminder(input: input, confirm: requireReminderConfirmation)
+            return await scheduleReminder(input: input, confirm: requireReminderConfirmation, userText: userText)
         case "get_reminders":
             return await getReminders()
         case "save_place":
@@ -206,7 +206,7 @@ final class ToolsService {
         return (encodeResult(["facts": rows, "message": "These are the saved facts for the requested scope. When empty, say you have no matching saved fact. Do not infer one from old chats, cards, notes, or events."]), references)
     }
 
-    private func scheduleReminder(input: [String: Any], confirm: Bool = false) async -> String {
+    private func scheduleReminder(input: [String: Any], confirm: Bool = false, userText: String? = nil) async -> String {
         let scope = StorageService.shared.accountScope
         let title = input["title"] as? String ?? "Reminder"
         let body = input["body"] as? String ?? ""
@@ -222,11 +222,40 @@ final class ToolsService {
         }
 
         let fireDate = absoluteDate ?? Date().addingTimeInterval(delay)
+        let store = StorageService.shared
+        var reminder = Reminder(title: title, body: body, fireDate: fireDate)
+        var meetingDetail = ""
+        if let person = (input["followUpPerson"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            guard confirm, let userText, person.count <= 120, MemoryIdentity.mentions(person, in: userText) else {
+                return encodeResult(["error": "Ask the user to name the follow-up recipient in their reminder request. Nothing was scheduled."])
+            }
+            guard store.usesSavedMemory else {
+                return encodeResult(["error": "Turn Saved Memory on to save a personal follow-up. Nothing was scheduled."])
+            }
+            switch FollowUps.meeting(for: person, events: store.loadLifeEvents()) {
+            case .linked(let meeting):
+                reminder.followUpPerson = meeting.person
+                reminder.followUpMeetingID = meeting.id
+                meetingDetail = "\nLinked meeting: \(meeting.title) · \(meeting.occurredAt.formatted(date: .abbreviated, time: .omitted))"
+            case .none:
+                reminder.followUpPerson = person
+                meetingDetail = "\nNo matching saved meeting. This follow-up will be saved without a meeting link."
+            case .ambiguous:
+                return encodeResult(["error": "More than one saved person matches. Ask the user to restate the reminder with the full name. Nothing was scheduled."])
+            }
+            meetingDetail = "\nFollow up with \(reminder.followUpPerson ?? person)" + meetingDetail
+        }
         if confirm {
-            let draft = Reminder(title: title, body: body, fireDate: fireDate)
-            guard await ReminderApprovalService.shared.confirm(draft, detail: draft.triggerSummary() + " · " + TimeZone.current.identifier, scope: scope), !Task.isCancelled, StorageService.shared.accountScope == scope else {
+            guard await ReminderApprovalService.shared.confirm(reminder, detail: reminder.triggerSummary() + " · " + TimeZone.current.identifier + meetingDetail, scope: scope),
+                  !Task.isCancelled, store.accountScope == scope else {
                 return encodeResult(["error": "Reminder cancelled. Nothing was scheduled."])
             }
+        }
+        func followUpStillValid() -> Bool {
+            guard reminder.followUpPerson != nil else { return true }
+            guard store.usesSavedMemory else { return false }
+            guard let id = reminder.followUpMeetingID else { return true }
+            return store.loadLifeEvents().contains { $0.id == id && $0.person == reminder.followUpPerson }
         }
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
@@ -234,7 +263,7 @@ final class ToolsService {
             return encodeResult(["error": "Notification permission denied"])
         }
         let remaining = fireDate.timeIntervalSinceNow
-        guard remaining > 0, !Task.isCancelled, StorageService.shared.accountScope == scope else {
+        guard remaining > 0, !Task.isCancelled, StorageService.shared.accountScope == scope, followUpStillValid() else {
             return encodeResult(["error": "That time has passed or your session changed. Please choose a new reminder time."])
         }
 
@@ -248,28 +277,29 @@ final class ToolsService {
             repeats: false
         )
 
-        let id = UUID().uuidString
+        let id = reminder.id
         let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
 
         do {
             try await center.add(request)
-            let reminder = Reminder(id: id, title: title, body: body, fireDate: fireDate)
-            guard !Task.isCancelled, StorageService.shared.accountScope == scope else {
+            guard !Task.isCancelled, StorageService.shared.accountScope == scope, followUpStillValid() else {
                 UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id])
                 return encodeResult(["error": "Your session changed. Please try again."])
             }
-            StorageService.shared.saveReminder(reminder, scope: scope)
-
-            await MainActor.run {
-                LiveActivityService.shared.showToolCard(ToolCard(
-                    kind: .reminder,
-                    line1: title,
-                    line2: reminder.triggerSummary(),
-                    iconName: "bell.fill"
-                ))
+            store.saveReminder(reminder, scope: scope)
+            guard store.loadReminders(scope: scope).contains(where: { $0.id == id }) else {
+                center.removePendingNotificationRequests(withIdentifiers: [id])
+                return encodeResult(["error": "The reminder could not be saved. Nothing was scheduled."])
             }
 
-            return encodeResult([
+            LiveActivityService.shared.showToolCard(ToolCard(
+                kind: .reminder,
+                line1: title,
+                line2: reminder.triggerSummary(),
+                iconName: "bell.fill"
+            ))
+
+            var result: [String: Any] = [
                 "success": true,
                 "id": id,
                 "title": title,
@@ -277,7 +307,12 @@ final class ToolsService {
                 "fireAt": ISO8601DateFormatter().string(from: fireDate),
                 "timeZone": TimeZone.current.identifier,
                 "message": "Saved ‘\(title)’. \(reminder.triggerSummary())"
-            ])
+            ]
+            if let person = reminder.followUpPerson {
+                result["followUpPerson"] = person
+                result["meetingLinked"] = reminder.followUpMeetingID != nil
+            }
+            return encodeResult(result)
         } catch {
             return encodeResult(["error": "Failed to schedule reminder: \(error.localizedDescription)"])
         }

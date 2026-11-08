@@ -11,6 +11,7 @@ struct Message: Identifiable, Codable {
     var memoryReferences: [String]? = nil
     var isPrivateRecall: Bool? = nil
     var lifeMemoryReference: String? = nil
+    var followUpMeetingReferences: [String]? = nil
     var peopleRecallChoices: [String]? = nil
 
     init(id: String = UUID().uuidString, role: String, content: String, timestamp: Date = Date(), isStreaming: Bool = false) {
@@ -193,6 +194,8 @@ struct Reminder: Identifiable, Codable {
     var contextName: String?
     var placeID: String?
     var completedAt: Date? = nil
+    var followUpPerson: String? = nil
+    var followUpMeetingID: String? = nil
 
     func triggerSummary(place: PlaceVisit? = nil, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         if triggerKind == "location" {
