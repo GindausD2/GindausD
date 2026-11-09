@@ -18,6 +18,7 @@ const env = {
   APPLE_IAP_PRIVATE_KEY: Deno.env.get('MAX_BETA_APPLE_IAP_PRIVATE_KEY') ?? '',
   APPLE_APP_ID: Deno.env.get('MAX_BETA_APPLE_APP_ID') ?? '',
   APPLE_ROOT_CERTIFICATES_BASE64: Deno.env.get('MAX_BETA_APPLE_ROOT_CERTIFICATES_BASE64') ?? '',
+  MAX_VISUAL_MODEL: Deno.env.get('MAX_VISUAL_MODEL') ?? '',
   OPENAI_MODEL: Deno.env.get('OPENAI_MODEL') ?? 'gpt-5.4-mini',
   SUPABASE_URL: Deno.env.get('SUPABASE_URL') ?? '',
   SUPABASE_ANON_KEY: Deno.env.get('MAX_SUPABASE_PUBLIC_KEY') ?? publicKeys.default ?? Deno.env.get('SUPABASE_ANON_KEY') ?? '',

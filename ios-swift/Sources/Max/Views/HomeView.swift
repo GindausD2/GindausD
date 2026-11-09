@@ -26,6 +26,7 @@ struct HomeView: View {
     @State private var islandNotice: String?
     @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
+    @State private var showVisualIntelligence = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
     @FocusState private var composerFocused: Bool
@@ -167,6 +168,9 @@ struct HomeView: View {
 
     var body: some View {
         projectPresentations
+            .sheet(isPresented: $showVisualIntelligence) {
+                VisualIntelligenceView(account: StorageService.shared.accountScope)
+            }
             .sheet(item: $inspectedLifeMemory) { link in
                 MemoryReplayView(eventID: link.id, scope: link.account)
             }
@@ -480,6 +484,11 @@ struct HomeView: View {
                 viewModel.endConversation()
                 composerFocused = false
                 showProjectResume = true
+            }
+            Button("Visual Intelligence", systemImage: "viewfinder") {
+                viewModel.endConversation()
+                composerFocused = false
+                showVisualIntelligence = true
             }
             Button("Attach a photo", systemImage: "photo") { showCamera = true }
             Button("Conversation history", systemImage: "clock.arrow.circlepath") {
