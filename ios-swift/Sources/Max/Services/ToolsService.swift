@@ -267,18 +267,8 @@ final class ToolsService {
             return encodeResult(["error": "That time has passed or your session changed. Please choose a new reminder time."])
         }
 
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-
-        let trigger = UNTimeIntervalNotificationTrigger(
-            timeInterval: max(1, remaining),
-            repeats: false
-        )
-
         let id = reminder.id
-        let request = UNNotificationRequest(identifier: id, content: content, trigger: trigger)
+        let request = ReminderNotifications.request(for: reminder, at: fireDate, scope: scope)
 
         do {
             try await center.add(request)

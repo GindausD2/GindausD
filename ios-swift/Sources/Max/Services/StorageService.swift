@@ -113,7 +113,9 @@ final class StorageService {
         guard accountScope == expected else { return false }
         var values = loadReminders()
         guard let index = values.firstIndex(where: { $0.id == reminder.id }), let data = try? encoder.encode(values.enumerated().map { $0.offset == index ? reminder : $0.element }) else { return false }
-        UserDefaults.standard.set(data, forKey: scoped(remindersKey)); return true
+        UserDefaults.standard.set(data, forKey: scoped(remindersKey))
+        NotificationCenter.default.post(name: ReminderNotifications.changed, object: nil)
+        return true
     }
 
     func loadMessages() -> [Message] {
@@ -493,6 +495,7 @@ final class StorageService {
         reminders.append(reminder)
         if let data = try? encoder.encode(reminders) {
             UserDefaults.standard.set(data, forKey: scoped(remindersKey, scope: scope))
+            NotificationCenter.default.post(name: ReminderNotifications.changed, object: nil)
         }
     }
 
@@ -501,6 +504,7 @@ final class StorageService {
         reminders.removeAll { $0.id == id }
         if let data = try? encoder.encode(reminders) {
             UserDefaults.standard.set(data, forKey: scoped(remindersKey))
+            NotificationCenter.default.post(name: ReminderNotifications.changed, object: nil)
         }
     }
 

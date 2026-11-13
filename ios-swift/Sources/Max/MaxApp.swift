@@ -106,6 +106,7 @@ struct MaxApp: App {
     private func requestNotificationPermission() {
         let center = UNUserNotificationCenter.current()
         center.delegate = NotificationDelegate.shared
+        center.setNotificationCategories([ReminderNotifications.actionCategory])
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
     }
 }
@@ -124,7 +125,20 @@ final class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                                 didReceive response: UNNotificationResponse,
                                 withCompletionHandler handler: @escaping () -> Void) {
-        let userInfo = response.notification.request.content.userInfo
+        let request = response.notification.request
+        let userInfo = request.content.userInfo
+        let action = response.actionIdentifier
+        if request.content.categoryIdentifier == ReminderNotifications.category,
+           action == ReminderNotifications.done || action == ReminderNotifications.snooze,
+           let scope = userInfo[ReminderNotifications.scopeKey] as? String {
+            let id = request.identifier
+            let scheduledTime = userInfo["max.reminder.time"] as? Double
+            Task { @MainActor in
+                await ReminderNotifications.handle(action: action, id: id, scope: scope, scheduledTime: scheduledTime)
+                handler()
+            }
+            return
+        }
         if userInfo[BriefingService.userInfoTypeKey] as? String == BriefingService.briefingTypeValue {
             // Post to main thread so HomeView's onReceive picks it up
             DispatchQueue.main.async {

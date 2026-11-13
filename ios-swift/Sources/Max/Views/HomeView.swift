@@ -441,6 +441,9 @@ struct HomeView: View {
                 textComposer
             } else {
                 orbDock
+                if viewModel.conversationState == .idle, let account = authService.currentUser?.storageScope {
+                    NextUpCard(account: account)
+                }
             }
             floatingShortcuts
         }
