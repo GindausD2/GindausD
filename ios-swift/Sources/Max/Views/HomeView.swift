@@ -24,6 +24,7 @@ struct HomeView: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var islandNotice: String?
     @State private var showHistory: Bool = false
@@ -41,7 +42,8 @@ struct HomeView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let wide = geometry.size.width >= (dynamicTypeSize.isAccessibilitySize ? 980 : 690)
+            let wide = horizontalSizeClass == .regular &&
+                geometry.size.width >= (dynamicTypeSize.isAccessibilitySize ? 980 : 640)
             HStack(spacing: 0) {
                 conversationPresentation
                     .frame(width: wide && showThoughtsDock ? geometry.size.width * 0.52 : geometry.size.width)

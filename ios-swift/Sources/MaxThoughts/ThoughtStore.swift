@@ -1,5 +1,6 @@
 import CloudKit
 import Combine
+import CryptoKit
 import Foundation
 
 struct MaxThought: Codable, Identifiable {
@@ -140,14 +141,15 @@ final class ThoughtStore: ObservableObject {
             if scope != "device" {
                 let linkID = CKRecord.ID(recordName: "max-account-link")
                 let link = CKRecord(recordType: "MaxThoughtAccount", recordID: linkID)
-                link["scope"] = scope as CKRecordValue
+                let fingerprint = Data(SHA256.hash(data: Data(scope.utf8))).base64EncodedString()
+                link["scope"] = fingerprint as CKRecordValue
                 let existing: CKRecord
                 do { existing = try await database.save(link) }
                 catch let error as CKError where error.code == .serverRecordChanged {
                     existing = try await database.record(for: linkID)
                 }
                 guard generation == attempt else { return }
-                guard existing["scope"] as? String == scope else {
+                guard existing["scope"] as? String == fingerprint else {
                     status = "This iCloud inbox is already linked to another Max account."
                     return
                 }

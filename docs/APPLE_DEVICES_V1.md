@@ -11,6 +11,8 @@ The Max iOS target keeps the current chat and access flow. Wide windows place th
 
 ## Device acceptance
 
+Use Xcode 27.1 or newer for the full iPhone Duo display and the Duo simulator in Device Hub. The existing Xcode 26 GitHub workflow checks compatibility with the older SDK. It cannot validate Duo screen transitions.
+
 1. iPhone Duo: start typing in chat on the outer screen. Open, narrow in multitasking, and fold back. The same chat draft must remain. Check chat, text scaling, VoiceOver, microphone and demo badge on both displays.
 2. Watch: use Max with the phone disconnected. Record and save a thought, quit, reopen, and replay. Reconnect, sync, and verify the same thought on iPhone, iPad and Mac. Repeated sync must not create duplicates. Verify that a second Max account on iPhone cannot load the linked iCloud inbox.
 3. iPhone/iPad: allow alarms, schedule a near-term alarm from a saved thought, and confirm it rings with Max backgrounded. Repeat with permission denied and verify the UI reports the error. A regular reminder is a local notification. Mac and Watch companions currently support local reminders rather than scheduling iPhone alarms remotely.
