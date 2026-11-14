@@ -31,7 +31,7 @@ final class AuthService: ObservableObject {
                 for key in ["max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
                 MaxShortcutRequest.accountDidChange(hadPreviousUser: oldValue != nil)
             }
-            ThoughtStore.shared.open(scope: currentUser?.id.lowercased())
+            ThoughtStore.shared.open(scope: currentUser?.id?.lowercased())
             StorageService.shared.setAccountScope(scope)
             if oldValue?.id != currentUser?.id || oldValue?.isDemo != currentUser?.isDemo {
                 Task { await StoreKitService.shared.refreshEntitlements() }

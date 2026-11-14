@@ -17,7 +17,7 @@ struct HomeView: View {
     @State private var showThoughtsDock = false
     @ObservedObject private var thoughtStore = ThoughtStore.shared
 
-    private var thoughtScope: String? { authService.currentUser?.id.lowercased() }
+    private var thoughtScope: String? { authService.currentUser?.id?.lowercased() }
     @State private var showProfile = false
     @State private var showReport = false
     @State private var isTyping: Bool
