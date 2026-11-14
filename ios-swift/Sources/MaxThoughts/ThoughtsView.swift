@@ -8,6 +8,7 @@ struct ThoughtsView: View {
     var scope: String?
     var canSync = true
     var prepareRecording: () -> Void = {}
+    @Binding var captureRequested: Bool
     @Environment(\.scenePhase) private var scenePhase
     @StateObject private var capture = ThoughtCapture()
     @State private var title = ""
@@ -18,17 +19,21 @@ struct ThoughtsView: View {
     @State private var message: String?
     @State private var recordingTask: Task<Void, Never>?
 
+    init(store: ThoughtStore, scope: String?, canSync: Bool = true,
+         prepareRecording: @escaping () -> Void = {}, captureRequested: Binding<Bool> = .constant(false)) {
+        self.store = store
+        self.scope = scope
+        self.canSync = canSync
+        self.prepareRecording = prepareRecording
+        _captureRequested = captureRequested
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
                 Text("Your Space").font(.largeTitle.bold()).accessibilityAddTraits(.isHeader)
                 Text("Thoughts").font(.headline).accessibilityAddTraits(.isHeader)
-                Button {
-                    title = ""
-                    message = nil
-                    draftAudio = nil
-                    showingEditor = true
-                } label: {
+                Button(action: openEditor) {
                     Label("Save a thought", systemImage: "mic")
                 }
                 .buttonStyle(.borderedProminent)
@@ -50,10 +55,14 @@ struct ThoughtsView: View {
                         if let audio = thought.audio {
                             Button { capture.play(audio) } label: { Label("Play recording", systemImage: "play.circle") }
                         }
-                        Button { alertKind = .reminder } label: { Label("Remind me", systemImage: "bell") }
+                        Button { alertKind = .reminder } label: {
+                            Label(store.alert(for: thought.id, kind: .reminder) == nil ? "Remind me" : "Manage reminder", systemImage: "bell")
+                        }
                         #if os(iOS) && canImport(AlarmKit)
                         if #available(iOS 26.0, *), !ProcessInfo.processInfo.isiOSAppOnMac {
-                            Button { alertKind = .alarm } label: { Label("Set alarm", systemImage: "alarm") }
+                            Button { alertKind = .alarm } label: {
+                                Label(store.alert(for: thought.id, kind: .alarm) == nil ? "Set alarm" : "Manage alarm", systemImage: "alarm")
+                            }
                         }
                         #endif
                     }
@@ -72,6 +81,12 @@ struct ThoughtsView: View {
             .padding()
             .frame(maxWidth: 600)
             .frame(maxWidth: .infinity)
+        }
+        .onChange(of: captureRequested, initial: true) { _, requested in
+            if requested {
+                captureRequested = false
+                openEditor()
+            }
         }
         .task(id: scope) {
             store.open(scope: scope)
@@ -125,10 +140,18 @@ struct ThoughtsView: View {
             }
         }
         .sheet(item: $alertKind) { kind in
-            if let thought = store.thoughts.first(where: { $0.id == selectedID }) {
-                ThoughtAlertView(thought: thought, kind: kind)
+            if let scope, let thought = store.thoughts.first(where: { $0.id == selectedID }) {
+                ThoughtAlertView(store: store, thought: thought, kind: kind, scope: scope)
             }
         }
+    }
+
+    private func openEditor() {
+        guard scope != nil, !showingEditor else { return }
+        title = ""
+        message = nil
+        draftAudio = nil
+        showingEditor = true
     }
 
     private func discardCapture() {

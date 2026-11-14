@@ -15,6 +15,7 @@ struct MaxThought: Codable, Identifiable {
 final class ThoughtStore: ObservableObject {
     static let shared = ThoughtStore()
     @Published private(set) var thoughts: [MaxThought] = []
+    @Published private var alerts: [ScheduledThoughtAlert] = []
     @Published private(set) var syncing = false
     @Published var status: String?
     private var local: [MaxThought] = []
@@ -23,9 +24,15 @@ final class ThoughtStore: ObservableObject {
     private var scope: String?
     private var accountChanged: NSObjectProtocol?
     private let directory: URL
+    private let scheduleSystemAlert: @MainActor (ScheduledThoughtAlert) async throws -> Void
+    private let cancelSystemAlert: @MainActor (ScheduledThoughtAlert) throws -> Void
 
-    init(directory: URL = URL.applicationSupportDirectory.appendingPathComponent("MaxThoughts", isDirectory: true)) {
+    init(directory: URL = URL.applicationSupportDirectory.appendingPathComponent("MaxThoughts", isDirectory: true),
+         scheduleAlert: @escaping @MainActor (ScheduledThoughtAlert) async throws -> Void = { try await ThoughtAlertScheduler.schedule($0) },
+         cancelAlert: @escaping @MainActor (ScheduledThoughtAlert) throws -> Void = { try ThoughtAlertScheduler.cancel($0) }) {
         self.directory = directory
+        scheduleSystemAlert = scheduleAlert
+        cancelSystemAlert = cancelAlert
         accountChanged = NotificationCenter.default.addObserver(
             forName: .CKAccountChanged, object: nil, queue: .main
         ) { [weak self] _ in
@@ -43,10 +50,9 @@ final class ThoughtStore: ObservableObject {
     }
 
     func removeLocal(scope: String) throws {
-        if self.scope == scope {
-            open(scope: nil)
-        }
-        for ext in ["json", "icloud", "sync"] {
+        try cancelAlerts(scope: scope)
+        if self.scope == scope { open(scope: nil) }
+        for ext in ["json", "icloud", "sync", "alerts"] {
             let url = directory.appendingPathComponent(scope).appendingPathExtension(ext)
             if FileManager.default.fileExists(atPath: url.path) {
                 try FileManager.default.removeItem(at: url)
@@ -57,6 +63,11 @@ final class ThoughtStore: ObservableObject {
     func open(scope: String?) {
         guard self.scope != scope else { return }
         self.scope = scope
+        alerts = scope.flatMap { try? readAlerts(scope: $0) } ?? []
+        if scope != nil {
+            let abandoned = alerts.filter { !$0.confirmed }
+            for alert in abandoned { try? cancelAlert(alert) }
+        }
         local = []
         discardRemote()
         if let file, let data = try? Data(contentsOf: file) {
@@ -75,6 +86,60 @@ final class ThoughtStore: ObservableObject {
         try write(updated, to: file)
         local = updated
         publish()
+    }
+
+    func alert(for thoughtID: UUID, kind: ThoughtAlertKind, now: Date = .now) -> ScheduledThoughtAlert? {
+        alerts.first { $0.confirmed && $0.thoughtID == thoughtID && $0.kind == kind && $0.date > now }
+    }
+
+    func scheduleAlert(for thoughtID: UUID, kind: ThoughtAlertKind, date: Date, scope: String) async throws {
+        guard self.scope == scope, !alerts.contains(where: {
+            $0.thoughtID == thoughtID && $0.kind == kind && $0.date > .now
+        }) else {
+            throw CocoaError(.fileWriteNoPermission)
+        }
+        guard date > .now else { throw ThoughtAlertError.timePassed }
+        let alert = ScheduledThoughtAlert(id: UUID(), thoughtID: thoughtID, kind: kind, date: date)
+        // Persist the ID before scheduling so an interrupted request can be cleaned up.
+        try writeAlerts(alerts + [alert], scope: scope)
+        do {
+            try await scheduleSystemAlert(alert)
+            guard self.scope == scope, let index = alerts.firstIndex(of: alert) else { throw CancellationError() }
+            var confirmed = alerts
+            confirmed[index].confirmed = true
+            try writeAlerts(confirmed, scope: scope)
+        } catch {
+            // Keep an unconfirmed record if cleanup fails, so reopening can retry.
+            if (try? cancelSystemAlert(alert)) != nil, self.scope == scope {
+                try? writeAlerts(alerts.filter { $0 != alert }, scope: scope)
+            }
+            throw error
+        }
+    }
+
+    func cancelAlert(_ alert: ScheduledThoughtAlert) throws {
+        guard let scope, alerts.contains(alert) else { throw CocoaError(.fileWriteNoPermission) }
+        try cancelSystemAlert(alert)
+        try writeAlerts(alerts.filter { $0 != alert }, scope: scope)
+    }
+
+    func cancelAlerts(scope: String) throws {
+        let records = try readAlerts(scope: scope)
+        for alert in records { try cancelSystemAlert(alert) }
+        if !records.isEmpty { try writeAlerts([], scope: scope) }
+    }
+
+    private func readAlerts(scope: String) throws -> [ScheduledThoughtAlert] {
+        let url = directory.appendingPathComponent(scope).appendingPathExtension("alerts")
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        return try JSONDecoder().decode([ScheduledThoughtAlert].self, from: Data(contentsOf: url))
+    }
+
+    private func writeAlerts(_ values: [ScheduledThoughtAlert], scope: String) throws {
+        let url = directory.appendingPathComponent(scope).appendingPathExtension("alerts")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(values).write(to: url, options: .atomic)
+        if self.scope == scope { alerts = values }
     }
 
     private func write(_ values: [MaxThought], to file: URL) throws {

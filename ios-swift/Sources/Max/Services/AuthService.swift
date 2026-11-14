@@ -31,6 +31,9 @@ final class AuthService: ObservableObject {
                 for key in ["max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
                 MaxShortcutRequest.accountDidChange(hadPreviousUser: oldValue != nil)
             }
+            if oldValue?.id != currentUser?.id, let oldID = oldValue?.id?.lowercased() {
+                try? ThoughtStore.shared.cancelAlerts(scope: oldID)
+            }
             ThoughtStore.shared.open(scope: currentUser?.id?.lowercased())
             StorageService.shared.setAccountScope(scope)
             if oldValue?.id != currentUser?.id || oldValue?.isDemo != currentUser?.isDemo {
