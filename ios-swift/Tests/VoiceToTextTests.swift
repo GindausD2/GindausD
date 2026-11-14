@@ -14,7 +14,7 @@ final class VoiceToTextTests: XCTestCase {
     private func isolated(_ body: () async throws -> Void) async rethrows {
         let store = StorageService.shared
         let previous = store.accountScope
-        let scope = "dictation-" + UUID().uuidString
+        let scope = UUID().uuidString
         store.setAccountScope(scope)
         defer {
             for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("max.account.\(scope).") { UserDefaults.standard.removeObject(forKey: key) }
@@ -172,6 +172,8 @@ final class VoiceToTextTests: XCTestCase {
 
     func testConversationMicSendsSpeechWithoutReplacingTypedDraft() async {
         await isolated {
+            let store = StorageService.shared
+            XCTAssertTrue(store.setCloudAIAllowed(true, scope: store.accountScope))
             let capture = TestVoiceCapture()
             let model = HomeViewModel(capture: capture)
             model.loadMessages()
@@ -187,6 +189,28 @@ final class VoiceToTextTests: XCTestCase {
             XCTAssertEqual(model.inputText, "Keep this draft")
             XCTAssertFalse(capture.recording)
             model.endConversation()
+        }
+    }
+
+    func testVoiceAndTypedDraftStayLocalUntilPermission() async {
+        await isolated {
+            let capture = TestVoiceCapture()
+            let model = HomeViewModel(capture: capture)
+            model.loadMessages()
+            model.inputText = "Keep this draft"
+            model.sendTextMessage()
+            XCTAssertTrue(model.showAIPrivacy)
+            XCTAssertTrue(model.messages.isEmpty)
+            XCTAssertEqual(model.inputText, "Keep this draft")
+
+            model.showAIPrivacy = false
+            model.handleVoiceTap()
+            await settle { model.conversationState == .listening }
+            capture.result = "Buy groceries"
+            model.handleVoiceTap()
+            await settle { model.showAIPrivacy }
+            XCTAssertTrue(model.messages.isEmpty)
+            XCTAssertEqual(model.inputText, "Keep this draft Buy groceries")
         }
     }
 
