@@ -13,6 +13,11 @@ struct HomeView: View {
     @ObservedObject private var lifeApproval = LifeMemoryApproval.shared
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
+    @State private var showThoughts = false
+    @State private var showThoughtsDock = false
+    @ObservedObject private var thoughtStore = ThoughtStore.shared
+
+    private var thoughtScope: String? { authService.currentUser?.id.lowercased() }
     @State private var showProfile = false
     @State private var showReport = false
     @State private var isTyping: Bool
@@ -35,7 +40,31 @@ struct HomeView: View {
     }
 
     var body: some View {
-        conversationPresentation
+        GeometryReader { geometry in
+            let wide = geometry.size.width >= (dynamicTypeSize.isAccessibilitySize ? 980 : 690)
+            HStack(spacing: 0) {
+                conversationPresentation
+                    .frame(width: wide && showThoughtsDock ? geometry.size.width * 0.52 : geometry.size.width)
+                if wide && showThoughtsDock {
+                    Divider().accessibilityHidden(true)
+                    thoughtsPanel
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(CompanionCanvas())
+                }
+            }
+            .onChange(of: wide, initial: true) { _, wide in
+                showThoughtsDock = wide
+                if wide { showThoughts = false }
+            }
+        }
+            .sheet(isPresented: $showThoughts) {
+                NavigationStack {
+                    thoughtsPanel
+                        .toolbar { ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showThoughts = false }
+                        } }
+                }
+            }
             .sheet(isPresented: $showReport) { SupportContactView(reporting: true) }
             .onAppear(perform: restoreConversation)
             .onChange(of: viewModel.conversationState) { _, state in updateLiveActivity(state) }
@@ -48,6 +77,12 @@ struct HomeView: View {
             .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
                 handlePendingShortcut()
             }
+    }
+
+    private var thoughtsPanel: some View {
+        ThoughtsView(store: thoughtStore, scope: thoughtScope,
+                     canSync: authService.currentUser?.isDemo == false,
+                     prepareRecording: { viewModel.endConversation() })
     }
 
     private var conversationLayout: some View {
@@ -422,6 +457,10 @@ struct HomeView: View {
 
     private var conversationActions: some View {
         Menu {
+            Button("Thoughts", systemImage: "waveform") {
+                viewModel.endConversation()
+                if !showThoughtsDock { showThoughts = true }
+            }
             Button("Type a message", systemImage: "keyboard") { openTextEntry() }
             Button("Dictate a message", systemImage: "waveform") { viewModel.handleMicTap() }
                 .disabled(voiceTurnActive)

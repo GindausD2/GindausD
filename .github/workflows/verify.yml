@@ -83,6 +83,14 @@ jobs:
             -destination 'generic/platform=iOS' \
             -clonedSourcePackagesDirPath build/SourcePackages \
             -derivedDataPath device-build CODE_SIGNING_ALLOWED=NO build | tee device-build.log
+      - name: Build watchOS companion for simulator
+        run: |
+          xcodebuild -project Max.xcodeproj -scheme MaxWatch -configuration Debug \
+            -destination 'generic/platform=watchOS Simulator' CODE_SIGNING_ALLOWED=NO build
+      - name: Build native Max Mac companion
+        run: |
+          xcodebuild -project Max.xcodeproj -scheme MaxMac -configuration Debug \
+            -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
       - name: Save build evidence
         if: always()
         uses: actions/upload-artifact@v4

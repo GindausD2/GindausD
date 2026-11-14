@@ -63,5 +63,11 @@ struct MaxShortcuts: AppShortcutsProvider {
             shortTitle: "Activate Max",
             systemImageName: "waveform.circle.fill"
         )
+        AppShortcut(
+            intent: SaveMaxThoughtIntent(),
+            phrases: ["Save a thought in \(.applicationName)"],
+            shortTitle: "Save a thought",
+            systemImageName: "waveform"
+        )
     }
 }

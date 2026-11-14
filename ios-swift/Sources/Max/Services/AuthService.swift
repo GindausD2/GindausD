@@ -31,6 +31,7 @@ final class AuthService: ObservableObject {
                 for key in ["max.pendingBriefing", "max.pendingQuickReply"] { UserDefaults.standard.removeObject(forKey: key) }
                 MaxShortcutRequest.accountDidChange(hadPreviousUser: oldValue != nil)
             }
+            ThoughtStore.shared.open(scope: currentUser?.id.lowercased())
             StorageService.shared.setAccountScope(scope)
             if oldValue?.id != currentUser?.id || oldValue?.isDemo != currentUser?.isDemo {
                 Task { await StoreKitService.shared.refreshEntitlements() }
@@ -224,6 +225,8 @@ final class AuthService: ObservableObject {
                 let details = try? JSONSerialization.jsonObject(with: data) as? [String: String]
                 return details?["error"] ?? "Account deletion is temporarily unavailable."
             }
+
+            try? ThoughtStore.shared.removeLocal(scope: accountID.lowercased())
 
             // Clear the verified account's local scope even if the active account changed.
             let defaults = UserDefaults.standard
