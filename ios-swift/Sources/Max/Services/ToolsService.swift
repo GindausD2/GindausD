@@ -195,8 +195,7 @@ final class ToolsService {
         }
         let pendingCard = ToolCard(kind: .reminder, line1: title,
                                    line2: Reminder(title: title, body: body, fireDate: fireDate).triggerSummary(),
-                                   iconName: "bell.fill",
-                    reminderStage: .set, reminderStage: .setting)
+                                   iconName: "bell.fill", reminderStage: .setting)
         LiveActivityService.shared.showToolCard(pendingCard)
         defer { LiveActivityService.shared.clearToolCard(matching: pendingCard) }
         let center = UNUserNotificationCenter.current()
@@ -236,7 +235,8 @@ final class ToolsService {
                     kind: .reminder,
                     line1: title,
                     line2: reminder.triggerSummary(),
-                    iconName: "bell.fill"
+                    iconName: "bell.fill",
+                    reminderStage: .set
                 ))
             }
 
