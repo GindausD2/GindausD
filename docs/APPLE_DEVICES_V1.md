@@ -9,6 +9,33 @@ The Max iOS target keeps the current chat and access flow. Wide windows place th
 - On iPhone/iPad, cross-device sync is available for a signed-in Max account. The first synced Max account links the private iCloud inbox. The companions use the Apple Account on the device. Enable **Sync with iCloud** in each app. Offline recordings remain on their original device, and a fresh sync runs when the app next becomes active.
 - Keep this branch out of production until the account deletion policy covers the private iCloud thought records and all companion installations. A user can remove Max's iCloud data through their Apple Account settings. The existing Max account deletion endpoint does not remove this independent iCloud data.
 
+## Build for internal TestFlight
+
+Use a Mac with Xcode 27.1 or newer, XcodeGen, and an Xcode account on the Max Apple Developer team. Register the app IDs and embedded extension IDs as needed. The three apps share the iCloud container above. They have distinct bundle IDs in this branch.
+
+| Archive command | Bundle ID | App Store Connect record |
+| --- | --- | --- |
+| `bash ios-swift/scripts/archive-beta.sh ios` | `com.gindausd.max` | Existing iOS Max record, for iPhone and iPad |
+| `bash ios-swift/scripts/archive-beta.sh watchos` | `com.gindausd.max.watch` | Watch-only build with the `com.gindausd.max.watch.capture` extension |
+| `bash ios-swift/scripts/archive-beta.sh macos` | `com.gindausd.max.mac` | Separate macOS app record for this bundle ID |
+
+From the branch root, set up the public iOS beta configuration. If you already have a local `Public.xcconfig`, preserve your settings and use the beta endpoint from the template.
+
+```sh
+cp -n ios-swift/Configuration/Public.beta.example.xcconfig ios-swift/Configuration/Public.xcconfig
+export MAX_APPLE_TEAM_ID=YOURTEAMID
+export MAX_BUILD_NUMBER=12
+bash ios-swift/scripts/archive-beta.sh ios
+```
+
+Replace the example build number with an unused positive integer for the corresponding app and marketing version. Set the app-specific privacy policy in the local configuration. The script validates the selected app, build number, embedded extensions, and iOS beta endpoint, then checks the archive signature. Archives are stored under `ios-swift/build/internal-beta`.
+
+Open the requested archive in Xcode Organizer. Choose **Distribute App → TestFlight Internal Only**, then add the processed build to the intended internal test group in App Store Connect. For independent Watch or Mac testing, repeat with the corresponding scheme and app record. [Apple’s internal TestFlight guide](https://developer.apple.com/help/app-store-connect/test-a-beta-version/add-internal-testers)
+
+Before distributing, use a signed development build to verify CloudKit and promote the tested schema to the CloudKit production environment so a TestFlight installation can access it. [Apple’s CloudKit schema guide](https://developer.apple.com/documentation/cloudkit/deploying-an-icloud-container-s-schema)
+
+On the original iPhone, first check that a fresh demo can send and receive one regular chat message. If it reports that OpenAI data sharing must be reviewed, verify that the TestFlight build and its beta backend agree on the consent flow before treating chat as ready. The Apple-device archive does not certify that live beta path.
+
 ## Device acceptance
 
 Use Xcode 27.1 or newer for the full iPhone Duo display and the Duo simulator in Device Hub. The existing Xcode 26 GitHub workflow checks compatibility with the older SDK. It cannot validate Duo screen transitions.

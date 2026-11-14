@@ -39,6 +39,10 @@ jobs:
         with:
           node-version: '22'
           cache: npm
+      - name: Test TestFlight archive metadata checks
+        run: |
+          bash -n ios-swift/scripts/archive-beta.sh
+          python3 -m unittest discover -s ios-swift/scripts -p 'test_verify_beta_archive.py'
       - run: npm ci
       - run: npx tsc --noEmit
       - run: npm ci --prefix backend
