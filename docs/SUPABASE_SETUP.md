@@ -51,7 +51,7 @@ For the backend, set `SUPABASE_URL` to the API URL above and `SUPABASE_ANON_KEY`
 
 ### Guest demo configuration
 
-Enable anonymous sign-ins in Authentication → Sign In / Providers → Anonymous Sign-Ins, and enable manual identity linking in Authentication settings. The native app calls `signInAnonymously()` only when the user starts Try Demo; it does not request an Apple identity or a purchase. Real anonymous sessions still assume the `authenticated` database role and use the existing quota RPC. The backend expires guests using Auth's verified `created_at` after seven days, before quota/provider calls. The UI clock is only presentation; the server never accepts a client-supplied trial start date.
+Enable anonymous sign-ins in Authentication → Sign In / Providers → Anonymous Sign-Ins, and enable manual identity linking in Authentication settings. The native app calls `signInAnonymously()` only when the user starts Try Demo; it does not request an Apple identity or a purchase. Real anonymous sessions still assume the `authenticated` database role and use the existing quota RPC. The backend expires guests using Auth's verified `created_at` after three days, before quota/provider calls. The UI clock is only presentation; the server never accepts a client-supplied trial start date.
 
 The app uses native `linkIdentityWithIdToken` to continue with Apple while preserving the guest user ID. Manual linking must be enabled before testing this upgrade. Existing-identity conflicts are surfaced rather than merging another account's data. Anonymous signup also needs internet and remains subject to Supabase's signup limits/CAPTCHA configuration. Enabling it is required before a live guest acceptance test; the connected tools do not expose Auth setting writes.
 

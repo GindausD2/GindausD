@@ -25,7 +25,7 @@ struct DemoOnboardingView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Close demo welcome")
                         Spacer()
-                        Text("Your seven-day demo")
+                        Text("Your three-day demo")
                             .font(.subheadline.weight(.medium))
                             .foregroundStyle(.secondary)
                         Spacer()
@@ -33,7 +33,7 @@ struct DemoOnboardingView: View {
                     }
                     .disabled(isLaunching)
 
-                    EntryHero(eyebrow: "SEVEN DAYS, A LITTLE LIGHTER", title: "Say hello\nto your Max.", subtitle: "A little time together.\nSee how Max fits into your day.", logoWidth: 196)
+                    EntryHero(eyebrow: "THREE DAYS, A LITTLE LIGHTER", title: "Say hello\nto your Max.", subtitle: "A little time together.\nSee how Max fits into your day.", logoWidth: 196)
 
                     VStack(alignment: .leading, spacing: 18) {
                         EntryFeatureRow(icon: "bubble.left.and.bubble.right", title: "Talk it through", detail: "Ideas, questions and everyday plans.")
@@ -67,8 +67,8 @@ struct DemoOnboardingView: View {
                     .disabled(isLaunching)
 
                     VStack(spacing: 14) {
-                        EntryPrimaryButton(title: isLaunching ? "Getting your space ready…" : "Start my 7-day demo", isLoading: isLaunching, action: launchDemo)
-                        Text("No Apple sign-in. No payment.\nYour demo ends after 7 days.")
+                        EntryPrimaryButton(title: isLaunching ? "Getting your space ready…" : "Start my 3-day demo", isLoading: isLaunching, action: launchDemo)
+                        Text("No Apple sign-in. No payment.\nYour demo ends after 3 days.")
                             .font(.caption).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }

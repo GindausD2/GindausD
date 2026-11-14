@@ -111,34 +111,6 @@ struct WelcomeView: View {
 
 }
 
-// MARK: - Shared Apple Sign-In Handler
-
-private func appleSignInHandler(authService: AuthService, linkGuest: Bool = true) -> (Result<ASAuthorization, Error>) -> Void {
-    return { result in
-        if case .failure(let error) = result {
-            Task { @MainActor in authService.cancelAppleSignIn(); authService.authError = error.localizedDescription }
-            return
-        }
-        guard case .success(let auth) = result,
-              let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-              let tokenData = credential.identityToken,
-              let idToken = String(data: tokenData, encoding: .utf8)
-        else {
-            Task { @MainActor in authService.authError = "Apple sign-in couldn't complete. Please try again." }
-            return
-        }
-        let fullName = [credential.fullName?.givenName, credential.fullName?.familyName]
-            .compactMap { $0 }.joined(separator: " ")
-        Task {
-            await authService.signInWithApple(
-                idToken: idToken,
-                name: fullName.isEmpty ? nil : fullName,
-                linkGuest: linkGuest
-            )
-        }
-    }
-}
-
 // MARK: - Continue after the guest demo
 
 struct DemoUpgradeView: View {
@@ -149,7 +121,7 @@ struct DemoUpgradeView: View {
             CompanionCanvas()
             VStack(spacing: 22) {
                 MaxEntryBrand(width: 180)
-                Text(authService.isDemoExpired ? "Your seven-day demo has ended" : "Keep Max with you")
+                Text(authService.isDemoExpired ? "Your three-day demo has ended" : "Keep Max with you")
                     .font(.title2.weight(.semibold))
                     .multilineTextAlignment(.center)
                 Text("Continue with Apple to choose your subscription and keep your saved thoughts.")
@@ -157,7 +129,7 @@ struct DemoUpgradeView: View {
                     .multilineTextAlignment(.center)
                 SignInWithAppleButton(.continue, onRequest: { request in
                     authService.prepareAppleSignIn(request)
-                }, onCompletion: appleSignInHandler(authService: authService))
+                }, onCompletion: { authService.completeAppleSignIn($0) })
                     .signInWithAppleButtonStyle(.black)
                     .frame(height: 52)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
@@ -284,8 +256,8 @@ private struct AuthEntryPage: View {
                     }
                     SignInWithAppleButton(
                         isLogin ? .signIn : .signUp,
-                        onRequest: { authService.prepareAppleSignIn($0) },
-                        onCompletion: appleSignInHandler(authService: authService, linkGuest: !isLogin)
+                        onRequest: { authService.prepareAppleSignIn($0, linkGuest: !isLogin) },
+                        onCompletion: { authService.completeAppleSignIn($0) }
                     )
                     .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
                     .frame(height: 54)
@@ -316,7 +288,7 @@ private struct AuthEntryPage: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(authService.isLoading)
-                Text("7 days to meet Max. No Apple sign-in or payment needed for the demo.")
+                Text("3 days to meet Max. No Apple sign-in or payment needed for the demo.")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -358,7 +330,7 @@ private struct WelcomePage: View {
 
                     VStack(spacing: 10) {
                         demoButton
-                        Text("7 days to explore Max")
+                        Text("3 days to explore Max")
                             .font(.footnote.weight(.medium))
                         Text("No Apple sign-in or payment needed.")
                             .font(.caption)

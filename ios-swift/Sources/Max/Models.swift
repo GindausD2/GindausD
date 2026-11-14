@@ -39,9 +39,11 @@ struct AuthUser: Codable, Equatable {
         return isDemo == true ? "Guest" : nil
     }
 
+    static let demoTrialDays = 3
+
     var trialExpiresAt: Date? {
         guard isDemo == true, let trialStartedAt else { return nil }
-        return trialStartedAt.addingTimeInterval(7 * 24 * 3600)
+        return trialStartedAt.addingTimeInterval(TimeInterval(Self.demoTrialDays * 24 * 3600))
     }
 
     func demoIsExpired(at date: Date) -> Bool {

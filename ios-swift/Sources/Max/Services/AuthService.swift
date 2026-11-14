@@ -7,6 +7,23 @@ import AuthenticationServices
 import CryptoKit
 import Security
 
+struct AppleSignInAttempt {
+    let state: String
+    let nonce: String
+    let linkGuest: Bool
+    let accountID: String?
+    let guestID: UUID?
+    let startedAt: Date
+
+    static func consume(_ pending: inout Self?, state: String?, accountID: String?, now: Date = .now) -> Self? {
+        guard let attempt = pending, let state, state == attempt.state else { return nil }
+        pending = nil
+        let age = now.timeIntervalSince(attempt.startedAt)
+        guard attempt.accountID == accountID, (0..<300).contains(age) else { return nil }
+        return attempt
+    }
+}
+
 @MainActor
 final class AuthService: ObservableObject {
     static let shared = AuthService()
@@ -48,7 +65,7 @@ final class AuthService: ObservableObject {
     @Published private(set) var serverExpiredDemo = false
 
     private let demoKey      = "max:auth_user_demo"
-    private var appleNonce: String?
+    private var appleAttempt: AppleSignInAttempt?
 
     var demoTrialExpiry: Date? {
         currentUser?.trialExpiresAt
@@ -129,54 +146,105 @@ final class AuthService: ObservableObject {
 
     // MARK: - Apple (native button → Supabase ID-token exchange)
 
-    func prepareAppleSignIn(_ request: ASAuthorizationAppleIDRequest) {
+    func prepareAppleSignIn(_ request: ASAuthorizationAppleIDRequest, linkGuest: Bool = true) {
+        authError = nil
+        appleAttempt = nil
         var random = [UInt8](repeating: 0, count: 32)
         guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else {
-            appleNonce = nil
-            authError = "Apple sign-in couldn't start. Please try again."
+            authError = "Apple sign-in couldn’t start. Please try again."
             return
         }
         let nonce = random.map { String(format: "%02x", $0) }.joined()
-        appleNonce = nonce
+        let state = UUID().uuidString
+        let session = supabase.auth.currentSession
+        let guestID = session?.user.isAnonymous == true ? session?.user.id : nil
+        appleAttempt = AppleSignInAttempt(state: state, nonce: nonce, linkGuest: linkGuest,
+                                          accountID: currentUser?.id, guestID: guestID, startedAt: .now)
         request.requestedScopes = [.fullName, .email]
+        request.state = state
         request.nonce = SHA256.hash(data: Data(nonce.utf8)).map { String(format: "%02x", $0) }.joined()
     }
 
-    func cancelAppleSignIn() { appleNonce = nil }
-
     var hasGuestSession: Bool { supabase.auth.currentSession?.user.isAnonymous == true }
 
-    func signInWithApple(idToken: String, name: String?, linkGuest: Bool = true) async {
-        guard let nonce = appleNonce else {
-            authError = "Please start Apple sign-in again."
+    func completeAppleSignIn(_ result: Result<ASAuthorization, Error>, onSuccess: (() -> Void)? = nil) {
+        guard !isLoading else { return }
+        switch result {
+        case .failure(let error):
+            if authError == nil { authError = Self.appleAuthorizationMessage(error) }
+            // The failure has no request state. Only a matching success or a new request
+            // should consume the challenge, since a dismissal may arrive during a retry.
+        case .success(let authorization):
+            guard let credential = authorization.credential as? ASAuthorizationAppleIDCredential,
+                  let data = credential.identityToken,
+                  let token = String(data: data, encoding: .utf8), !token.isEmpty else {
+                authError = "Apple didn’t return a sign-in credential. Please try again."
+                return
+            }
+            guard let attempt = AppleSignInAttempt.consume(&appleAttempt, state: credential.state,
+                                                           accountID: currentUser?.id) else {
+                authError = "This Apple sign-in attempt expired or was replaced. Please try again."
+                return
+            }
+            let name = [credential.fullName?.givenName, credential.fullName?.familyName]
+                .compactMap { $0 }.joined(separator: " ")
+            isLoading = true
+            authError = nil
+            Task { await exchangeAppleCredential(token, name: name, attempt: attempt, onSuccess: onSuccess) }
+        }
+    }
+
+    static func appleAuthorizationMessage(_ error: Error) -> String? {
+        let failure = error as NSError
+        if failure.domain == ASAuthorizationError.errorDomain &&
+            failure.code == ASAuthorizationError.Code.canceled.rawValue {
+            return nil
+        }
+        return "Apple couldn’t complete sign-in. Please try again."
+    }
+
+    private func exchangeAppleCredential(_ idToken: String, name: String, attempt: AppleSignInAttempt,
+                                         onSuccess: (() -> Void)?) async {
+        defer { isLoading = false }
+        guard currentUser?.id == attempt.accountID else { return }
+        if attempt.linkGuest, currentUser?.isDemo == true, attempt.guestID == nil {
+            authError = "Max couldn’t restore your guest account. Reopen Max and try again."
             return
         }
-        appleNonce = nil
-        isLoading = true; authError = nil
-        defer { isLoading = false }
         do {
-            let credentials = OpenIDConnectCredentials(provider: .apple, idToken: idToken, nonce: nonce)
+            let credentials = OpenIDConnectCredentials(provider: .apple, idToken: idToken, nonce: attempt.nonce)
             let session: Session
-            if linkGuest && supabase.auth.currentSession?.user.isAnonymous == true {
-                // Link the verified Apple identity to preserve the guest's account/data scope.
+            if attempt.linkGuest, let guestID = attempt.guestID {
+                guard let active = supabase.auth.currentSession, active.user.isAnonymous, active.user.id == guestID else {
+                    authError = "Your guest account changed. Please start Apple sign-in again."
+                    return
+                }
                 session = try await supabase.auth.linkIdentityWithIdToken(credentials: credentials)
+                guard session.user.id == guestID, !session.user.isAnonymous else {
+                    authError = "Max couldn’t confirm that Apple was linked to your guest account."
+                    return
+                }
             } else {
                 session = try await supabase.auth.signInWithIdToken(credentials: credentials)
             }
-            let appleName = name?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if let appleName, !appleName.isEmpty {
+            let appleName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !appleName.isEmpty {
                 _ = try? await supabase.auth.update(
                     user: UserAttributes(data: ["full_name": .string(appleName)])
                 )
             }
-            guard let latest = supabase.auth.currentSession, latest.user.id == session.user.id else { return }
-            applySession(latest, appleName: appleName?.isEmpty == false ? appleName : nil)
+            guard let latest = supabase.auth.currentSession, latest.user.id == session.user.id else {
+                authError = "Max couldn’t confirm the new session. Please try again."
+                return
+            }
+            applySession(latest, appleName: appleName.isEmpty ? nil : appleName)
+            onSuccess?()
         } catch {
-            authError = error.localizedDescription
+            authError = "Max couldn’t complete Apple sign-in. Check your connection and try again."
         }
     }
 
-    // MARK: - Seven-day guest demo (no Apple identity or purchase required)
+    // MARK: - Three-day guest demo (no Apple identity or purchase required)
 
     @discardableResult
     func startDemo(name: String = "", voice: String = "female") async -> Bool {
@@ -255,6 +323,7 @@ final class AuthService: ObservableObject {
     // MARK: - Sign Out
 
     func signOut() {
+        appleAttempt = nil
         let wasDemo = currentUser?.isDemo == true
         currentUser = nil
         isUpgradingDemo = false
@@ -266,7 +335,7 @@ final class AuthService: ObservableObject {
         }
     }
 
-    /// Called on each app foreground to expire a demo whose 7-day trial is over.
+    /// Called on each app foreground to expire a demo whose 3-day trial is over.
     func expireDemoIfNeeded() {
         guard isDemoExpired else { return }
         markDemoExpired()

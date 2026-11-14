@@ -13,7 +13,7 @@ The change is confined to presentation and captures. Physical microphone, haptic
 
 ## Entry screens
 
-Welcome, Login, Sign Up and Try Demo share the glacier-blue orb, rounded editorial typography and frosted cards. The Login/Sign Up slider remains exclusive to authentication. Apple buttons adapt to appearance. The demo introduces its seven-day duration before starting, and keeps name/voice personalisation optional rather than asking for unused gender data.
+Welcome, Login, Sign Up and Try Demo share the glacier-blue orb, rounded editorial typography and frosted cards. The Login/Sign Up slider remains exclusive to authentication. Apple buttons adapt to appearance. The demo introduces its three-day duration before starting, and keeps name/voice personalisation optional rather than asking for unused gender data.
 
 Conversation styling stays as it was before the entry redesign. The floating blue orb and the removal of the permanent input bar and Home/Profile switcher remain in place.
 

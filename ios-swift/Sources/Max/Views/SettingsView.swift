@@ -149,35 +149,16 @@ struct SettingsView: View {
                         // ── Guest Sign in with Apple ──────────────────────────
                         if authService.currentUser?.isDemo == true {
                             VStack(spacing: 10) {
-                                SignInWithAppleButton(.signIn, onRequest: { req in
-                                    authService.prepareAppleSignIn(req)
-                                }, onCompletion: { result in
-                                    switch result {
-                                    case .success(let auth):
-                                        guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-                                              let data = credential.identityToken,
-                                              let token = String(data: data, encoding: .utf8) else {
-                                            authService.authError = "Apple sign-in couldn't complete. Please try again."
-                                            return
-                                        }
-                                        let name = [credential.fullName?.givenName,
-                                                    credential.fullName?.familyName]
-                                            .compactMap { $0 }.joined(separator: " ")
-                                        Task {
-                                            await authService.signInWithApple(
-                                                idToken: token,
-                                                name: name.isEmpty ? nil : name
-                                            )
-                                            if authService.currentUser?.isDemo != true { dismiss() }
-                                        }
-                                    case .failure(let error):
-                                        authService.cancelAppleSignIn()
-                                        authService.authError = error.localizedDescription
-                                    }
+                                SignInWithAppleButton(.continue, onRequest: {
+                                    authService.prepareAppleSignIn($0)
+                                }, onCompletion: {
+                                    authService.completeAppleSignIn($0) { dismiss() }
                                 })
                                 .signInWithAppleButtonStyle(.black)
                                 .frame(height: 50)
                                 .cornerRadius(12)
+                                .disabled(authService.isLoading)
+                                if authService.isLoading { ProgressView() }
 
                                 if let error = authService.authError { Text(error).font(.footnote).foregroundStyle(.red) }
                                 Text("Continue with Apple to keep this guest account. Your notes stay on this iPhone.")
@@ -289,7 +270,7 @@ struct SettingsView: View {
             HStack(spacing: 4) {
                 Image(systemName: subscribed ? "crown.fill" : "plus")
                     .font(.system(size: 12, weight: .semibold))
-                Text(subscribed ? "Max Pro" : "7-day demo")
+                Text(subscribed ? "Max Pro" : "3-day demo")
                     .font(.subheadline)
             }
             .foregroundStyle(subscribed ? Color(hex: "#F59E0B") : .secondary)
@@ -376,7 +357,7 @@ private struct SubscriptionSheet: View {
                 if authService.currentUser?.isDemo == true {
                     VStack(spacing: 20) {
                         MaxLogoView(width: 84)
-                        Text("Your seven-day demo").font(.title2.weight(.semibold))
+                        Text("Your three-day demo").font(.title2.weight(.semibold))
                         Text("No payment is needed during your demo. Continue with Apple when you’re ready to subscribe.")
                         Button("Continue with Apple") { authService.beginDemoUpgrade(); dismiss() }
                     }.multilineTextAlignment(.center).padding(24)

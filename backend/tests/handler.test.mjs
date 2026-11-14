@@ -91,9 +91,9 @@ test('full native tool feedback round trip retains IDs, schema and per-request q
 });
 
 const trialStart = Date.parse('2026-10-01T08:00:00.000Z');
-const trialEnd = trialStart + 7 * 24 * 60 * 60 * 1000;
+const trialEnd = trialStart + 3 * 24 * 60 * 60 * 1000;
 const guest = { id: 'guest-account', is_anonymous: true, created_at: new Date(trialStart).toISOString() };
-test('a guest can stream real AI before seven days without an Apple identity', async () => {
+test('a guest can stream real AI before three days without an Apple identity', async () => {
   const f = fixture({ user: guest, now: () => trialEnd - 1 });
   const response = await f.handler(request());
   assert.equal(response.status, 200);
@@ -105,7 +105,7 @@ test('guest expiry is exact and refresh/client trial claims cannot restart it', 
     const f = fixture({ user: { ...guest, last_sign_in_at: new Date(current).toISOString(), user_metadata: { is_anonymous: false, trial_started_at: new Date(current).toISOString() } }, now: () => current });
     const response = await f.handler(request({ ...payload, is_anonymous: false, trial_started_at: new Date(current).toISOString() }));
     assert.equal(response.status, 402);
-    assert.equal((await response.json()).code, 'demo_expired');
+    assert.deepEqual(await response.json(), {error: 'Your three-day demo has ended.', code: 'demo_expired'});
     assert.equal(f.calls.length, 1, 'expired guests must not consume quota or reach OpenAI');
   }
 });

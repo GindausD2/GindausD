@@ -38,7 +38,7 @@ test('voice requires verified auth and does not expose the provider key', async 
   assert.equal(f.calls[1].options.headers.Authorization, 'Bearer session');
 });
 test('expired guests and malformed verified users cannot spend voice credits', async () => {
-  for (const user of [{ ...guest, created_at: '2026-10-14T12:00:00Z' }, { id: account }, { ...guest, created_at: '2027-01-01' }]) {
+  for (const user of [{ ...guest, created_at: '2026-10-18T12:00:00Z' }, { id: account }, { ...guest, created_at: '2027-01-01' }]) {
     const f = fixture({ user }); const r = await f.handler(request());
     assert.ok([402, 503].includes(r.status)); assert.equal(f.calls.length, 1); assert.equal(f.voices, 0);
   }

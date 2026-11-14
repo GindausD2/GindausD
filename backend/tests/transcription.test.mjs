@@ -56,7 +56,7 @@ test('missing authentication or provider configuration never spends quota or cal
   assert.equal((await missing.handle(request())).status, 503); assert.equal(missing.calls.length, 0);
 });
 test('exact demo expiry and paid access are checked before audio/quota/provider', async () => {
-  for (const user of [{ ...guest, created_at: '2026-10-28T12:00:00Z' }, { id: 'paid', is_anonymous: false, user_metadata: { subscribed: true } }]) {
+  for (const user of [{ ...guest, created_at: '2026-11-01T12:00:00Z' }, { id: 'paid', is_anonymous: false, user_metadata: { subscribed: true } }]) {
     const f = fixture({ user, active: false }); const result = await f.handle(request());
     assert.equal(result.status, 402); assert.equal(f.calls.length, 1);
     assert.equal((await result.json()).code, user.is_anonymous ? 'demo_expired' : 'subscription_required');
