@@ -22,7 +22,7 @@ https://github.com/GindausD2/GindausD/pull/2
 ## Changes included
 
 - Supplied logo alone replaces the text heading on Home and entry screens.
-- Updated Login, Sign Up and seven-day Demo designs are included.
+- Updated Login, Sign Up and Demo designs are included.
 - Apple sign-in now creates a secure random nonce, hashes it for the Apple
   request, and supplies the original nonce to Supabase for sign-in or linking.
   Login can explicitly enter an existing account; signup/demo continuation links
@@ -95,7 +95,7 @@ Checked 21 October 2026:
 
 ## Acceptance before launch
 
-- Real guest → text reply → spoken reply; exact seven-day expiry; guest → Apple
+- Real guest → text reply → spoken reply; exact three-day expiry; guest → Apple
   account linking retains data. Real permanent account without a subscription
   cannot use the managed AI endpoints.
 - Sandbox purchase and restore, account A/B isolation, cancellation, expiry,

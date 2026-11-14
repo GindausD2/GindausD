@@ -39,8 +39,8 @@ Apple sign-in, a purchase or a signed iPhone install.
    prepaid credits. No payment or billing-setting changes were performed.
 2. After credits are restored, repeat one real guest → beta text response →
    beta voice request. Successful text and audio generation remain unverified.
-   The seven-day trial and quota enforcement have fixture/concurrency coverage;
-   a full seven-day live trial lifecycle has not been observed.
+   The current three-day trial and quota enforcement have fixture coverage.
+   Verify the complete trial lifecycle again on the deployed beta.
 3. Create the monthly App Store product `com.gindausd.max.pro.monthly` at the
    owner's chosen US $4.99/month price. Configure the In-App Purchase API key,
    issuer/key IDs and Apple root certificates as the beta-prefixed server
