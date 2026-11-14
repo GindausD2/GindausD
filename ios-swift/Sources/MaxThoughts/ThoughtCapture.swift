@@ -44,7 +44,7 @@ final class ThoughtCapture: ObservableObject {
         } catch {
             releaseAudioSession()
             try? FileManager.default.removeItem(at: url)
-            error = "Max couldn’t start recording."
+            self.error = "Max couldn’t start recording."
         }
     }
 
@@ -59,7 +59,7 @@ final class ThoughtCapture: ObservableObject {
         recordingFile = nil
         defer { try? FileManager.default.removeItem(at: url) }
         guard let data = try? Data(contentsOf: url), !data.isEmpty else {
-            error = "Max couldn’t read the recording."
+            self.error = "Max couldn’t read the recording."
             return nil
         }
         return data
@@ -78,7 +78,7 @@ final class ThoughtCapture: ObservableObject {
         do {
             player = try AVAudioPlayer(data: audio)
             if player?.play() != true { throw CocoaError(.fileReadUnknown) }
-        } catch { error = "Max couldn’t play this recording." }
+        } catch { self.error = "Max couldn’t play this recording." }
     }
 
     func stopPlayback() {
