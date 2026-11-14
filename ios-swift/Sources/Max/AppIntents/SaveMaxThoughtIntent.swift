@@ -24,7 +24,7 @@ struct SaveMaxThoughtIntent: AppIntent {
         let store = ThoughtStore.shared
         store.open(scope: accountID.lowercased())
         try store.save(MaxThought(title: String(title.prefix(160)), source: "Shortcut"))
-        if !user.isDemo && store.syncEnabled { await store.sync() }
+        if user.isDemo == false && store.syncEnabled { await store.sync() }
         return .result(dialog: "Saved in Max.")
     }
 }
