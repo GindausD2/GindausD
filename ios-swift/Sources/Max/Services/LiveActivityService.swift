@@ -10,7 +10,6 @@ import Foundation
 //   start()                          ← call when a conversation begins (transitions idle → listening)
 //   update(phase:snippet:)           ← call as the conversation phase changes
 //   showToolCard(_:)                 ← call after a tool executes to show the action card
-//   clearToolCard()                  ← call to remove the card (e.g. on next listening phase)
 //   keepAlive()                      ← call when a conversation ends (transitions back to idle, stays visible)
 //   refreshStaleDate()               ← call from background task every ~4 hours to extend the system-managed window
 //   stopPersistentSession()          ← call only on sign-out / user explicitly closes the island
@@ -26,6 +25,9 @@ final class LiveActivityService {
     private var currentActivity: Activity<MaxActivityAttributes>?
     private var retiredIDs = Set<String>()
     private var generation = UUID()
+    private var currentState = MaxActivityAttributes.ContentState(phase: .idle, snippet: "")
+    private var updateTask: Task<Void, Never>?
+    private var cardExpiryTask: Task<Void, Never>?
 
     // MARK: - Persistent system-managed session
 
@@ -40,14 +42,9 @@ final class LiveActivityService {
         if let existing = Activity<MaxActivityAttributes>.activities.first(where: {
             !retiredIDs.contains($0.id) && ($0.activityState == .active || $0.activityState == .stale)
         }) {
-            currentActivity = existing
-            let version = generation
-            Task {
-                guard generation == version, currentActivity?.id == existing.id else { return }
-                await existing.update(.init(
-                    state: existing.content.state,
-                    staleDate: Date().addingTimeInterval(8 * 3600)
-                ))
+            if currentActivity?.id != existing.id {
+                currentActivity = existing
+                push(.init(phase: .idle, snippet: ""))
             }
             return .resumed
         }
@@ -56,6 +53,7 @@ final class LiveActivityService {
         let standbyState = MaxActivityAttributes.ContentState(phase: .idle, snippet: "")
 
         do {
+            currentState = standbyState
             currentActivity = try Activity.request(
                 attributes: attributes,
                 content: .init(state: standbyState, staleDate: Date().addingTimeInterval(8 * 3600)),
@@ -78,75 +76,72 @@ final class LiveActivityService {
             startPersistentSession()
         }
 
-        update(phase: .listening)
+        cardExpiryTask?.cancel()
+        push(.init(phase: .listening, snippet: "", emailAlert: currentState.emailAlert))
     }
 
     // MARK: - Update
 
-    /// Push a new phase + optional transcript snippet to the Dynamic Island.
-    /// Clears any active tool card (conversation taking priority).
     func update(phase: MaxActivityAttributes.ContentState.Phase, snippet: String = "") {
-        let clipped = snippet.count > 80 ? String(snippet.suffix(80)) : snippet
-        push(MaxActivityAttributes.ContentState(phase: phase, snippet: clipped, toolCard: nil))
+        let clipped = String(snippet.suffix(80))
+        push(.init(phase: phase, snippet: clipped, toolCard: currentState.toolCard, emailAlert: currentState.emailAlert))
     }
 
-    // MARK: - Tool Cards
-
-    /// Show a contextual action card in the Dynamic Island after a tool executes.
     func showToolCard(_ card: ToolCard) {
-        guard let activity = currentActivity else { return }
-        let s = activity.content.state
-        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet, toolCard: card))
+        guard currentActivity != nil else { return }
+        cardExpiryTask?.cancel()
+        var state = currentState
+        state.toolCard = card
+        push(state)
+        if card.reminderStage != .setting {
+            cardExpiryTask = Task { [weak self] in
+                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                self?.clearToolCard(matching: card)
+            }
+        }
     }
 
-    /// Remove the tool card, reverting to the current phase display.
-    func clearToolCard() {
-        guard let activity = currentActivity else { return }
-        let s = activity.content.state
-        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet, toolCard: nil))
+    func clearToolCard(matching card: ToolCard) {
+        guard currentState.toolCard == card else { return }
+        var state = currentState
+        state.toolCard = nil
+        push(state)
     }
 
-    // MARK: - Conversation end → keep alive in standby
-
-    func end() {
-        keepAlive()
-    }
+    func end() { keepAlive() }
 
     func keepAlive() {
         guard currentActivity != nil else {
             startPersistentSession()
             return
         }
-        let standbyState = MaxActivityAttributes.ContentState(phase: .idle, snippet: "")
-        push(standbyState)
+        update(phase: .idle)
     }
 
     // MARK: - Background refresh
 
     func refreshStaleDate() async {
-        guard let activity = currentActivity else {
+        guard currentActivity != nil else {
             startPersistentSession()
             return
         }
-        let current = activity.content.state
-        await activity.update(.init(state: current, staleDate: Date().addingTimeInterval(8 * 3600)))
+        push(currentState)
+        await updateTask?.value
     }
 
     // MARK: - Email Alerts
 
     func showEmailAlert(_ alert: MaxActivityAttributes.ContentState.EmailAlert) {
-        guard let activity = currentActivity else { return }
-        let s = activity.content.state
-        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet,
-                                                toolCard: s.toolCard, emailAlert: alert))
+        var state = currentState
+        state.emailAlert = alert
+        push(state)
     }
 
     func clearEmailAlert() {
-        guard let activity = currentActivity else { return }
-        let s = activity.content.state
-        guard s.emailAlert != nil else { return }
-        push(MaxActivityAttributes.ContentState(phase: s.phase, snippet: s.snippet,
-                                                toolCard: s.toolCard, emailAlert: nil))
+        guard currentState.emailAlert != nil else { return }
+        var state = currentState
+        state.emailAlert = nil
+        push(state)
     }
 
     // MARK: - Stop (sign-out / explicit dismiss)
@@ -155,8 +150,14 @@ final class LiveActivityService {
         let activities = Activity<MaxActivityAttributes>.activities
         retiredIDs.formUnion(activities.map(\.id))
         generation = UUID()
+        cardExpiryTask?.cancel()
+        let pendingUpdate = updateTask
+        updateTask?.cancel()
+        updateTask = nil
         currentActivity = nil
+        currentState = .init(phase: .idle, snippet: "")
         Task {
+            await pendingUpdate?.value
             for activity in activities { await activity.end(nil, dismissalPolicy: .immediate) }
         }
     }
@@ -165,9 +166,13 @@ final class LiveActivityService {
 
     private func push(_ state: MaxActivityAttributes.ContentState) {
         guard let activity = currentActivity else { return }
+        currentState = state
         let version = generation
-        Task {
-            guard generation == version, currentActivity?.id == activity.id else { return }
+        let previous = updateTask
+        previous?.cancel()
+        updateTask = Task {
+            await previous?.value
+            guard !Task.isCancelled, generation == version, currentActivity?.id == activity.id else { return }
             await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(8 * 3600)))
         }
     }

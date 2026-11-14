@@ -11,7 +11,7 @@ async function serve(t, handle) {
   const server = createMaxServer({ handle }); server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const base = 'http://127.0.0.1:' + server.address().port;
-  return { base, post: (data = body, extra = {}) => fetch(base + '/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer test-session' }, body: data, ...extra }) };
+  return { base, post: (data = body, extra = {}) => fetch(base + '/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Max-AI-Consent': '1', Authorization: 'Bearer test-session' }, body: data, ...extra }) };
 }
 test('actual HTTP adapter serves health and returns validation errors', async t => {
   let calls = 0;

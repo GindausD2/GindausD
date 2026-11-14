@@ -19,481 +19,157 @@ import WidgetKit
 
 typealias MaxAttr = MaxActivityAttributes
 
-// MARK: - Brand colors
-
-private let violet      = Color(red: 0.47, green: 0.71, blue: 0.80)
-private let violetDeep  = Color(red: 0.19, green: 0.37, blue: 0.45)
-private let violetLight = Color(red: 0.76, green: 0.91, blue: 0.96)
-private let red         = Color(red: 0.94, green: 0.27, blue: 0.27)
-private let blue        = Color(red: 0.23, green: 0.51, blue: 0.96)
-private let cardBg      = Color(red: 0.06, green: 0.04, blue: 0.10)
-
-// MARK: - Widget Bundle
+private let glacier = Color(red: 0.57, green: 0.81, blue: 0.93)
 
 @main
 struct MaxLiveActivityBundle: WidgetBundle {
-    var body: some Widget {
-        MaxLiveActivityWidget()
-    }
+    var body: some Widget { MaxLiveActivityWidget() }
 }
-
-// MARK: - Widget Configuration
 
 struct MaxLiveActivityWidget: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MaxAttr.self) { context in
-            MaxLockScreenCard(context: context)
+            VStack(alignment: .leading, spacing: 10) {
+                IslandHeader(state: context.state)
+                IslandDetails(state: context.state)
+            }
+            .padding(14)
+            .activityBackgroundTint(.black)
+            .activitySystemActionForegroundColor(.white)
+            .widgetURL(URL(string: "maxapp://listen"))
         } dynamicIsland: { context in
             DynamicIsland {
-                // ── Expanded (long-press on the pill) ─────────────────────────
                 DynamicIslandExpandedRegion(.leading) {
-                    MaxLogoView(width: 56)
-                        .padding(.leading, 6)
-                }
-                DynamicIslandExpandedRegion(.trailing) {
-                    if context.state.toolCard == nil && context.state.emailAlert == nil {
-                        PhaseIconView(phase: context.state.phase, size: 18)
-                            .padding(.trailing, 6)
-                    }
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    VStack(alignment: .center, spacing: 0) {
-                        Text("Max")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                        if context.state.emailAlert != nil {
-                            Text("New mail")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(blue)
-                        } else {
-                            Text(context.state.toolCard != nil ? "Done" : context.state.phase.label)
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(context.state.toolCard != nil ? violetLight : phaseAccent(context.state.phase))
-                        }
-                    }
+                    IslandHeader(state: context.state)
+                        .dynamicIsland(verticalPlacement: .belowIfTooWide)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    VStack(spacing: 10) {
-                    if let alert = context.state.emailAlert {
-                        EmailAlertCardView(alert: alert)
-                            .padding(.bottom, 10)
-                    } else if let card = context.state.toolCard {
-                        ToolCardView(card: card)
-                            .padding(.bottom, 10)
-                    } else if !context.state.snippet.isEmpty {
-                        Text(context.state.snippet)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 20)
-                            .padding(.bottom, 10)
-                    }
-                    HStack(spacing: 18) {
-                        Link(destination: URL(string: "maxapp://listen")!) { Label("Talk", systemImage: "mic") }
-                        Link(destination: URL(string: "maxapp://briefing")!) { Label("Briefing", systemImage: "sun.horizon") }
-                        Link(destination: URL(string: "maxapp://quick")!) { Label("Plan", systemImage: "clock") }
-                    }.font(.system(size: 12, weight: .medium)).foregroundStyle(violetLight)
-                    }
+                    IslandDetails(state: context.state)
+                        .padding(.horizontal, 6)
                 }
             } compactLeading: {
-                // ── Compact: triple moon logo ─────────────────────────────────
-                MaxLogoView(width: 32)
-                    .padding(.leading, 2)
+                IslandOrb(size: 18)
             } compactTrailing: {
-                // ── Compact: email badge → tool icon → phase icon (priority order)
-                if let alert = context.state.emailAlert {
-                    HStack(spacing: 3) {
-                        Image(systemName: "envelope.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(blue)
-                        Text("\(alert.count)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(blue)
-                    }
-                } else if let card = context.state.toolCard {
-                    Image(systemName: card.iconName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(toolCardAccent(card.kind))
-                } else {
-                    PhaseIconView(phase: context.state.phase, size: 13)
+                if context.state.phase != .idle || context.state.toolCard != nil || context.state.emailAlert != nil {
+                    Image(systemName: context.state.statusSymbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(glacier)
+                        .accessibilityLabel(Text(context.state.statusLabel))
                 }
             } minimal: {
-                // ── Minimal: just the center ring of the logo at tiny size ────
-                MaxLogoView(width: 24)
+                IslandOrb(size: 17)
+                    .accessibilityLabel(Text("Max, " + context.state.statusLabel))
             }
-            .keylineTint(violet)
+            .keylineTint(glacier)
             .widgetURL(URL(string: "maxapp://listen"))
         }
         .supplementalActivityFamilies([.small])
     }
 }
 
-// MARK: - Lock Screen / StandBy Card
-//
-// Layout mirrors the reference screenshot:
-//   [avatar]  Max                          [time elapsed]
-//   [phase label — accent color]            OpenAI
-//
-//   Bold headline transcript text OR tool action card
-//
-
-private struct MaxLockScreenCard: View {
-    let context: ActivityViewContext<MaxAttr>
-    @Environment(\.activityFamily) var activityFamily
+private struct IslandOrb: View {
+    let size: CGFloat
 
     var body: some View {
-        if activityFamily == .small {
-            MaxStandByView(context: context)
-        } else {
-            MaxLockScreenBody(context: context)
-        }
+        Circle()
+            .fill(RadialGradient(colors: [.white, glacier, Color(red: 0.10, green: 0.29, blue: 0.41)],
+                                 center: .topLeading, startRadius: 0, endRadius: size))
+            .overlay(alignment: .bottomTrailing) {
+                Circle().fill(.white.opacity(0.12)).frame(width: size * 0.47, height: size * 0.47)
+            }
+            .overlay { Circle().strokeBorder(.white.opacity(0.38), lineWidth: 0.5) }
+            .frame(width: size, height: size)
     }
 }
 
-private struct MaxLockScreenBody: View {
-    let context: ActivityViewContext<MaxAttr>
+private struct IslandHeader: View {
+    let state: MaxAttr.ContentState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-
-            // ── Row 1: triple moon logo + app name + source ───────────────────
-            HStack(spacing: 10) {
-                MaxLogoView(width: 52)
-
-                Text("Max")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.white)
-
-                Spacer()
-
-                Text("OpenAI")
-                    .font(.system(size: 14, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.45))
-            }
-            .padding(.bottom, 10)
-
-            // ── Row 2: phase label (accent) + source tag ──────────────────────
-            HStack(alignment: .center, spacing: 0) {
-                Text(context.state.emailAlert != nil ? "\(context.state.emailAlert!.count) Unread · Important"
-                     : context.state.toolCard != nil ? "Action Complete"
-                     : context.state.phase.label)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(context.state.emailAlert != nil ? blue
-                                     : context.state.toolCard != nil ? violetLight
-                                     : phaseAccent(context.state.phase))
-
-                Spacer()
-
-                Text("AI Assistant")
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(Color.white.opacity(0.40))
-            }
-            .padding(.bottom, 8)
-
-            // ── Body: email alert → tool card → transcript ────────────────────
-            if let alert = context.state.emailAlert {
-                EmailAlertCardView(alert: alert)
-            } else if let card = context.state.toolCard {
-                ToolCardView(card: card)
-            } else if context.state.snippet.isEmpty {
-                Text(context.state.phase.emptyLabel)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(3)
-            } else {
-                Text(context.state.snippet)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .background(cardBg)
-        .activityBackgroundTint(cardBg)
-        .activitySystemActionForegroundColor(.white)
-    }
-}
-
-// MARK: - StandBy View (iOS 17 landscape charging display)
-
-private struct MaxStandByView: View {
-    let context: ActivityViewContext<MaxAttr>
-
-    var body: some View {
-        HStack(spacing: 24) {
-            MaxLogoView(width: 80)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Max")
-                    .font(.system(size: 36, weight: .bold))
-                    .foregroundStyle(.white)
-
-                if let alert = context.state.emailAlert {
-                    Text("\(alert.count) unread · \(alert.latestFrom)")
-                        .font(.system(size: 22, weight: .semibold))
-                        .foregroundStyle(blue)
-                        .lineLimit(1)
-                    Text(alert.latestSubject)
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.65))
-                        .lineLimit(1)
-                } else if let card = context.state.toolCard {
-                    HStack(spacing: 10) {
-                        Image(systemName: card.iconName)
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(toolCardAccent(card.kind))
-                        Text(card.line1)
-                            .font(.system(size: 22, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .lineLimit(1)
-                    }
-                    Text(card.line2)
-                        .font(.system(size: 16, weight: .regular))
-                        .foregroundStyle(.white.opacity(0.65))
-                        .lineLimit(1)
-                } else {
-                    Text(context.state.phase.label)
-                        .font(.system(size: 24, weight: .semibold))
-                        .foregroundStyle(phaseAccent(context.state.phase))
-                    if !context.state.snippet.isEmpty {
-                        Text(context.state.snippet)
-                            .font(.system(size: 18, weight: .regular))
-                            .foregroundStyle(.white.opacity(0.75))
-                            .lineLimit(2)
-                    }
+        HStack(spacing: 9) {
+            IslandOrb(size: 28).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Max").font(.subheadline.weight(.semibold)).foregroundStyle(.white)
+                HStack(spacing: 4) {
+                    Circle().fill(state.phase == .listening ? .red : glacier)
+                        .frame(width: 5, height: 5).accessibilityHidden(true)
+                    Text(state.statusLabel).font(.caption2.weight(.medium)).foregroundStyle(.white.opacity(0.76))
                 }
             }
-
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 20)
-        .background(cardBg)
-        .activityBackgroundTint(cardBg)
-        .activitySystemActionForegroundColor(.white)
+        .accessibilityElement(children: .combine)
     }
 }
 
-// MARK: - Tool Card View
-
-private struct ToolCardView: View {
-    let card: MaxAttr.ContentState.ToolCard
+private struct IslandDetails: View {
+    let state: MaxAttr.ContentState
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: card.iconName)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(toolCardAccent(card.kind))
-                .frame(width: 32, height: 32)
-                .background(toolCardAccent(card.kind).opacity(0.15), in: Circle())
+        VStack(alignment: .leading, spacing: 8) {
+            if let card = state.toolCard {
+                if let heading = card.taskHeading {
+                    Text(heading).font(.headline).lineLimit(1)
+                }
+                detail(icon: card.iconName, title: card.line1, subtitle: card.line2)
+                if card.kind == .reminder, card.reminderStage != nil {
+                    reminderProgress(stage: card.reminderStage)
+                }
+            } else if let alert = state.emailAlert {
+                detail(icon: "envelope.fill", title: "\(alert.count) unread",
+                       subtitle: "Open Max to review")
+            } else if !state.snippet.isEmpty {
+                Text(state.snippet)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(2)
+                    .privacySensitive()
+            }
+            if state.phase == .idle {
+                HStack(spacing: 14) {
+                    Link(destination: URL(string: "maxapp://listen")!) { Label("Talk", systemImage: "mic") }
+                    Link(destination: URL(string: "maxapp://briefing")!) { Label("Briefing", systemImage: "sun.horizon") }
+                    Link(destination: URL(string: "maxapp://quick")!) { Label("Plan", systemImage: "clock") }
+                }
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(glacier)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(.white)
+    }
 
+    private func detail(icon: String, title: String, subtitle: String) -> some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(glacier)
+                .frame(width: 29, height: 29)
+                .background(glacier.opacity(0.16), in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(card.line1)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(card.line2)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .lineLimit(1)
+                Text(title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                if !subtitle.isEmpty {
+                    Text(subtitle).font(.caption2).foregroundStyle(.white.opacity(0.72)).lineLimit(1)
+                }
             }
-
-            Spacer(minLength: 0)
+            .privacySensitive()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .accessibilityElement(children: .combine)
     }
-}
 
-// MARK: - Email Alert Card View
-
-private struct EmailAlertCardView: View {
-    let alert: MaxAttr.ContentState.EmailAlert
-
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(blue.opacity(0.18))
-                    .frame(width: 36, height: 36)
-                Image(systemName: "envelope.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(blue)
-                // Unread count badge
-                Text("\(alert.count)")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(blue, in: Capsule())
-                    .offset(x: 10, y: -10)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(alert.latestFrom)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                Text(alert.latestSubject)
-                    .font(.system(size: 11, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.60))
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 0)
+    private func reminderProgress(stage: MaxAttr.ContentState.ToolCard.ReminderStage?) -> some View {
+        let set = stage == .set
+        return HStack(spacing: 5) {
+            progressSegment("Setting", completed: true)
+            progressSegment("Set", completed: set)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(blue.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .strokeBorder(blue.opacity(0.30), lineWidth: 0.75)
-        )
+        .accessibilityHidden(true)
     }
-}
 
-// MARK: - Avatar View (shared glacier-blue brand mark)
-
-private struct MaxAvatarView: View {
-    let size: CGFloat
-
-    private var logoWidth: CGFloat { size * 2.2 }
-
-    var body: some View {
-        MaxLogoView(width: logoWidth)
-    }
-}
-
-// MARK: - Phase Icon (animated SF Symbol)
-
-private struct PhaseIconView: View {
-    let phase: MaxAttr.ContentState.Phase
-    let size: CGFloat
-
-    var body: some View {
-        Image(systemName: phase.symbolName)
-            .font(.system(size: size, weight: .medium))
-            .foregroundStyle(phaseAccent(phase))
-            .symbolEffect(.variableColor.iterative, isActive: phase != .idle)
-    }
-}
-
-// MARK: - Helpers
-
-private func phaseAccent(_ phase: MaxAttr.ContentState.Phase) -> Color {
-    switch phase {
-    case .idle:      return violetLight
-    case .listening: return red
-    case .thinking:  return violet
-    case .speaking:  return blue
-    }
-}
-
-private func toolCardAccent(_ kind: MaxAttr.ContentState.ToolCard.Kind) -> Color {
-    switch kind {
-    case .uber:       return Color(red: 0.0, green: 0.72, blue: 0.45)   // Uber green
-    case .flight:     return Color(red: 0.23, green: 0.51, blue: 0.96)  // Blue
-    case .email:      return Color(red: 0.94, green: 0.55, blue: 0.12)  // Orange
-    case .call:       return Color(red: 0.20, green: 0.78, blue: 0.35)  // Green
-    case .calendar:   return Color(red: 0.94, green: 0.27, blue: 0.27)  // Red
-    case .directions: return Color(red: 0.23, green: 0.51, blue: 0.96)  // Blue
-    case .news:       return violetLight
-    case .reminder:   return Color(red: 0.94, green: 0.55, blue: 0.12)  // Orange
-    }
-}
-
-// MARK: - Extend MaxActivityAttributes.ContentState.Phase
-
-extension MaxActivityAttributes.ContentState.Phase {
-    /// Text shown in the card body when snippet is empty
-    var emptyLabel: String {
-        switch self {
-        case .idle:      return "Tap to talk with Max."
-        case .listening: return "Listening to you…"
-        case .thinking:  return "Thinking through your request…"
-        case .speaking:  return "Preparing a response…"
+    private func progressSegment(_ label: String, completed: Bool) -> some View {
+        VStack(spacing: 3) {
+            Capsule().fill(completed ? glacier : .white.opacity(0.24)).frame(height: 3)
+            Text(label).font(.caption2.weight(.medium)).foregroundStyle(completed ? glacier : .white.opacity(0.68))
         }
+        .frame(maxWidth: .infinity)
     }
-}
-
-// MARK: - Previews
-
-#Preview("Lock Screen — Listening", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .listening, snippet: "")
-}
-
-#Preview("Lock Screen — Thinking", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .thinking, snippet: "What's the weather like today?")
-}
-
-#Preview("Lock Screen — Speaking", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .speaking, snippet: "It's currently sunny and 72°F outside right now. Perfect day for a walk!")
-}
-
-#Preview("Lock Screen — Uber Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .uber, line1: "Heathrow → Paddington", line2: "Opening Uber…", iconName: "car.fill"))
-}
-
-#Preview("Lock Screen — Flight Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .flight, line1: "JFK → LAX", line2: "May 10 · 2 pax", iconName: "airplane"))
-}
-
-#Preview("Lock Screen — News Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .news, line1: "UK economy grows faster than expected", line2: "BBC News", iconName: "newspaper.fill"))
-}
-
-#Preview("Lock Screen — Directions Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .directions, line1: "nearest café", line2: "Opening Maps…", iconName: "map.fill"))
-}
-
-#Preview("Dynamic Island — Compact", as: .dynamicIsland(.compact), using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .listening, snippet: "")
-    MaxAttr.ContentState(phase: .thinking, snippet: "What's the weather like today?")
-    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .uber, line1: "Heathrow → Paddington", line2: "Opening Uber…", iconName: "car.fill"))
-}
-
-#Preview("Dynamic Island — Expanded", as: .dynamicIsland(.expanded), using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .listening, snippet: "")
-    MaxAttr.ContentState(phase: .thinking, snippet: "What's on my calendar today?")
-    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .calendar, line1: "Dentist Appointment", line2: "Apr 20 at 3:00 PM", iconName: "calendar.badge.plus"))
-}
-
-#Preview("StandBy — Thinking", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .thinking, snippet: "What's the weather in London today?")
-}
-
-#Preview("StandBy — Speaking", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .speaking, snippet: "It's currently 18°C and cloudy in London.")
-}
-
-#Preview("StandBy — News Card", as: .content, using: MaxAttr(sessionLabel: "Max AI")) {
-    MaxLiveActivityWidget()
-} contentStates: {
-    MaxAttr.ContentState(phase: .idle, snippet: "", toolCard: .init(kind: .news, line1: "UK economy grows 0.5% in Q1", line2: "BBC News", iconName: "newspaper.fill"))
 }

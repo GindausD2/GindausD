@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var showSignOutConfirm: Bool = false
     @State private var showSubscription: Bool = false
     @State private var showPrivacy: Bool = false
+    @State private var showAIPrivacy = false
     @State private var showMemory: Bool = false
     @State private var showVocabulary = false
     @State private var showIslandDebug: Bool = false
@@ -83,15 +84,8 @@ struct SettingsView: View {
                                        title: "Max Support") { showSupport = true }
                             PrivacyPolicyLink().padding(.horizontal, 16)
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "doc.text.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "AI Provider Policies") {
-                                UIApplication.shared.open(URL(string: "https://openai.com/policies/")!)
-                            }
-                            Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.shield.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "AI Data Handling") {
-                                UIApplication.shared.open(URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
-                            }
+                                       title: "AI privacy") { showAIPrivacy = true }
                             Divider().padding(.leading, 56)
                             HStack {
                                 Label {
@@ -181,6 +175,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showSubscription) { SubscriptionSheet() }
         .sheet(isPresented: $showMemory, onDismiss: { settings = storage.loadSettings() }) { MemoryView() }
         .sheet(isPresented: $showVocabulary) { VocabularyView() }
+        .sheet(isPresented: $showAIPrivacy) {
+            AIPrivacyView(scope: storage.accountScope)
+        }
         .sheet(isPresented: $showPrivacy)      { PrivacySheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showIslandDebug)  { IslandDebugSheet() }
         .sheet(isPresented: $showEmailConfig)  { EmailConfigSheet() }
@@ -400,7 +397,7 @@ private struct PrivacySheet: View {
                         .onChange(of: settings.personalisedSuggestions) { _, _ in onSave() }
                 } header: { Text("Data Usage") }
                 Section {
-                    Text("When you send a message, Max sends the conversation and relevant saved context to OpenAI through Max's server. Notes and history remain stored on this device. See AI Data Handling for the provider's retention controls.")
+                    Text("See AI privacy to review and manage cloud AI processing.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } header: { Text("Note") }
@@ -560,15 +557,15 @@ private struct AssistantSheet: View {
                         .font(.caption).foregroundStyle(.secondary)
                     if settings.voiceEnabled {
                         Picker("Spoken replies", selection: Binding(get: { settings.voiceProvider ?? "openai" }, set: { settings.voiceProvider = $0; onSave() })) {
-                            Text("OpenAI voice").tag("openai")
+                            Text("Max voice").tag("openai")
                             Text("iPhone voice").tag("device")
                         }
                         if (settings.voiceProvider ?? "openai") == "openai" {
                             Picker("Voice style", selection: Binding(get: { settings.openAIVoice ?? "marin" }, set: { settings.openAIVoice = $0; onSave() })) {
-                                Text("Marin").tag("marin")
-                                Text("Cedar").tag("cedar")
+                                Text("Voice 1").tag("marin")
+                                Text("Voice 2").tag("cedar")
                             }
-                            Text("Max’s voice is AI-generated. Spoken text is sent to OpenAI. Up to 3,000 characters per UTC day; longer replies and unavailable voice use your iPhone voice.")
+                            Text("Max’s voice is AI-generated. Up to 3,000 characters per UTC day; longer replies and unavailable voice use your iPhone voice.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Picker(selection: $settings.preferredVoice) {

@@ -4,7 +4,7 @@ import { createHandler } from '../handler.mjs';
 import { textStream, frame, chunk } from './openai-fixtures.mjs';
 const env = { OPENAI_API_KEY: 'server-secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public-key' };
 const payload = { messages: [{ role: 'user', content: 'Remember my idea' }] };
-const request = (body = payload, token = 'valid-session') => new Request('https://max.example/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
+const request = (body = payload, token = 'valid-session', consent = '1') => new Request('https://max.example/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(consent ? { 'X-Max-AI-Consent': consent } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
 function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerStatus = 200, user = { id: 'verified-user', is_anonymous: false }, now = Date.now } = {}) {
   const calls = [];
   const handler = createHandler({ env, verifyPaid: async () => ({ active: true }), now, fetchImpl: async (url, options) => {
@@ -124,3 +124,13 @@ test('a verified permanent user is not mistaken for an expired guest', async () 
   assert.equal((await f.handler(request())).status, 200);
 });
 
+
+test('missing or stale AI permission does not consume quota or contact a provider', async () => {
+  for (const consent of ['', '0']) {
+    const f = fixture();
+    const r = await f.handler(request(payload, 'valid-session', consent));
+    assert.equal(r.status, 403);
+    assert.equal((await r.json()).code, 'ai_consent_required');
+    assert.equal(f.calls.length, 1);
+  }
+});

@@ -28,6 +28,13 @@ export async function authorizeMax({ request, env, fetchImpl, verifyPaid, now, s
   return { user, headers, base, subscription };
 }
 
+export function requireAIConsent(request) {
+  if (request.headers.get('x-max-ai-consent') !== '1') {
+    return apiError(403, 'Review AI privacy in Max before using cloud AI.', 'ai_consent_required');
+  }
+  return null;
+}
+
 export async function readJSON(request, maxBytes) {
   if (!request.headers.get('content-type')?.includes('application/json')) return { error: apiError(415, 'Use JSON') };
   try {

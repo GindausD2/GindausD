@@ -142,7 +142,7 @@ struct HomeView: View {
                 }
                 Button("OK", role: .cancel) { islandNotice = nil }
             } message: { Text(islandNotice ?? "Please try again.") }
-            .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+            .onChange(of: authService.currentUser) { _, _ in viewModel.showAIPrivacy = false; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { viewModel.endConversation() }
                 if phase == .active { handlePendingShortcut() }
@@ -155,6 +155,9 @@ struct HomeView: View {
 
     private var conversationPresentation: some View {
         conversationInteractions
+            .sheet(isPresented: $viewModel.showAIPrivacy) {
+                AIPrivacyView(scope: StorageService.shared.accountScope)
+            }
             .sheet(isPresented: $showCompanion) { CompanionView() }
             .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
             .sheet(isPresented: $showHistory) {
@@ -692,6 +695,7 @@ struct HomeView: View {
             .buttonStyle(.plain)
 
             Button {
+                guard viewModel.reviewCloudAIIfNeeded() else { return }
                 let img = pendingImage
                 pendingImage = nil
                 viewModel.sendTextMessage(image: img)
@@ -730,6 +734,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var liveTranscript = ""
     @Published private(set) var prefersTextReplyForDraft = false
     @Published var dictationError: String?
+    @Published var showAIPrivacy = false
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
@@ -848,9 +853,18 @@ final class HomeViewModel: ObservableObject {
         storage.saveConversation(conv)
     }
 
+    func reviewCloudAIIfNeeded() -> Bool {
+        guard storage.allowsCloudAI(scope: storage.accountScope) else {
+            showAIPrivacy = true
+            return false
+        }
+        return true
+    }
+
     func sendTextMessage(image: UIImage? = nil) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || image != nil, conversationState == .idle, !isDictating, !isTranscribing, !startingVoice else { return }
+        guard reviewCloudAIIfNeeded() else { return }
         let allowSpeech = !prefersTextReplyForDraft
         inputText = ""
         prefersTextReplyForDraft = false
@@ -921,6 +935,7 @@ final class HomeViewModel: ObservableObject {
 
     func sendPlacesQuery() {
         guard conversationState == .idle, !isDictating, !startingVoice, !isTranscribing else { return }
+        guard reviewCloudAIIfNeeded() else { return }
         let query = "What interesting places are near me right now?"
         addUserMessage(query)
         streamResponse(userText: query, imageData: nil)
@@ -936,7 +951,7 @@ final class HomeViewModel: ObservableObject {
             guard turnID == briefingID, !Task.isCancelled, storage.accountScope == scope else { return }
             conversationState = .idle
             addUserMessage("Good morning — give me my daily briefing.")
-            if kMaxAPIBaseURL.isEmpty {
+            if kMaxAPIBaseURL.isEmpty || !storage.allowsCloudAI(scope: scope) {
                 messages.append(Message(role: "assistant", content: snapshot))
                 storage.saveMessages(messages)
                 archiveCurrentConversation()
@@ -1077,6 +1092,12 @@ final class HomeViewModel: ObservableObject {
                 dictationError = notice
                 return
             }
+            guard reviewCloudAIIfNeeded() else {
+                continuousActive = false
+                inputText += (inputText.isEmpty ? "" : " ") + transcription
+                prefersTextReplyForDraft = true
+                return
+            }
             addUserMessage(transcription)
             streamResponse(userText: transcription, imageData: nil)
         }
@@ -1151,6 +1172,9 @@ final class HomeViewModel: ObservableObject {
                         self.conversationState = .idle
                     }
                 case .error(let errText):
+                    if errText == ClaudeError.consentRequired.errorDescription {
+                        self.showAIPrivacy = true
+                    }
                     self.continuousActive = false
                     if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
                         self.messages[idx].content = fullText.isEmpty ? "Error: \(errText)" : fullText + "\n\nReply interrupted: " + errText

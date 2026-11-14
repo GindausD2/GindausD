@@ -6,6 +6,40 @@ import UIKit
 
 @MainActor
 final class V1Tests: XCTestCase {
+    func testAIConsentIsExplicitScopedAndRevocable() {
+        let storage = StorageService.shared
+        let previous = storage.accountScope
+        let account = UUID().uuidString
+        let other = UUID().uuidString
+        storage.setAccountScope(account)
+        defer {
+            storage.setAccountScope(account)
+            storage.setCloudAIAllowed(false, scope: account)
+            storage.setAccountScope(previous)
+        }
+        XCTAssertFalse(storage.allowsCloudAI(scope: account))
+        XCTAssertTrue(storage.setCloudAIAllowed(true, scope: account))
+        XCTAssertTrue(storage.allowsCloudAI(scope: account))
+        storage.setAccountScope(other)
+        XCTAssertFalse(storage.allowsCloudAI(scope: other))
+        XCTAssertFalse(storage.allowsCloudAI(scope: account))
+        XCTAssertFalse(storage.setCloudAIAllowed(true, scope: account))
+        storage.setAccountScope(account)
+        XCTAssertTrue(storage.setCloudAIAllowed(false, scope: account))
+        XCTAssertFalse(storage.allowsCloudAI(scope: account))
+    }
+
+    func testReminderIslandOnlyShowsSetAfterConfirmation() {
+        typealias State = MaxActivityAttributes.ContentState
+        var card = State.ToolCard(kind: .reminder, line1: "Buy groceries", line2: "Tomorrow",
+                                  iconName: "bell.fill", reminderStage: .setting)
+        XCTAssertEqual(card.taskHeading, "Setting reminder…")
+        card.reminderStage = .set
+        let state = State(phase: .idle, snippet: "", toolCard: card)
+        XCTAssertEqual(state.toolCard?.taskHeading, "Reminder set")
+        XCTAssertEqual(state.statusSymbol, "bell.fill")
+    }
+
     func testGuestTrialEndsAtThreeDaysAndSurvivesEncoding() throws {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         let guest = AuthUser(id: "guest-a", name: "Guest", email: nil, isDemo: true, trialStartedAt: start)

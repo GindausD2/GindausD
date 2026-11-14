@@ -401,7 +401,12 @@ final class ClaudeService {
         if let proof = await StoreKitService.shared.signedTransactionProof() {
             urlRequest.setValue(proof, forHTTPHeaderField: "X-Max-Transaction")
         }
-        guard await AuthService.shared.currentUser?.id == accountScope else { throw URLError(.userAuthenticationRequired) }
+        guard await AuthService.shared.currentUser?.id == accountScope else { throw ClaudeError.signInRequired }
+        guard let consent = await StorageService.shared.cloudAIConsentVersion(for: accountScope) else {
+            throw ClaudeError.consentRequired
+        }
+        urlRequest.setValue(consent, forHTTPHeaderField: AIProcessingConsent.header)
+        try Task.checkCancellation()
 
         let encoder = JSONEncoder()
         urlRequest.httpBody = try encoder.encode(request)
@@ -426,7 +431,12 @@ final class ClaudeService {
                 await StoreKitService.shared.refreshEntitlements()
             }
             let serverError = errorBody?["error"] as? String
-            throw ClaudeError.apiError(httpResponse.statusCode, serverError ?? "Max couldn't reply just now. Please try again.")
+            if errorBody?["code"] as? String == "ai_consent_required" ||
+                serverError?.localizedCaseInsensitiveContains("data sharing") == true {
+                throw ClaudeError.consentRequired
+            }
+            let message = serverError.flatMap { $0.localizedCaseInsensitiveContains("OpenAI") ? nil : $0 }
+            throw ClaudeError.apiError(httpResponse.statusCode, message ?? "Max couldn't reply just now. Please try again.")
         }
 
         // SSE parsing state
@@ -603,6 +613,7 @@ enum ClaudeError: LocalizedError {
     case apiError(Int, String)
     case noAPIKey
     case signInRequired
+    case consentRequired
     case tooManyActions
 
     var errorDescription: String? {
@@ -615,6 +626,8 @@ enum ClaudeError: LocalizedError {
             return "Max is not connected yet. Notes, saved places, and reminders are still available."
         case .signInRequired:
             return "Sign in to talk with Max. You can still use your saved notes and reminders."
+        case .consentRequired:
+            return "Review AI privacy in Max before using cloud AI."
         case .tooManyActions:
             return "Let's take this one step at a time. Please try a simpler request."
         }

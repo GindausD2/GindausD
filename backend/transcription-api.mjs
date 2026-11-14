@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { authorizeMax, apiError } from './access.mjs';
+import { authorizeMax, requireAIConsent, apiError } from './access.mjs';
 import { providerResponseCode } from './provider-errors.mjs';
 import { SubscriptionUnavailable } from './apple-subscriptions.mjs';
 
@@ -30,6 +30,8 @@ export function createTranscriptionAPI({ env, fetchImpl, now, verifyPaid, log })
     try {
       const access = await authorizeMax({ request, env, fetchImpl, now, verifyPaid, signal });
       if (access.error) return access.error;
+      const consentError = requireAIConsent(request);
+      if (consentError) return consentError;
       let vocabulary = [];
       const encodedHints = request.headers.get('x-max-vocabulary');
       if (encodedHints !== null) {

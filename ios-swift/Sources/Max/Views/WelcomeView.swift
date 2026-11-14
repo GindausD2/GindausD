@@ -657,7 +657,7 @@ struct PlanPage: View {
                         Text(message).font(.footnote).foregroundStyle(.secondary)
                     }
 
-                    Text("Includes up to 100 AI requests and 3,000 OpenAI voice characters per UTC day. Each tool continuation counts as a request. Max’s voice is AI-generated.")
+                    Text("Includes up to 100 AI requests and 3,000 Max voice characters per UTC day. Each tool continuation counts as a request. Max’s voice is AI-generated.")
                         .font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center)
                     Text("Auto-renews. Cancel anytime in Settings → Apple ID.")
                         .font(.caption2)

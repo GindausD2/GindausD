@@ -1,7 +1,7 @@
 import { createAccountAPI } from './account-api.mjs';
 import { Buffer } from 'node:buffer';
 import { openAIMessages, maxStream } from './openai.mjs';
-import { authorizeMax } from './access.mjs';
+import { authorizeMax, requireAIConsent } from './access.mjs';
 import { createAppleSubscriptionVerifier } from './apple-subscriptions.mjs';
 import { createCompanionAPI } from './companion-api.mjs';
 import { createTranscriptionAPI } from './transcription-api.mjs';
@@ -34,7 +34,7 @@ export function createHandler({ env = process.env, fetchImpl = fetch, log = cons
     if (transcription) return transcription;
     const companion = await companionAPI(request);
     if (companion) return companion;
-    if (url.pathname === '/health' && request.method === 'GET') return Response.json({ service: 'max', status: 'running', provider: 'openai', aiConfigured: Boolean(env.OPENAI_API_KEY?.trim()), authConfigured: Boolean(env.SUPABASE_URL?.trim() && env.SUPABASE_ANON_KEY?.trim()) });
+    if (url.pathname === '/health' && request.method === 'GET') return Response.json({ service: 'max', status: 'running', aiConfigured: Boolean(env.OPENAI_API_KEY?.trim()), authConfigured: Boolean(env.SUPABASE_URL?.trim() && env.SUPABASE_ANON_KEY?.trim()) });
     if (url.pathname !== '/v1/messages') return json(404, 'Not found');
     if (request.method !== 'POST') return json(405, 'Use POST');
     let base;
@@ -64,6 +64,8 @@ export function createHandler({ env = process.env, fetchImpl = fetch, log = cons
     try {
       const access = await authorizeMax({ request, env, fetchImpl, verifyPaid, now, signal });
       if (access.error) return access.error;
+      const consentError = requireAIConsent(request);
+      if (consentError) return consentError;
       // Database function owns the limits and derives identity from auth.uid().
       const quota = await fetchImpl(base + '/rest/v1/rpc/consume_max_request', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: '{}', signal });
       if (!quota.ok) return json(503, 'Max is temporarily unavailable.');

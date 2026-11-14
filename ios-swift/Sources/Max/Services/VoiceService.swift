@@ -155,15 +155,17 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         let preview = transcript
         let limitNotice = transcriptionNotice
         var result = preview
-        if let audio, !kMaxAPIBaseURL.isEmpty, AuthService.shared.currentUser != nil {
+        if let audio, !kMaxAPIBaseURL.isEmpty, AuthService.shared.currentUser != nil,
+           StorageService.shared.allowsCloudAI(scope: scope) {
             let pending = Task { @MainActor [weak self] () -> String? in
                 guard let self else { return nil }
                 do {
                     let session = try await AuthService.shared.managedSession()
                     let transaction = await StoreKitService.shared.signedTransactionProof()
                     try Task.checkCancellation()
-                    guard self.recognitionID == finishingID, StorageService.shared.accountScope == scope else { return nil }
-                    return try await VerbatimTranscriber.transcribe(audio, baseURL: kMaxAPIBaseURL, token: session.token, transaction: transaction, vocabulary: vocabulary)
+                    guard self.recognitionID == finishingID,
+                          let consent = StorageService.shared.cloudAIConsentVersion(for: scope) else { return nil }
+                    return try await VerbatimTranscriber.transcribe(audio, baseURL: kMaxAPIBaseURL, token: session.token, transaction: transaction, vocabulary: vocabulary, consentVersion: consent)
                 } catch {
                     guard !Task.isCancelled, self.recognitionID == finishingID, StorageService.shared.accountScope == scope else { return nil }
                     if case VerbatimTranscriptionError.demoExpired = error {
@@ -218,7 +220,8 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
 
         let settings = StorageService.shared.loadSettings()
         if (settings.voiceProvider ?? "openai") == "openai", clean.utf16.count <= 1000,
-           !kMaxAPIBaseURL.isEmpty, AuthService.shared.currentUser != nil {
+           !kMaxAPIBaseURL.isEmpty, AuthService.shared.currentUser != nil,
+           StorageService.shared.allowsCloudAI(scope: StorageService.shared.accountScope) {
             let attempt = playbackID
             let scope = StorageService.shared.accountScope
             isSpeaking = true; isPreparingSpeech = true; playbackNotice = nil
@@ -236,6 +239,11 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
                     }
                     let selected = ["marin", "cedar"].contains(settings.openAIVoice ?? "") ? settings.openAIVoice! : "marin"
                     request.httpBody = try JSONEncoder().encode(["text": clean, "voice": selected])
+                    try Task.checkCancellation()
+                    guard let consent = StorageService.shared.cloudAIConsentVersion(for: scope) else {
+                        throw CancellationError()
+                    }
+                    request.setValue(consent, forHTTPHeaderField: AIProcessingConsent.header)
                     let (data, response) = try await URLSession.shared.data(for: request)
                     try Task.checkCancellation()
                     guard self.playbackID == attempt, StorageService.shared.accountScope == scope,
