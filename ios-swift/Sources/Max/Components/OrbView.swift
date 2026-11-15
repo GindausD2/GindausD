@@ -2,7 +2,7 @@ import SwiftUI
 
 enum OrbState { case idle, listening, thinking, speaking }
 
-/// A glacier-blue glass sphere. Only active voice states animate, so the resting
+/// A glacier-blue glass sphere. Only active conversation states animate, so the resting
 /// screen stays quiet and does not run a continuous rendering loop.
 struct OrbView: View {
     var state: OrbState = .idle
@@ -22,19 +22,24 @@ private struct OrbFrame: View {
     let size: CGFloat
     let time: TimeInterval
     let reduceMotion: Bool
-    private let heights: [CGFloat] = [0.24, 0.43, 0.64, 0.43, 0.24]
 
     private var moving: Bool { state != .idle && !reduceMotion }
+    private var phase: Double {
+        guard moving else { return 0 }
+        let speed = state == .speaking ? 1.1 : 0.55
+        return (time * speed).truncatingRemainder(dividingBy: 2 * .pi)
+    }
+
     private var pulse: CGFloat {
         guard moving else { return 0 }
-        return CGFloat((sin(time * (state == .speaking ? 5 : 3)) + 1) / 2)
+        return CGFloat((sin(phase * (state == .speaking ? 9 : 5)) + 1) / 2)
     }
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(RadialGradient(colors: [Color(hex: "#ADDCEC").opacity(0.4), .clear], center: .center, startRadius: size * 0.3, endRadius: size * 0.71))
-                .scaleEffect(0.97 + pulse * 0.06)
+                .scaleEffect(0.97 + pulse * 0.13)
             Circle().strokeBorder(Color(hex: "#A8CDDC").opacity(0.13), lineWidth: 0.6)
                 .frame(width: size * 1.27, height: size * 1.27)
             sphere
@@ -55,13 +60,16 @@ private struct OrbFrame: View {
                     .blur(radius: size * 0.025)
             }
             .overlay {
-                if state == .speaking || state == .listening { waveform }
-                if state == .thinking { ProgressView().tint(Color(hex: "#214E63")) }
+                if state != .idle { movingLight }
             }
             .overlay(Circle().strokeBorder(LinearGradient(colors: [.white.opacity(0.95), .white.opacity(0.08), .white.opacity(0.65)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
             .clipShape(Circle())
             .frame(width: size, height: size)
-            .scaleEffect(1 + pulse * (state == .speaking ? 0.035 : 0.018))
+            .scaleEffect(
+                x: 1 + pulse * (state == .speaking ? 0.09 : 0.045),
+                y: 1 - pulse * (state == .speaking ? 0.045 : 0.02)
+            )
+            .offset(x: moving && state == .speaking ? size * 0.018 * CGFloat(sin(phase * 12)) : 0)
             .shadow(color: Color(hex: "#6BA7BE").opacity(0.18), radius: size * 0.15, y: size * 0.12)
     }
 
@@ -88,18 +96,25 @@ private struct OrbFrame: View {
         }
     }
 
-    private var waveform: some View {
-        HStack(spacing: size * 0.033) {
-            ForEach(heights.indices, id: \.self) { index in
-                Capsule().fill(Color(hex: "#214E63"))
-                    .frame(width: max(3, size * 0.027), height: size * heights[index] * 0.5)
-                    .scaleEffect(x: 1, y: barScale(index))
-            }
+    private var movingLight: some View {
+        ZStack {
+            Circle()
+                .fill(AngularGradient(colors: [
+                    Color(hex: "#183D68"), Color(hex: "#5CD6DC"),
+                    Color(hex: "#ECFAFF"), Color(hex: "#7A9DDF"), Color(hex: "#183D68")
+                ], center: .center))
+                .rotationEffect(.radians(phase))
+                .opacity(state == .speaking ? 0.69 : 0.47)
+                .blendMode(.overlay)
+            Ellipse()
+                .fill(LinearGradient(colors: [.clear, Color(hex: "#BEFBFF"), .white, .clear],
+                                     startPoint: .leading, endPoint: .trailing))
+                .frame(width: size * 1.16, height: size * (0.15 + pulse * 0.12))
+                .rotationEffect(.radians(-0.75 + sin(phase) * 1.1))
+                .offset(y: size * CGFloat(cos(phase)) * 0.11)
+                .blur(radius: size * 0.085)
+                .opacity(0.55 + pulse * 0.22)
         }
-    }
-
-    private func barScale(_ index: Int) -> CGFloat {
-        guard moving else { return 1 }
-        return 0.85 + CGFloat(sin(time * (5 + Double(index) * 0.7) + Double(index))) * 0.35
+        .allowsHitTesting(false)
     }
 }

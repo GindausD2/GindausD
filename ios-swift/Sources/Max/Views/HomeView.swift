@@ -423,7 +423,7 @@ struct HomeView: View {
             if voiceTurnActive {
                 statusPill.transition(.opacity)
             } else if !isTyping {
-                Text(viewModel.inputText.isEmpty ? "Tap the mic to talk to Max" : "Draft ready · tap Type to edit")
+                Text(viewModel.inputText.isEmpty ? "Tap to hear Max · Hold for voice options" : "Draft ready · tap Type to edit")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -448,16 +448,41 @@ struct HomeView: View {
             conversationActions
                 .glassCard(cornerRadius: 22, interactive: true)
             Spacer(minLength: 0)
-            Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState(isPlayingSpeech: playback.isSpeaking && !playback.isPreparingSpeech), size: 64)
+            if voiceTurnActive {
+                orbButton
+            } else {
+                orbButton
+                    .contextMenu { voiceActions }
+                    .accessibilityActions { voiceActions }
             }
-            .accessibilityLabel(viewModel.orbAccessibilityLabel)
-            .accessibilityHint(viewModel.orbAccessibilityHint)
             Spacer(minLength: 0)
-            microphoneButton(dictation: false)
+            Color.clear
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
+    }
+
+    private var orbButton: some View {
+        Button(action: viewModel.handleOrbTap) {
+            OrbView(state: viewModel.orbState(isPlayingSpeech: playback.isSpeaking && !playback.isPreparingSpeech), size: 64)
+                .contentShape(Circle())
+        }
+        .accessibilityLabel(viewModel.orbAccessibilityLabel)
+        .accessibilityHint(viewModel.orbAccessibilityHint)
+    }
+
+    @ViewBuilder private var voiceActions: some View {
+        Button("Talk to Max", systemImage: "waveform") {
+            composerFocused = false
+            viewModel.activateVoice()
+        }
+        Button("Dictate a message", systemImage: "text.bubble") {
+            composerFocused = false
+            viewModel.handleMicTap()
+        }
     }
 
     private var conversationActions: some View {
@@ -467,8 +492,7 @@ struct HomeView: View {
                 if !showThoughtsDock { showThoughts = true }
             }
             Button("Type a message", systemImage: "keyboard") { openTextEntry() }
-            Button("Dictate a message", systemImage: "waveform") { viewModel.handleMicTap() }
-                .disabled(voiceTurnActive)
+            if !voiceTurnActive { voiceActions }
             Button("New conversation", systemImage: "square.and.pencil") {
                 pendingImage = nil
                 composerFocused = false
@@ -490,30 +514,6 @@ struct HomeView: View {
                 .frame(width: 44, height: 44)
         }
         .accessibilityLabel("Conversation actions")
-    }
-
-    private func microphoneButton(dictation: Bool) -> some View {
-        Button {
-            if dictation {
-                viewModel.handleMicTap()
-            } else {
-                composerFocused = false
-                viewModel.handleVoiceTap()
-            }
-        } label: {
-            Image(systemName: voiceTurnActive ? "stop.fill" : "mic.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color(UIColor.systemBackground))
-                .frame(width: 44, height: 44)
-                .background(Color(UIColor.label), in: Circle())
-        }
-        .accessibilityLabel(dictation ? "Dictate a message" : voiceButtonLabel)
-        .accessibilityHint(dictation ? "Turn your voice into editable text" : "")
-    }
-
-    private var voiceButtonLabel: String {
-        if viewModel.conversationState == .listening { return "Send voice message" }
-        return voiceTurnActive ? "Stop voice conversation" : "Talk to Max"
     }
 
     private var textComposer: some View {
@@ -548,8 +548,6 @@ struct HomeView: View {
                     }
                     .disabled(viewModel.isTranscribing)
                     .accessibilityLabel("Send message")
-                } else {
-                    microphoneButton(dictation: true)
                 }
             }
             if viewModel.prefersTextReplyForDraft {
@@ -796,7 +794,7 @@ final class HomeViewModel: ObservableObject {
 
     var orbAccessibilityHint: String {
         if isDictating { return "Finish dictation and review your message before sending" }
-        return conversationState == .idle && !startingVoice && !isTranscribing ? "Tap to hear Max. Use the microphone to talk to Max." : ""
+        return conversationState == .idle && !startingVoice && !isTranscribing ? "Tap to hear Max. Voice options are also in Conversation actions." : ""
     }
 
     func loadMessages() {
