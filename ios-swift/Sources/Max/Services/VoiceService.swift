@@ -22,6 +22,39 @@ extension VoiceCapturing {
     var onRecordingLimit: (() -> Void)? { get { nil } set {} }
 }
 
+struct RecentCloudSpeech {
+    let scope: String
+    let voice: String
+    let text: String
+    let data: Data
+
+    func audio(scope: String, voice: String, text: String) -> Data? {
+        guard self.scope == scope, self.voice == voice, self.text == text else { return nil }
+        return data
+    }
+}
+
+enum CloudSpeechFallback: Error, Equatable {
+    case permission, limit, length, unavailable
+
+    var notice: String {
+        switch self {
+        case .permission: "iPhone voice · Review AI privacy"
+        case .limit: "iPhone voice · Max voice limit reached"
+        case .length: "iPhone voice · Reply is too long for Max voice"
+        case .unavailable: "iPhone voice · Max voice unavailable"
+        }
+    }
+
+    static func from(status: Int, code: String?) -> Self {
+        if status == 403 && (code == "openai_consent_required" || code == "ai_consent_required") {
+            return .permission
+        }
+        if status == 429 && code == "voice_limit" { return .limit }
+        return .unavailable
+    }
+}
+
 @MainActor
 final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     static let shared = VoiceService()
@@ -54,6 +87,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     private var cloudSpeechTask: Task<Void, Never>?
     private var playbackID = UUID()
     private var audioPlayer: AVAudioPlayer?
+    private var recentCloudSpeech: RecentCloudSpeech?
     private var cloudHapticsTask: Task<Void, Never>?
     private var interruptionSubscriptions: Set<AnyCancellable> = []
 
@@ -219,78 +253,115 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         guard !clean.isEmpty else { return }
 
         let settings = StorageService.shared.loadSettings()
-        if (settings.voiceProvider ?? "openai") == "openai", clean.utf16.count <= 1000,
-           !kMaxAPIBaseURL.isEmpty, AuthService.shared.currentUser != nil,
-           StorageService.shared.allowsCloudAI(scope: StorageService.shared.accountScope) {
-            let attempt = playbackID
-            let scope = StorageService.shared.accountScope
-            isSpeaking = true; isPreparingSpeech = true; playbackNotice = nil
-            cloudSpeechTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-                do {
-                    let session = try await AuthService.shared.managedSession()
-                    guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw URLError(.badURL) }
-                    var request = URLRequest(url: base.appendingPathComponent("v1/speech"))
-                    request.httpMethod = "POST"; request.timeoutInterval = 45
-                    request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
-                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    if let proof = await StoreKitService.shared.signedTransactionProof() {
-                        request.setValue(proof, forHTTPHeaderField: "X-Max-Transaction")
-                    }
-                    let selected = ["marin", "cedar"].contains(settings.openAIVoice ?? "") ? settings.openAIVoice! : "marin"
-                    request.httpBody = try JSONEncoder().encode(["text": clean, "voice": selected])
-                    try Task.checkCancellation()
-                    guard let consent = StorageService.shared.cloudAIConsentVersion(for: scope) else {
-                        throw CancellationError()
-                    }
-                    request.setValue(consent, forHTTPHeaderField: AIProcessingConsent.header)
-                    let (data, response) = try await URLSession.shared.data(for: request)
-                    try Task.checkCancellation()
-                    guard self.playbackID == attempt, StorageService.shared.accountScope == scope,
-                          UIApplication.shared.applicationState == .active else { return }
-                    guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
-                    if http.statusCode == 402 {
-                        let error = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
-                        if error?["code"] as? String == "demo_expired" {
-                            AuthService.shared.markDemoExpired()
-                            return
-                        }
-                        if error?["code"] as? String == "subscription_required" {
-                            self.stopSpeaking()
-                            await StoreKitService.shared.refreshEntitlements()
-                            return
-                        }
-                    }
-                    guard http.statusCode == 200, http.mimeType == "audio/wav", data.count <= 4_320_044 else { throw URLError(.badServerResponse) }
-                    let audioSession = AVAudioSession.sharedInstance()
-                    try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
-                    try audioSession.setActive(true)
-                    let player = try AVAudioPlayer(data: data)
-                    self.audioPlayer = player; player.delegate = self
-                    player.prepareToPlay()
-                    guard player.play() else { throw URLError(.cannotDecodeContentData) }
-                    self.isPreparingSpeech = false
-                    self.cloudHapticsTask = Task { @MainActor [weak self, weak player] in
-                        while !Task.isCancelled, let self, player?.isPlaying == true, self.playbackID == attempt {
-                            if UIApplication.shared.applicationState == .active,
-                               StorageService.shared.loadSettings().speakingHapticsEnabled ?? true {
-                                self.speakingFeedback.impactOccurred(intensity: 0.35)
-                            }
-                            do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
-                        }
-                    }
-                } catch {
-                    guard !Task.isCancelled, self.playbackID == attempt,
-                          StorageService.shared.accountScope == scope,
-                          UIApplication.shared.applicationState == .active else { return }
-                    self.playbackNotice = "Using iPhone voice"
-                    self.speakOnDevice(clean, preferredVoice: preferredVoice)
-                }
-            }
-        } else {
-            playbackNotice = nil
+        let scope = StorageService.shared.accountScope
+        guard (settings.voiceProvider ?? "openai") == "openai" else {
             speakOnDevice(clean, preferredVoice: preferredVoice)
+            return
         }
+        let fallback: CloudSpeechFallback?
+        if clean.utf16.count > 1000 {
+            fallback = .length
+        } else if kMaxAPIBaseURL.isEmpty || AuthService.shared.currentUser?.id != scope || AuthService.shared.isDemoExpired {
+            fallback = .unavailable
+        } else if !StorageService.shared.allowsCloudAI(scope: scope) {
+            fallback = .permission
+        } else {
+            fallback = nil
+        }
+        if let fallback {
+            playbackNotice = fallback.notice
+            speakOnDevice(clean, preferredVoice: preferredVoice)
+            return
+        }
+
+        let selected = settings.openAIVoice == "cedar" ? "cedar" : "marin"
+        if let audio = recentCloudSpeech?.audio(scope: scope, voice: selected, text: clean) {
+            do {
+                try playCloudAudio(audio, attempt: playbackID)
+                return
+            } catch {
+                recentCloudSpeech = nil
+            }
+        }
+
+        let attempt = playbackID
+        isSpeaking = true; isPreparingSpeech = true; playbackNotice = nil
+        cloudSpeechTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let session = try await AuthService.shared.managedSession()
+                guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw URLError(.badURL) }
+                var request = URLRequest(url: base.appendingPathComponent("v1/speech"))
+                request.httpMethod = "POST"; request.timeoutInterval = 45
+                request.setValue("Bearer \(session.token)", forHTTPHeaderField: "Authorization")
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                if let proof = await StoreKitService.shared.signedTransactionProof() {
+                    request.setValue(proof, forHTTPHeaderField: "X-Max-Transaction")
+                }
+                request.httpBody = try JSONEncoder().encode(["text": clean, "voice": selected])
+                try Task.checkCancellation()
+                guard let consent = StorageService.shared.cloudAIConsentVersion(for: scope) else {
+                    throw CancellationError()
+                }
+                request.setValue(consent, forHTTPHeaderField: AIProcessingConsent.header)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                try Task.checkCancellation()
+                guard self.playbackID == attempt, StorageService.shared.accountScope == scope,
+                      UIApplication.shared.applicationState == .active else { return }
+                guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+                let errorBody: [String: Any]? = http.statusCode == 200 || data.count > 8192
+                    ? nil : (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+                let code = errorBody?["code"] as? String
+                if http.statusCode == 402 {
+                    if code == "demo_expired" {
+                        AuthService.shared.markDemoExpired()
+                        return
+                    }
+                    if code == "subscription_required" {
+                        self.stopSpeaking()
+                        await StoreKitService.shared.refreshEntitlements()
+                        return
+                    }
+                }
+                guard http.statusCode == 200, http.mimeType == "audio/wav", (45...4_320_044).contains(data.count) else {
+                    throw CloudSpeechFallback.from(status: http.statusCode, code: code)
+                }
+                try self.playCloudAudio(data, attempt: attempt)
+                self.recentCloudSpeech = RecentCloudSpeech(scope: scope, voice: selected, text: clean, data: data)
+            } catch {
+                guard !Task.isCancelled, self.playbackID == attempt,
+                      StorageService.shared.accountScope == scope,
+                      UIApplication.shared.applicationState == .active else { return }
+                self.playbackNotice = ((error as? CloudSpeechFallback) ?? .unavailable).notice
+                self.speakOnDevice(clean, preferredVoice: preferredVoice)
+            }
+        }
+    }
+
+    private func playCloudAudio(_ data: Data, attempt: UUID) throws {
+        let audioSession = AVAudioSession.sharedInstance()
+        try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers])
+        try audioSession.setActive(true)
+        let player = try AVAudioPlayer(data: data)
+        player.delegate = self
+        player.prepareToPlay()
+        guard player.play() else { throw URLError(.cannotDecodeContentData) }
+        audioPlayer = player
+        isSpeaking = true
+        isPreparingSpeech = false
+        cloudHapticsTask = Task { @MainActor [weak self, weak player] in
+            while !Task.isCancelled, let self, player?.isPlaying == true, self.playbackID == attempt {
+                if UIApplication.shared.applicationState == .active,
+                   StorageService.shared.loadSettings().speakingHapticsEnabled ?? true {
+                    self.speakingFeedback.impactOccurred(intensity: 0.35)
+                }
+                do { try await Task.sleep(for: .milliseconds(700)) } catch { return }
+            }
+        }
+    }
+
+    func clearRecentCloudSpeech() {
+        recentCloudSpeech = nil
     }
 
     private func speakOnDevice(_ clean: String, preferredVoice: String) {
@@ -376,6 +447,7 @@ extension VoiceService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor in
             guard self.audioPlayer === player else { return }
+            self.clearRecentCloudSpeech()
             self.stopSpeaking()
         }
     }

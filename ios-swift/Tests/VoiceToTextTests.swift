@@ -4,6 +4,21 @@ import Combine
 
 @MainActor
 final class VoiceToTextTests: XCTestCase {
+    func testCloudVoiceReplayRequiresTheSameAccountVoiceAndReply() {
+        let audio = Data([1, 2])
+        let recent = RecentCloudSpeech(scope: "account", voice: "marin", text: "Hello", data: audio)
+        XCTAssertEqual(recent.audio(scope: "account", voice: "marin", text: "Hello"), audio)
+        XCTAssertNil(recent.audio(scope: "another account", voice: "marin", text: "Hello"))
+        XCTAssertNil(recent.audio(scope: "account", voice: "cedar", text: "Hello"))
+        XCTAssertNil(recent.audio(scope: "account", voice: "marin", text: "New reply"))
+    }
+
+    func testCloudVoiceFallbackDistinguishesPermissionAndQuota() {
+        XCTAssertEqual(CloudSpeechFallback.from(status: 403, code: "openai_consent_required"), .permission)
+        XCTAssertEqual(CloudSpeechFallback.from(status: 429, code: "voice_limit"), .limit)
+        XCTAssertEqual(CloudSpeechFallback.from(status: 502, code: nil), .unavailable)
+    }
+
     private func settle(until ready: () -> Bool) async {
         for _ in 0..<100 {
             if ready() { return }

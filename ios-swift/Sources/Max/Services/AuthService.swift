@@ -38,6 +38,7 @@ final class AuthService: ObservableObject {
                 UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ids)
                 UNUserNotificationCenter.current().removeDeliveredNotifications(withIdentifiers: ids)
                 VoiceService.shared.stopRecording(); VoiceService.shared.stopSpeaking()
+                VoiceService.shared.clearRecentCloudSpeech()
                 ReminderApprovalService.shared.cancel()
                 LifeMemoryApproval.shared.cancel()
                 LiveActivityService.shared.stopPersistentSession()
@@ -141,6 +142,7 @@ final class AuthService: ObservableObject {
         guard currentUser?.isDemo == true else { return }
         serverExpiredDemo = true
         VoiceService.shared.stopRecording(); VoiceService.shared.stopSpeaking()
+        VoiceService.shared.clearRecentCloudSpeech()
         LiveActivityService.shared.stopPersistentSession()
     }
 

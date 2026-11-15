@@ -43,6 +43,7 @@ struct AIPrivacyView: View {
         if !allow {
             VoiceService.shared.stopRecording()
             VoiceService.shared.stopSpeaking()
+            VoiceService.shared.clearRecentCloudSpeech()
         }
         dismiss()
     }

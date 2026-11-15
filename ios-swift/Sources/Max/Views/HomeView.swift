@@ -648,8 +648,9 @@ struct HomeView: View {
         case .listening: return "Listening… tap to send"
         case .thinking:  return "Thinking…"
         case .speaking:
+            if let fallback = playback.playbackNotice { return fallback }
             if playback.isPreparingSpeech { return "Getting Max’s voice ready…" }
-            return playback.playbackNotice ?? "Max is speaking…"
+            return "Max is speaking…"
         }
     }
 
