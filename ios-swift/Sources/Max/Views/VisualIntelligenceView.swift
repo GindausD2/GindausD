@@ -18,9 +18,14 @@ struct VisualIntelligenceView: View {
 
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var auth: AuthService
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @StateObject private var camera = VisualCamera()
     @ObservedObject private var voice = VoiceService.shared
     @State private var mode: Mode = .identify
-    @State private var showCamera = false
+    @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
+    @State private var showLibrary = false
+    @State private var captureID: UUID?
     @State private var photo: UIImage?
     @State private var selection: PhotosPickerItem?
     @State private var transcript = ""
@@ -37,40 +42,58 @@ struct VisualIntelligenceView: View {
     private let languages = ["English", "Hausa", "French", "Arabic", "Spanish", "German",
                              "Portuguese", "Chinese", "Japanese", "Korean"]
 
+    private var cameraWanted: Bool {
+        scenePhase == .active && mode != .translateSpeech && cameraAccess == .authorized &&
+            photo == nil && !showLibrary
+    }
+
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
+            ScrollView {
+                VStack(spacing: 14) {
                     Picker("Mode", selection: $mode) {
                         ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }.pickerStyle(.segmented)
-                }.disabled(busy || recording)
-                if mode == .translateSpeech { speechInput }
-                else { photoInput }
-                if mode != .identify {
-                    Picker("Translate to", selection: $language) {
-                        ForEach(languages, id: \.self) { Text($0) }
-                    }.disabled(busy || recording)
+                    }
+                    .pickerStyle(.segmented)
+                    .disabled(busy || recording || captureID != nil)
+
+                    if mode == .translateSpeech {
+                        speechInput
+                    } else {
+                        viewfinder
+                        photoControls
+                    }
+
+                    if mode != .identify {
+                        Picker("Translate to", selection: $language) {
+                            ForEach(languages, id: \.self) { Text($0) }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .disabled(busy || recording)
+                    }
+
+                    requestControls
                 }
-                Section {
-                    Button(mode == .identify ? "Analyze photo" : "Translate", action: analyze)
-                        .disabled(busy || recording || (mode == .translateSpeech
-                            ? transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty : photo == nil))
-                    if busy { ProgressView("Working…") }
-                    if let error { Text(error).foregroundStyle(.red) }
-                } footer: {
-                    Text("Max sends only the selected photo and question, or the reviewed transcript, for this request. Results can be uncertain.")
-                }
-                if let answer { Section("Max’s answer") { Text(answer).textSelection(.enabled) } }
+                .padding(16)
+                .frame(maxWidth: 640)
+                .frame(maxWidth: .infinity)
             }
+            .scrollDismissesKeyboard(.interactively)
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Visual Intelligence")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
-            .fullScreenCover(isPresented: $showCamera) {
-                CameraPickerView(selectedImage: $photo, isPresented: $showCamera).ignoresSafeArea()
+            .photosPicker(isPresented: $showLibrary, selection: $selection, matching: .images)
+            .task(id: mode) { await updateCameraPermission() }
+            .onChange(of: cameraWanted, initial: true) { _, requested in camera.setRunning(requested) }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { cameraAccess = AVCaptureDevice.authorizationStatus(for: .video) }
+                if phase == .background { captureID = nil }
             }
             .onChange(of: mode) { _, _ in answer = nil; error = nil }
             .onChange(of: language) { _, _ in answer = nil }
+            .onChange(of: question) { _, _ in answer = nil }
+            .onChange(of: transcript) { _, _ in answer = nil }
             .onChange(of: selection) { _, item in loadPhoto(item) }
             .onChange(of: auth.currentUser?.storageScope) { _, _ in cancel(); dismiss() }
             .onChange(of: voice.isRecording) { _, active in
@@ -79,65 +102,191 @@ struct VisualIntelligenceView: View {
                     error = "Recording stopped. Try again or enter the words manually."
                 }
             }
-            .onDisappear(perform: cancel)
         }
+        .onDisappear(perform: cancel)
         .tint(Color(hex: "#315E73"))
     }
 
-    private var photoInput: some View {
-        Section("What are you looking at?") {
-            Button("Open camera", systemImage: "camera", action: openCamera)
-            PhotosPicker(selection: $selection, matching: .images) { Label("Choose a photo", systemImage: "photo") }
-            if let photo {
-                Image(uiImage: photo).resizable().scaledToFit().frame(maxHeight: 250)
-                    .accessibilityLabel("Selected photo")
+    private var viewfinder: some View {
+        Color.black
+            .aspectRatio(4.0 / 5.0, contentMode: .fit)
+            .overlay {
+                if let photo {
+                    GeometryReader { geometry in
+                        Image(uiImage: photo)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                            .accessibilityLabel("Selected photo")
+                    }
+                } else if cameraWanted && !camera.unavailable {
+                    VisualCameraPreview(session: camera.session, device: camera.device)
+                        .accessibilityHidden(true)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "camera").font(.title2).accessibilityHidden(true)
+                        Text(cameraAccess == .denied || cameraAccess == .restricted
+                            ? "Camera access is off. Choose a photo or allow access in Settings."
+                            : "Camera unavailable. Choose a photo to continue.")
+                            .font(.callout)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(20)
+                    .foregroundStyle(.white)
+                }
             }
-            if mode == .identify {
-                TextField("Ask about the photo (optional)", text: $question, axis: .vertical)
+            .overlay(alignment: .top) {
+                if photo != nil && !dynamicTypeSize.isAccessibilitySize {
+                    if let answer { answerCard(answer, overPhoto: true).padding(12) }
+                    else if busy {
+                        ProgressView("Analyzing photo…")
+                            .padding(12)
+                            .background(.regularMaterial, in: Capsule())
+                            .padding(12)
+                    }
+                }
             }
-        }.disabled(busy)
+            .overlay(alignment: .bottom) {
+                if photo == nil && cameraWanted && !camera.unavailable {
+                    Button(action: takePhoto) {
+                        Circle()
+                            .strokeBorder(.white, lineWidth: 3)
+                            .frame(width: 62, height: 62)
+                            .overlay { Circle().fill(.white).padding(6) }
+                    }
+                    .buttonStyle(.plain)
+                    .opacity(camera.device == nil || busy || captureID != nil ? 0.5 : 1)
+                    .disabled(camera.device == nil || busy || captureID != nil)
+                    .accessibilityLabel("Take photo")
+                    .padding(.bottom, 16)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 24))
+            .frame(maxWidth: 440)
+    }
+
+    private var photoControls: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Button("Choose a photo", systemImage: "photo.on.rectangle") { showLibrary = true }
+                Spacer()
+                if photo != nil {
+                    Button("Retake", systemImage: "camera", action: resetPhoto)
+                } else if camera.unavailable {
+                    Button("Retry camera") { camera.setRunning(cameraWanted) }
+                }
+            }
+            .font(.callout.weight(.semibold))
+            .frame(minHeight: 44)
+
+            if mode == .identify && photo != nil {
+                TextField("Ask about what you see (optional)", text: $question, axis: .vertical)
+                    .lineLimit(1...3)
+                    .padding(12)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .disabled(busy || captureID != nil)
+    }
+
+    private var requestControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if mode == .translateSpeech || photo != nil {
+                Button(mode == .identify ? "Identify" : "Translate", action: analyze)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(busy || recording || (mode == .translateSpeech &&
+                        transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+            }
+            if busy && (mode == .translateSpeech || photo == nil || dynamicTypeSize.isAccessibilitySize) {
+                ProgressView(mode == .translateSpeech ? "Working…" : "Working on your photo…")
+            }
+            if let error { Text(error).foregroundStyle(.red) }
+            Text(mode == .translateSpeech
+                 ? "Max sends the reviewed transcript to its AI service for translation."
+                 : "When you tap Identify or Translate, Max sends the selected photo and your question to its AI service. Identifications can be uncertain.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            if let answer, mode == .translateSpeech || dynamicTypeSize.isAccessibilitySize {
+                answerCard(answer, overPhoto: false)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func answerCard(_ text: String, overPhoto: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Max’s answer").font(.caption.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            ScrollView {
+                Text(text).textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: overPhoto ? 150 : 420)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(overPhoto ? Color.white : Color.primary)
+        .background(overPhoto ? Color.black.opacity(0.86) : Color(.secondarySystemGroupedBackground),
+                    in: RoundedRectangle(cornerRadius: 16))
     }
 
     private var speechInput: some View {
-        Section {
+        VStack(alignment: .leading, spacing: 10) {
             Button(recording ? "Stop and review" : "Record speech",
-                   systemImage: recording ? "stop.fill" : "mic", action: toggleRecording)
+                   systemImage: recording ? "stop.fill" : "waveform", action: toggleRecording)
+                .buttonStyle(.bordered)
                 .disabled(busy)
             TextEditor(text: $transcript).frame(minHeight: 100)
                 .accessibilityLabel("Transcript to translate")
                 .disabled(busy || recording)
             if let notice { Text(notice).font(.footnote).foregroundStyle(.secondary) }
-        } header: {
-            Text("Review the words before translating")
-        } footer: {
-            Text("Use the microphone with permission from anyone speaking. Max may send the recording for transcription when you stop it. You can also type or paste the words.")
+            Text("Ask anyone speaking for permission before recording. Max may send the audio for transcription when you stop. You can also type or paste the words.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
         }
     }
 
-    private func openCamera() {
-        guard UIImagePickerController.isSourceTypeAvailable(.camera) else {
-            error = "This device doesn’t have a camera available. Choose a photo instead."
-            return
+    private func updateCameraPermission() async {
+        guard mode != .translateSpeech else { return }
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        if status == .notDetermined {
+            _ = await AVCaptureDevice.requestAccess(for: .video)
+            guard !Task.isCancelled else { return }
         }
-        run {
-            let status = AVCaptureDevice.authorizationStatus(for: .video)
-            let allowed = status == .notDetermined ? await AVCaptureDevice.requestAccess(for: .video) : status == .authorized
-            try checkScope()
-            guard allowed else { error = "Allow camera access in iPhone Settings, or choose a photo."; return }
-            answer = nil
-            showCamera = true
+        cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
+    }
+
+    private func takePhoto() {
+        guard captureID == nil, cameraWanted else { return }
+        let id = UUID()
+        captureID = id
+        error = nil
+        camera.takePhoto { image in
+            guard captureID == id, StorageService.shared.accountScope == account else { return }
+            captureID = nil
+            if let image { photo = image }
+            else { error = "Max couldn’t take the photo. Try again or choose one." }
         }
+    }
+
+    private func resetPhoto() {
+        photo = nil
+        selection = nil
+        question = ""
+        answer = nil
+        error = nil
     }
 
     private func loadPhoto(_ item: PhotosPickerItem?) {
         guard let item else { return }
         run {
+            defer { selection = nil }
             guard let data = try await item.loadTransferable(type: Data.self), let image = UIImage(data: data) else {
                 error = "This photo couldn’t be opened."
                 return
             }
             try checkScope()
             photo = image
+            question = ""
             answer = nil
         }
     }
@@ -224,6 +373,8 @@ struct VisualIntelligenceView: View {
     }
 
     private func cancel() {
+        captureID = nil
+        camera.setRunning(false)
         work?.cancel()
         if mode == .translateSpeech && (recording || busy) {
             voice.onRecordingLimit = nil

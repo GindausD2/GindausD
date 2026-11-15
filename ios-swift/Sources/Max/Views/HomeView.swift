@@ -168,7 +168,7 @@ struct HomeView: View {
 
     var body: some View {
         projectPresentations
-            .sheet(isPresented: $showVisualIntelligence) {
+            .fullScreenCover(isPresented: $showVisualIntelligence) {
                 VisualIntelligenceView(account: StorageService.shared.accountScope)
             }
             .sheet(item: $inspectedLifeMemory) { link in
@@ -214,6 +214,7 @@ struct HomeView: View {
         showCompanion = false
         showHistory = false
         showCamera = false
+        showVisualIntelligence = false
         composerFocused = false
         let result = liveActivity.startPersistentSession()
         if action == .saveThought {
@@ -434,14 +435,14 @@ struct HomeView: View {
 
     private var regularDock: some View {
         VStack(spacing: 8) {
-            if viewModel.conversationState != .idle || viewModel.isTranscribing {
+            if voiceTurnActive {
                 statusPill.transition(.opacity)
             } else if !isTyping {
-                Text(viewModel.inputText.isEmpty ? "Tap the orb to hear Max · AI voice" : "Draft ready · tap Type to edit")
+                Text(viewModel.inputText.isEmpty ? "Tap to hear Max · Hold for voice options" : "Draft ready · tap Type to edit")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
-            if isTyping {
+            if isTyping && !voiceTurnActive {
                 textComposer
             } else {
                 orbDock
@@ -453,26 +454,61 @@ struct HomeView: View {
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: isTyping)
     }
 
+    private var voiceTurnActive: Bool {
+        viewModel.conversationState != .idle || viewModel.isTranscribing || viewModel.startingVoice
+    }
+
     private var orbDock: some View {
         HStack(spacing: 12) {
             conversationActions
                 .glassCard(cornerRadius: 22, interactive: true)
             Spacer(minLength: 0)
-            Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState, size: 64)
+            if voiceTurnActive {
+                orbButton
+            } else {
+                orbButton
+                    .contextMenu { voiceActions }
+                    .accessibilityActions { voiceActions }
             }
-            .accessibilityLabel(viewModel.orbAccessibilityLabel)
-            .accessibilityHint(viewModel.orbAccessibilityHint)
             Spacer(minLength: 0)
-            microphoneButton
+            Button(action: openVisualIntelligence) {
+                Image(systemName: "viewfinder")
+                    .font(.system(size: 21, weight: .medium))
+                    .foregroundStyle(Color(hex: "#315E73"))
+                    .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
+            }
+            .accessibilityLabel("Visual Intelligence")
+            .accessibilityHint("Open Max’s camera")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
     }
 
+    private var orbButton: some View {
+        Button(action: viewModel.handleOrbTap) {
+            OrbView(state: viewModel.orbState(isPlayingSpeech: playback.isSpeaking && !playback.isPreparingSpeech), size: 64)
+                .contentShape(Circle())
+        }
+        .accessibilityLabel(viewModel.orbAccessibilityLabel)
+        .accessibilityHint(viewModel.orbAccessibilityHint)
+    }
+
+    @ViewBuilder private var voiceActions: some View {
+        Button("Talk to Max", systemImage: "waveform") {
+            composerFocused = false
+            viewModel.activateVoice()
+        }
+        Button("Dictate a message", systemImage: "text.bubble") {
+            composerFocused = false
+            viewModel.handleMicTap()
+        }
+    }
+
     private var conversationActions: some View {
         Menu {
             Button("Type a message", systemImage: "keyboard") { openTextEntry() }
+            if !voiceTurnActive { voiceActions }
             Button("New conversation", systemImage: "square.and.pencil") {
                 pendingImage = nil
                 composerFocused = false
@@ -485,11 +521,7 @@ struct HomeView: View {
                 composerFocused = false
                 showProjectResume = true
             }
-            Button("Visual Intelligence", systemImage: "viewfinder") {
-                viewModel.endConversation()
-                composerFocused = false
-                showVisualIntelligence = true
-            }
+            Button("Visual Intelligence", systemImage: "viewfinder", action: openVisualIntelligence)
             Button("Attach a photo", systemImage: "photo") { showCamera = true }
             Button("Conversation history", systemImage: "clock.arrow.circlepath") {
                 viewModel.endConversation(); showHistory = true
@@ -501,19 +533,6 @@ struct HomeView: View {
                 .frame(width: 44, height: 44)
         }
         .accessibilityLabel("Conversation actions")
-    }
-
-    private var microphoneButton: some View {
-        Button { viewModel.handleMicTap() } label: {
-            Image(systemName: viewModel.conversationState != .idle ? "stop.fill" : "mic.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color(UIColor.systemBackground))
-                .frame(width: 44, height: 44)
-                .background(Color(UIColor.label), in: Circle())
-        }
-        .disabled(viewModel.isTranscribing)
-        .accessibilityLabel(viewModel.conversationState != .idle ? "Stop voice or response" : "Dictate a message")
-        .accessibilityHint("Turn your voice into editable text")
     }
 
     private var textComposer: some View {
@@ -548,8 +567,6 @@ struct HomeView: View {
                     }
                     .disabled(viewModel.isTranscribing)
                     .accessibilityLabel("Send message")
-                } else {
-                    microphoneButton
                 }
             }
             if viewModel.prefersTextReplyForDraft {
@@ -592,6 +609,12 @@ struct HomeView: View {
         }
         .font(.caption.weight(.medium))
         .foregroundStyle(.secondary)
+    }
+
+    private func openVisualIntelligence() {
+        viewModel.endConversation()
+        composerFocused = false
+        showVisualIntelligence = true
     }
 
     private func openTextEntry() {
@@ -642,29 +665,13 @@ struct HomeView: View {
 
     private var statusText: String {
         if viewModel.isTranscribing { return "Transcribing…" }
+        if viewModel.startingVoice { return "Getting voice ready…" }
+        if playback.isPreparingSpeech && viewModel.conversationState == .speaking { return "Getting Max’s voice ready…" }
         switch viewModel.conversationState {
         case .idle:      return "Idle"
         case .listening: return "Listening…"
         case .thinking:  return "Thinking…"
         case .speaking:  return "Speaking…"
-        }
-    }
-
-    // MARK: - Camera Button
-
-    private var cameraButton: some View {
-        Button { showCamera = true } label: {
-            ZStack {
-                Circle()
-                    .fill(Color(white: 0.0).opacity(0.06))
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Circle().strokeBorder(Color(white: 0.0).opacity(0.12), lineWidth: 1)
-                    )
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Color(white: 0.30))
-            }
         }
     }
 
@@ -751,7 +758,7 @@ final class HomeViewModel: ObservableObject {
     private var speechCompletionTask: Task<Void, Never>?
     private var turnID = UUID()
     private var continuousActive = false
-    private var startingVoice = false
+    @Published private(set) var startingVoice = false
     private var loadedScope: String?
     private var streamingMessageId: String? = nil
     private var currentConversationId: String = UUID().uuidString
@@ -771,16 +778,18 @@ final class HomeViewModel: ObservableObject {
         }.store(in: &voiceSubscriptions)
     }
 
-    var orbState: OrbState {
+    func orbState(isPlayingSpeech: Bool) -> OrbState {
+        if startingVoice || isTranscribing { return .thinking }
         switch conversationState {
         case .idle:      return .idle
         case .listening: return .listening
         case .thinking:  return .thinking
-        case .speaking:  return .speaking
+        case .speaking:  return isPlayingSpeech ? .speaking : .thinking
         }
     }
 
     var orbAccessibilityLabel: String {
+        if startingVoice || isTranscribing { return "Cancel voice input" }
         switch conversationState {
         case .idle: return "Hear Max"
         case .listening: return "Finish voice input"
@@ -791,7 +800,7 @@ final class HomeViewModel: ObservableObject {
 
     var orbAccessibilityHint: String {
         if isDictating { return "Finish dictation and review your message before sending" }
-        return conversationState == .idle ? "Tap to hear Max. Use the microphone to dictate." : "Tap to stop"
+        return conversationState == .idle ? "Tap to hear Max. Voice options are also in Conversation actions." : "Tap to stop"
     }
 
     var orbCaption: String {
@@ -885,7 +894,7 @@ final class HomeViewModel: ObservableObject {
 
     func handleOrbTap() {
         if isDictating { handleMicTap(); return }
-        guard !startingVoice, !isTranscribing else { return }
+        if startingVoice || isTranscribing { endConversation(); return }
         guard conversationState == .idle else { handleMicTap(); return }
         continuousActive = false
         turnID = UUID()
