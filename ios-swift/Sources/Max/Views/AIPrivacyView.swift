@@ -14,7 +14,7 @@ struct AIPrivacyView: View {
         NavigationStack {
             Form {
                 Section("Cloud processing") {
-                    Text("To answer you, Max sends your messages and relevant saved context through Max’s server to OpenAI. Voice features can also send recordings and vocabulary hints for transcription, or text for spoken replies.")
+                    Text("To answer you, Max sends your messages and relevant saved context through Max’s server to OpenAI. Voice features can also send recordings and vocabulary hints for transcription, or text for spoken replies. Camera identification and photo translation send the photo you choose and any question you enter.")
                     Link("OpenAI API data controls", destination: URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
                 }
                 Section {

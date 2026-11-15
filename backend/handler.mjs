@@ -1,3 +1,4 @@
+import { createVisualAPI } from './visual-api.mjs';
 import { createAccountAPI } from './account-api.mjs';
 import { Buffer } from 'node:buffer';
 import { openAIMessages, maxStream } from './openai.mjs';
@@ -23,6 +24,7 @@ function validContent(content) {
 }
 /** @param {{env?: Record<string, string | undefined>, fetchImpl?: typeof fetch, log?: (...args: any[]) => void, now?: () => number, verifyPaid?: (proof: string | null, userID: string) => Promise<any>, speak?: (options: any) => Promise<any>}} options */
 export function createHandler({ env = process.env, fetchImpl = fetch, log = console.error, now = Date.now, verifyPaid = createAppleSubscriptionVerifier({ env, now }), speak } = {}) {
+  const visualAPI = createVisualAPI({ env, fetchImpl, now, verifyPaid });
   const accountAPI = createAccountAPI({ env, fetchImpl });
   const companionAPI = createCompanionAPI({ env, fetchImpl, now, verifyPaid, speak, log });
   const transcriptionAPI = createTranscriptionAPI({ env, fetchImpl, now, verifyPaid, log });
@@ -30,6 +32,8 @@ export function createHandler({ env = process.env, fetchImpl = fetch, log = cons
     const url = new URL(request.url);
     const account = await accountAPI(request);
     if (account) return account;
+    const visual = await visualAPI(request);
+    if (visual) return visual;
     const transcription = await transcriptionAPI(request);
     if (transcription) return transcription;
     const companion = await companionAPI(request);

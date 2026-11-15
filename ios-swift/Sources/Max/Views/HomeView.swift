@@ -29,6 +29,7 @@ struct HomeView: View {
     @State private var islandNotice: String?
     @State private var showHistory: Bool = false
     @State private var showCamera: Bool = false
+    @State private var showVisualIntelligence = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
     @FocusState private var composerFocused: Bool
@@ -172,6 +173,9 @@ struct HomeView: View {
                 ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
                     .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
             }
+            .fullScreenCover(isPresented: $showVisualIntelligence) {
+                VisualIntelligenceView(account: StorageService.shared.accountScope)
+            }
             .fullScreenCover(isPresented: $showCamera) {
                 ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
                     .ignoresSafeArea()
@@ -231,6 +235,7 @@ struct HomeView: View {
         showCompanion = false
         showHistory = false
         showCamera = false
+        showVisualIntelligence = false
         composerFocused = false
         let result = liveActivity.startPersistentSession()
         if action == .voice {
@@ -456,13 +461,24 @@ struct HomeView: View {
                     .accessibilityActions { voiceActions }
             }
             Spacer(minLength: 0)
-            Color.clear
-                .frame(width: 44, height: 44)
-                .accessibilityHidden(true)
-                .allowsHitTesting(false)
+            Button(action: openVisualIntelligence) {
+                Image(systemName: "viewfinder")
+                    .font(.system(size: 21, weight: .medium))
+                    .foregroundStyle(Color(hex: "#315E73"))
+                    .frame(width: 44, height: 44)
+                    .glassCard(cornerRadius: 22, interactive: true)
+            }
+            .accessibilityLabel("Visual Intelligence")
+            .accessibilityHint("Open Max’s camera")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
+    }
+
+    private func openVisualIntelligence() {
+        viewModel.endConversation()
+        composerFocused = false
+        showVisualIntelligence = true
     }
 
     private var orbButton: some View {
@@ -499,6 +515,7 @@ struct HomeView: View {
                 isTyping = false
                 viewModel.startNewChat()
             }
+            Button("Visual Intelligence", systemImage: "viewfinder", action: openVisualIntelligence)
             Button("Attach a photo", systemImage: "photo") { showCamera = true }
             Button("Report a response", systemImage: "flag") {
                 viewModel.endConversation()

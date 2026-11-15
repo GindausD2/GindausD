@@ -1,0 +1,76 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createHandler } from '../handler.mjs';
+import { createEdgeHandler } from '../edge.mjs';
+
+const time = Date.parse('2026-11-09T08:00:00Z');
+const env = { SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public', OPENAI_API_KEY: 'server-only' };
+const jpeg = Buffer.from([255, 216, 255, 0, 255, 217]).toString('base64');
+const request = (body, token = true, consent = true) => new Request('https://max.example/functions/v1/max-api/v1/visual', {
+  method: 'POST', headers: { 'Content-Type': 'application/json', ...(consent ? { 'X-Max-OpenAI-Consent': '1' } : {}), ...(token ? { Authorization: 'Bearer session' } : {}) },
+  body: JSON.stringify(body),
+});
+const fixture = ({ allowed = true, createdAt = '2026-11-08T08:00:00Z' } = {}) => {
+  const calls = [];
+  const handle = createEdgeHandler(createHandler({ env, now: () => time, verifyPaid: async () => null,
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      if (url.endsWith('/auth/v1/user')) {
+        return Response.json({ id: 'demo', is_anonymous: true, created_at: createdAt });
+      }
+      if (url.endsWith('/consume_max_request')) return Response.json(allowed);
+      return Response.json({ choices: [{ message: { content: 'Answer from the provider' } }] });
+    },
+  }));
+  return { handle, calls };
+};
+
+test('visual recognition forwards only a bounded JPEG and question', async () => {
+  const { handle, calls } = fixture();
+  const response = await handle(request({ mode: 'identify', jpeg, text: 'What animal is this?' }));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal((await response.json()).answer, 'Answer from the provider');
+  assert.equal(calls.length, 3);
+  const payload = JSON.parse(calls[2].options.body);
+  assert.equal(payload.store, false);
+  assert.match(payload.messages[0].content, /likely name.*animals and plants.*avoid guessing an exact make or model/i);
+  assert.equal(payload.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,' + jpeg);
+});
+
+test('speech translation sends only text and keeps the requested language', async () => {
+  const { handle, calls } = fixture();
+  assert.equal((await handle(request({ mode: 'translateSpeech', text: 'Bonjour', language: 'Hausa' }))).status, 200);
+  const payload = JSON.parse(calls[2].options.body);
+  assert.match(payload.messages[0].content, /Hausa/);
+  assert.deepEqual(payload.messages[1].content, [{ type: 'text', text: 'Bonjour' }]);
+});
+
+test('invalid images and missing identity never reach the provider', async () => {
+  const { handle, calls } = fixture();
+  assert.equal((await handle(request({ mode: 'translatePhoto', jpeg: 'aW52YWxpZA==', language: 'English', text: '' }))).status, 400);
+  assert.equal((await handle(request({ mode: 'identify', jpeg, text: '' }, false))).status, 401);
+  assert.equal(calls.length, 0);
+});
+
+test('quota denial prevents a provider request', async () => {
+  const { handle, calls } = fixture({ allowed: false });
+  assert.equal((await handle(request({ mode: 'translatePhoto', jpeg, language: 'French', text: '' }))).status, 429);
+  assert.equal(calls.length, 2);
+});
+
+test('camera requires cloud AI approval before charging quota or sending an image', async () => {
+  const { handle, calls } = fixture();
+  const result = await handle(request({ mode: 'identify', jpeg, text: '' }, true, false));
+  assert.equal(result.status, 403);
+  assert.equal((await result.json()).code, 'openai_consent_required');
+  assert.equal(calls.length, 1);
+});
+
+test('camera enforces the same three-day trial cutoff as chat', async () => {
+  const { handle, calls } = fixture({ createdAt: '2026-11-06T08:00:00Z' });
+  const result = await handle(request({ mode: 'identify', jpeg, text: '' }));
+  assert.equal(result.status, 402);
+  assert.equal((await result.json()).code, 'demo_expired');
+  assert.equal(calls.length, 1);
+});
