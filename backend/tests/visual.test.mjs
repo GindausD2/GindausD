@@ -33,6 +33,7 @@ test('visual recognition forwards only a bounded JPEG and question', async () =>
   assert.equal(calls.length, 3);
   const payload = JSON.parse(calls[2].options.body);
   assert.equal(payload.store, false);
+  assert.match(payload.messages[0].content, /likely name.*animals and plants.*avoid guessing an exact make or model/i);
   assert.equal(payload.messages[1].content[1].image_url.url, 'data:image/jpeg;base64,' + jpeg);
 });
 

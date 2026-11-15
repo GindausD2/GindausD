@@ -2,15 +2,17 @@ import SwiftUI
 import PhotosUI
 import AVFoundation
 import UIKit
+import Vision
 
 struct VisualIntelligenceView: View {
     private enum Mode: String, CaseIterable {
-        case identify, translatePhoto, translateSpeech
+        case identify, readText, translatePhoto, translateSpeech
 
         var label: String {
             switch self {
             case .identify: return "Identify"
-            case .translatePhoto: return "Read text"
+            case .readText: return "Read text"
+            case .translatePhoto: return "Translate"
             case .translateSpeech: return "Speech"
             }
         }
@@ -37,6 +39,7 @@ struct VisualIntelligenceView: View {
     @State private var work: Task<Void, Never>?
     @State private var recording = false
     @State private var busy = false
+    @State private var playingResult = false
     let account: String
 
     private let languages = ["English", "Hausa", "French", "Arabic", "Spanish", "German",
@@ -54,7 +57,8 @@ struct VisualIntelligenceView: View {
                     Picker("Mode", selection: $mode) {
                         ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .disabled(busy || recording || captureID != nil)
 
                     if mode == .translateSpeech {
@@ -64,7 +68,7 @@ struct VisualIntelligenceView: View {
                         photoControls
                     }
 
-                    if mode != .identify {
+                    if mode == .translatePhoto || mode == .translateSpeech {
                         Picker("Translate to", selection: $language) {
                             ForEach(languages, id: \.self) { Text($0) }
                         }
@@ -88,14 +92,15 @@ struct VisualIntelligenceView: View {
             .onChange(of: cameraWanted, initial: true) { _, requested in camera.setRunning(requested) }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { cameraAccess = AVCaptureDevice.authorizationStatus(for: .video) }
-                if phase == .background { captureID = nil }
+                if phase == .background { captureID = nil; stopResult() }
             }
-            .onChange(of: mode) { _, _ in answer = nil; error = nil }
-            .onChange(of: language) { _, _ in answer = nil }
-            .onChange(of: question) { _, _ in answer = nil }
-            .onChange(of: transcript) { _, _ in answer = nil }
+            .onChange(of: mode) { _, _ in clearResult(); error = nil }
+            .onChange(of: language) { _, _ in clearResult() }
+            .onChange(of: question) { _, _ in clearResult() }
+            .onChange(of: transcript) { _, _ in clearResult() }
             .onChange(of: selection) { _, item in loadPhoto(item) }
             .onChange(of: auth.currentUser?.storageScope) { _, _ in cancel(); dismiss() }
+            .onChange(of: voice.isSpeaking) { _, active in if !active { playingResult = false } }
             .onChange(of: voice.isRecording) { _, active in
                 if recording && !active && !busy {
                     recording = false
@@ -139,7 +144,7 @@ struct VisualIntelligenceView: View {
                 if photo != nil && !dynamicTypeSize.isAccessibilitySize {
                     if let answer { answerCard(answer, overPhoto: true).padding(12) }
                     else if busy {
-                        ProgressView("Analyzing photo…")
+                        ProgressView(mode == .readText ? "Reading text…" : "Analyzing photo…")
                             .padding(12)
                             .background(.regularMaterial, in: Capsule())
                             .padding(12)
@@ -168,7 +173,7 @@ struct VisualIntelligenceView: View {
     private var photoControls: some View {
         VStack(spacing: 12) {
             HStack {
-                Button("Choose a photo", systemImage: "photo.on.rectangle") { showLibrary = true }
+                Button("Choose a photo", systemImage: "photo.on.rectangle") { stopResult(); showLibrary = true }
                 Spacer()
                 if photo != nil {
                     Button("Retake", systemImage: "camera", action: resetPhoto)
@@ -192,7 +197,7 @@ struct VisualIntelligenceView: View {
     private var requestControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             if mode == .translateSpeech || photo != nil {
-                Button(mode == .identify ? "Identify" : "Translate", action: analyze)
+                Button(mode == .translateSpeech ? "Translate" : mode.label, action: analyze)
                     .buttonStyle(.borderedProminent)
                     .disabled(busy || recording || (mode == .translateSpeech &&
                         transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
@@ -201,9 +206,7 @@ struct VisualIntelligenceView: View {
                 ProgressView(mode == .translateSpeech ? "Working…" : "Working on your photo…")
             }
             if let error { Text(error).foregroundStyle(.red) }
-            Text(mode == .translateSpeech
-                 ? "Max sends the reviewed transcript to its AI service for translation."
-                 : "When you tap Identify or Translate, Max sends the selected photo and your question to its AI service. Identifications can be uncertain.")
+            Text(requestNotice)
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if let answer, mode == .translateSpeech || dynamicTypeSize.isAccessibilitySize {
@@ -213,9 +216,46 @@ struct VisualIntelligenceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private var requestNotice: String {
+        switch mode {
+        case .readText: return "Max reads printed names and labels on this device. Check the spelling against the photo."
+        case .identify: return "When you tap Identify, Max sends the selected photo and your question to its AI service. Identifications can be uncertain."
+        case .translatePhoto: return "When you tap Translate, Max sends the selected photo to its AI service."
+        case .translateSpeech: return "Max sends the reviewed transcript to its AI service for translation."
+        }
+    }
+
     private func answerCard(_ text: String, overPhoto: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Max’s answer").font(.caption.weight(.semibold)).accessibilityAddTraits(.isHeader)
+            HStack(spacing: 8) {
+                if playingResult {
+                    OrbView(state: voice.isPreparingSpeech ? .thinking : .speaking, size: 21)
+                }
+                Text(mode == .readText ? "Text from photo" : "Max’s answer")
+                    .font(.caption.weight(.semibold))
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 0)
+                Button {
+                    if playingResult { stopResult() } else { speakResult(text) }
+                } label: {
+                    Image(systemName: playingResult ? "stop.fill" : "speaker.wave.2")
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(playingResult ? "Stop reading" : "Read aloud")
+                if mode == .readText {
+                    Button {
+                        UIPasteboard.general.string = text
+                    } label: {
+                        Image(systemName: "document.on.document").frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Copy recognized text")
+                }
+            }
+            if playingResult, let playbackNotice = voice.playbackNotice {
+                Text(playbackNotice).font(.caption)
+            }
             ScrollView {
                 Text(text).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -272,7 +312,7 @@ struct VisualIntelligenceView: View {
         photo = nil
         selection = nil
         question = ""
-        answer = nil
+        clearResult()
         error = nil
     }
 
@@ -287,7 +327,7 @@ struct VisualIntelligenceView: View {
             try checkScope()
             photo = image
             question = ""
-            answer = nil
+            clearResult()
         }
     }
 
@@ -318,8 +358,25 @@ struct VisualIntelligenceView: View {
         let selectedMode = mode
         let target = language
         let text = selectedMode == .translateSpeech ? transcript : (selectedMode == .identify ? question : "")
-        answer = nil
+        clearResult()
         run {
+            if selectedMode == .readText {
+                guard let photo, let image = Self.normalizedImage(photo, edge: 2400)?.cgImage else {
+                    error = "Choose a photo with the writing in view."
+                    return
+                }
+                let recognized = try await Task.detached(priority: .userInitiated) {
+                    try VisualTextRecognition.read(image)
+                }.value
+                try checkScope()
+                guard !recognized.isEmpty else {
+                    error = "Max couldn’t read any text. Move closer or try better lighting."
+                    return
+                }
+                answer = recognized
+                return
+            }
+
             let jpeg: String?
             if selectedMode == .translateSpeech { jpeg = nil }
             else {
@@ -347,12 +404,39 @@ struct VisualIntelligenceView: View {
             let (data, response) = try await URLSession.shared.data(for: request)
             try checkScope()
             let result = try? JSONDecoder().decode(Result.self, from: data)
-            guard (response as? HTTPURLResponse)?.statusCode == 200, let value = result?.answer else {
+            let status = (response as? HTTPURLResponse)?.statusCode
+            if status == 402 && result?.code == "demo_expired" {
+                auth.markDemoExpired()
+                return
+            }
+            guard status == 200, let value = result?.answer else {
                 error = result?.error ?? "Visual Intelligence isn’t available on this server yet."
                 return
             }
             answer = value
+            if selectedMode == .identify && StorageService.shared.loadSettings().voiceEnabled {
+                speakResult(value)
+            }
         }
+    }
+
+    private func speakResult(_ text: String) {
+        guard StorageService.shared.accountScope == account, scenePhase == .active else { return }
+        let preferredVoice = StorageService.shared.loadSettings().preferredVoice
+        if mode == .readText { voice.readTextOnDevice(text, preferredVoice: preferredVoice) }
+        else { voice.speak(text, preferredVoice: preferredVoice) }
+        playingResult = voice.isSpeaking
+    }
+
+    private func stopResult() {
+        guard playingResult else { return }
+        voice.stopSpeaking()
+        playingResult = false
+    }
+
+    private func clearResult() {
+        stopResult()
+        answer = nil
     }
 
     private func run(_ operation: @escaping @MainActor () async throws -> Void) {
@@ -376,25 +460,30 @@ struct VisualIntelligenceView: View {
         captureID = nil
         camera.setRunning(false)
         work?.cancel()
+        stopResult()
         if mode == .translateSpeech && (recording || busy) {
             voice.onRecordingLimit = nil
             voice.stopRecording()
         }
     }
 
-    private static func boundedJPEG(_ image: UIImage) -> String? {
+    private static func normalizedImage(_ image: UIImage, edge: CGFloat) -> UIImage? {
         let longest = max(image.size.width, image.size.height)
         guard longest > 0 else { return nil }
+        let ratio = min(1, edge / longest)
+        let size = CGSize(width: max(1, image.size.width * ratio), height: max(1, image.size.height * ratio))
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+    }
+
+    private static func boundedJPEG(_ image: UIImage) -> String? {
         for edge in [CGFloat(1280), 960, 720] {
-            let ratio = min(1, edge / longest)
-            let size = CGSize(width: max(1, image.size.width * ratio), height: max(1, image.size.height * ratio))
-            let format = UIGraphicsImageRendererFormat()
-            format.scale = 1
-            format.opaque = true
-            let normalized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-                image.draw(in: CGRect(origin: .zero, size: size))
-            }
-            if let data = normalized.jpegData(compressionQuality: 0.75), data.count <= 300_000 {
+            if let data = normalizedImage(image, edge: edge)?.jpegData(compressionQuality: 0.75),
+               data.count <= 300_000 {
                 return data.base64EncodedString()
             }
         }
@@ -411,5 +500,17 @@ struct VisualIntelligenceView: View {
     private struct Result: Decodable {
         let answer: String?
         let error: String?
+        let code: String?
+    }
+}
+
+enum VisualTextRecognition {
+    static func read(_ image: CGImage) throws -> String {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.automaticallyDetectsLanguage = true
+        request.usesLanguageCorrection = false
+        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }.joined(separator: "\n")
     }
 }

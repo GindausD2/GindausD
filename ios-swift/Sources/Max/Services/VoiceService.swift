@@ -286,6 +286,13 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         }
     }
 
+    func readTextOnDevice(_ text: String, preferredVoice: String) {
+        stopSpeaking()
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        playbackNotice = "Using iPhone voice"
+        speakOnDevice(text, preferredVoice: preferredVoice)
+    }
+
     private func speakOnDevice(_ clean: String, preferredVoice: String) {
 
         let session = AVAudioSession.sharedInstance()
