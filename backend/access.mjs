@@ -29,8 +29,8 @@ export async function authorizeMax({ request, env, fetchImpl, verifyPaid, now, s
 }
 
 export function requireAIConsent(request) {
-  if (request.headers.get('x-max-ai-consent') !== '1') {
-    return apiError(403, 'Review AI privacy in Max before using cloud AI.', 'ai_consent_required');
+  if (request.headers.get('x-max-openai-consent') !== '1') {
+    return apiError(403, 'Review AI privacy in Max before using cloud AI.', 'openai_consent_required');
   }
   return null;
 }

@@ -12,7 +12,7 @@ const guest = { id: account, is_anonymous: true, created_at: '2026-10-20T12:00:0
 const permanent = { id: account, is_anonymous: false };
 function request(path = '/v1/speech', body = { text: 'Hello.', voice: 'marin' }, token = 'session', proof = 'signed-proof', consent = '1') {
   return new Request('https://max.example' + path, { method: 'POST', headers: {
-    'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), 'X-Max-Transaction': proof, ...(consent ? { 'X-Max-AI-Consent': consent } : {}),
+    'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), 'X-Max-Transaction': proof, ...(consent ? { 'X-Max-OpenAI-Consent': consent } : {}),
   }, body: JSON.stringify(body) });
 }
 function fixture({ user = guest, active = true, quota = true, quotaStatus = 200 } = {}) {
@@ -144,7 +144,7 @@ test('speech checks AI permission before spending quota', async () => {
   const f = fixture();
   const r = await f.handler(request(undefined, undefined, 'session', 'signed-proof', ''));
   assert.equal(r.status, 403);
-  assert.equal((await r.json()).code, 'ai_consent_required');
+  assert.equal((await r.json()).code, 'openai_consent_required');
   assert.equal(f.calls.length, 1);
   assert.equal(f.voices, 0);
 });

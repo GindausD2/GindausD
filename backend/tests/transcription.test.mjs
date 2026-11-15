@@ -17,7 +17,7 @@ function wave(samples = 16000, amplitude = 1000) {
 }
 function request({ audio = wave(), token = 'session', type = 'audio/wav', signal, path = '/v1/transcriptions' } = {}) {
   return new Request('https://max.invalid' + path, { method: 'POST', headers: { 'Content-Type': type,
-    ...(token ? { Authorization: 'Bearer ' + token } : {}), 'X-Max-Transaction': 'proof', 'X-Max-AI-Consent': '1' }, body: audio, signal });
+    ...(token ? { Authorization: 'Bearer ' + token } : {}), 'X-Max-Transaction': 'proof', 'X-Max-OpenAI-Consent': '1' }, body: audio, signal });
 }
 function fixture({ user = guest, active = true, quota = true, quotaStatus = 200,
   provider = () => Response.json({ text: 'Um, I, I mean, like, meet Gindaus in Bauchi. Na gode.', languages: [{ code: 'en' }, { code: 'ha' }] }), config = env } = {}) {
@@ -131,9 +131,9 @@ test('invalid vocabulary cannot spend quota or reach the transcription provider'
 test('transcription checks AI permission before using audio or quota', async () => {
   const f = fixture();
   const pending = request();
-  pending.headers.delete('x-max-ai-consent');
+  pending.headers.delete('x-max-openai-consent');
   const r = await f.handle(pending);
   assert.equal(r.status, 403);
-  assert.equal((await r.json()).code, 'ai_consent_required');
+  assert.equal((await r.json()).code, 'openai_consent_required');
   assert.equal(f.calls.length, 1);
 });

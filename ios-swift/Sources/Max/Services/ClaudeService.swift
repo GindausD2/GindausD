@@ -431,7 +431,8 @@ final class ClaudeService {
                 await StoreKitService.shared.refreshEntitlements()
             }
             let serverError = errorBody?["error"] as? String
-            if errorBody?["code"] as? String == "ai_consent_required" ||
+            let errorCode = errorBody?["code"] as? String
+            if errorCode == "openai_consent_required" || errorCode == "ai_consent_required" ||
                 serverError?.localizedCaseInsensitiveContains("data sharing") == true {
                 throw ClaudeError.consentRequired
             }

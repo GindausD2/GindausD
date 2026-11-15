@@ -13,7 +13,7 @@ test('edge routing preserves request body and verified bearer token before OpenA
       if (url.includes('/rpc/')) return Response.json(true);
       return new Response(textStream('Hello'));
     } }));
-    const response = await handler(new Request('https://max.example' + prefix + '/v1/messages', { method: 'POST', headers: { 'X-Max-AI-Consent': '1', Authorization: 'Bearer session', 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'Hello' }] }) }));
+    const response = await handler(new Request('https://max.example' + prefix + '/v1/messages', { method: 'POST', headers: { 'X-Max-OpenAI-Consent': '1', Authorization: 'Bearer session', 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: [{ role: 'user', content: 'Hello' }] }) }));
     assert.equal(response.status, 200); assert.match(await response.text(), /message_stop/);
     assert.equal(calls[0].options.headers.Authorization, 'Bearer session');
     assert.equal(JSON.parse(calls[2].options.body).messages[1].content, 'Hello');

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AIProcessingConsent {
     static let version = "1"
-    static let header = "X-Max-AI-Consent"
+    static let header = "X-Max-OpenAI-Consent"
 }
 
 struct AIPrivacyView: View {
