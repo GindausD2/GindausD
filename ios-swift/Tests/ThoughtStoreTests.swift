@@ -7,7 +7,7 @@ final class ThoughtStoreTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = ThoughtStore(directory: directory)
-        let thought = MaxThought(title: "Morning run", source: "Apple Watch", audio: Data([1, 2]))
+        let thought = MaxThought(title: "Morning run", source: "iPhone", audio: Data([1, 2]), transcript: "An idea after my run.")
         store.open(scope: "account-a")
         try store.save(thought)
 
@@ -17,11 +17,19 @@ final class ThoughtStoreTests: XCTestCase {
         reopened.open(scope: "account-a")
         XCTAssertEqual(reopened.thoughts.first?.id, thought.id)
         XCTAssertEqual(reopened.thoughts.first?.audio, thought.audio)
+        XCTAssertEqual(reopened.thoughts.first?.transcript, thought.transcript)
         XCTAssertFalse(reopened.syncEnabled)
 
         try reopened.removeLocal(scope: "account-a")
         reopened.open(scope: "account-a")
         XCTAssertTrue(reopened.thoughts.isEmpty)
+    }
+
+    func testAnExistingThoughtDecodesWithoutATranscript() throws {
+        let data = Data(#"{"id":"92D8E4C8-B68A-41E2-B1BB-85F3F10A0F01","title":"Morning run","createdAt":0,"source":"iPhone"}"#.utf8)
+        let thought = try JSONDecoder().decode(MaxThought.self, from: data)
+        XCTAssertEqual(thought.title, "Morning run")
+        XCTAssertNil(thought.transcript)
     }
 
     @MainActor

@@ -25,7 +25,8 @@ struct CompanionSheetHeader: View {
                 Button(action: onClose) {
                     Image(systemName: "xmark").font(.system(size: 13, weight: .semibold))
                         .frame(width: 44, height: 44)
-                        .glassCard(cornerRadius: 22, interactive: true)
+                        .background(.thinMaterial, in: Circle())
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Close \(title)")
                 Spacer()

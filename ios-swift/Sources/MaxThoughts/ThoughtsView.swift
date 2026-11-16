@@ -13,9 +13,15 @@ struct ThoughtsView: View {
     @StateObject private var capture = ThoughtCapture()
     @State private var title = ""
     @State private var draftAudio: Data?
+    @State private var draftTranscript = ""
     @State private var showingEditor = false
     @State private var selectedID: UUID?
-    @State private var alertKind: ThoughtAlertKind?
+    private struct AlertEditor: Identifiable {
+        let thought: MaxThought
+        let kind: ThoughtAlertKind
+        var id: ThoughtAlertKind { kind }
+    }
+    @State private var alertEditor: AlertEditor?
     @State private var message: String?
     @State private var recordingTask: Task<Void, Never>?
 
@@ -55,12 +61,16 @@ struct ThoughtsView: View {
                         if let audio = thought.audio {
                             Button { capture.play(audio) } label: { Label("Play recording", systemImage: "play.circle") }
                         }
-                        Button { alertKind = .reminder } label: {
+                        if let transcript = thought.transcript, !transcript.isEmpty {
+                            Text(transcript).textSelection(.enabled)
+                            transcriptActions(transcript)
+                        }
+                        Button { alertEditor = AlertEditor(thought: thought, kind: .reminder) } label: {
                             Label(store.alert(for: thought.id, kind: .reminder) == nil ? "Remind me" : "Manage reminder", systemImage: "bell")
                         }
                         #if os(iOS) && canImport(AlarmKit)
                         if #available(iOS 26.0, *), !ProcessInfo.processInfo.isiOSAppOnMac {
-                            Button { alertKind = .alarm } label: {
+                            Button { alertEditor = AlertEditor(thought: thought, kind: .alarm) } label: {
                                 Label(store.alert(for: thought.id, kind: .alarm) == nil ? "Set alarm" : "Manage alarm", systemImage: "alarm")
                             }
                         }
@@ -95,13 +105,13 @@ struct ThoughtsView: View {
         }
         .onChange(of: scope) { _, _ in
             showingEditor = false
-            alertKind = nil
+            alertEditor = nil
             discardCapture()
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .background {
                 recordingTask?.cancel()
-                if capture.recording { draftAudio = capture.finish() }
+                if capture.recording { finishRecording() }
                 capture.stopPlayback()
             }
             if phase == .active, canSync && store.syncEnabled { Task { await store.sync() } }
@@ -121,29 +131,72 @@ struct ThoughtsView: View {
                             .font(.caption)
                     }
                     if capture.recording {
-                        Button("Stop recording") { draftAudio = capture.finish() }
+                        Label("Recording", systemImage: "record.circle.fill")
+                            .foregroundStyle(.red)
+                            .accessibilityAddTraits(.isHeader)
+                        #if os(iOS)
+                        ScrollViewReader { proxy in
+                            ScrollView {
+                                Text(capture.transcript.isEmpty ? "Your words will appear here." : capture.transcript)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                Color.clear.frame(height: 1).id("transcript-end").accessibilityHidden(true)
+                            }
+                            .frame(minHeight: 56, maxHeight: 160)
+                            .onChange(of: capture.transcript) { _, _ in proxy.scrollTo("transcript-end", anchor: .bottom) }
+                        }
+                        if !capture.transcript.isEmpty {
+                            Button("Copy text", systemImage: "document.on.document") {
+                                UIPasteboard.general.string = capture.transcript
+                            }
+                        }
+                        #endif
+                        Button("Stop recording", action: finishRecording)
                     } else {
                         Button(draftAudio == nil ? "Record thought" : "Record again") {
                             prepareRecording()
                             recordingTask = Task {
-                                await capture.start { draftAudio = capture.finish() }
+                                await capture.start { finishRecording() }
                             }
                         }
                         .disabled(capture.starting)
                     }
+                    if !capture.recording && !draftTranscript.isEmpty {
+                        Text("Transcript").font(.headline)
+                        TextEditor(text: $draftTranscript).frame(minHeight: 90)
+                            .accessibilityLabel("Edit transcript")
+                        transcriptActions(draftTranscript)
+                    }
                     Button("Save thought", action: save)
                         .disabled(scope == nil || capture.starting || capture.recording ||
-                                  (draftAudio == nil && title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                                  (draftAudio == nil && draftTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                                   title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
                     Button("Cancel", role: .cancel) { showingEditor = false }
                 }
                 .padding()
             }
         }
-        .sheet(item: $alertKind) { kind in
-            if let scope, let thought = store.thoughts.first(where: { $0.id == selectedID }) {
-                ThoughtAlertView(store: store, thought: thought, kind: kind, scope: scope)
+        .sheet(item: $alertEditor) { editor in
+            if let scope {
+                ThoughtAlertView(store: store, thought: editor.thought, kind: editor.kind, scope: scope)
             }
         }
+    }
+
+    private func finishRecording() {
+        draftTranscript = capture.transcript
+        draftAudio = capture.finish()
+    }
+
+    @ViewBuilder private func transcriptActions(_ text: String) -> some View {
+        #if os(iOS)
+        HStack {
+            Button("Copy text", systemImage: "document.on.document") { UIPasteboard.general.string = text }
+            ShareLink(item: text) { Label("Share text", systemImage: "square.and.arrow.up") }
+        }
+        #elseif os(macOS)
+        ShareLink(item: text) { Label("Share text", systemImage: "square.and.arrow.up") }
+        #endif
     }
 
     private func openEditor() {
@@ -151,6 +204,7 @@ struct ThoughtsView: View {
         title = ""
         message = nil
         draftAudio = nil
+        draftTranscript = ""
         showingEditor = true
     }
 
@@ -159,13 +213,16 @@ struct ThoughtsView: View {
         _ = capture.finish()
         capture.stopPlayback()
         draftAudio = nil
+        draftTranscript = ""
         capture.error = nil
     }
 
     private func save() {
         let name = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        let thought = MaxThought(title: name.isEmpty ? "Voice thought" : String(name.prefix(160)),
-                                 source: Self.device, audio: draftAudio)
+        let transcript = draftTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+        let headline = name.isEmpty ? (transcript.components(separatedBy: .newlines).first ?? "") : name
+        let thought = MaxThought(title: headline.isEmpty ? "Voice thought" : String(headline.prefix(160)),
+                                 source: Self.device, audio: draftAudio, transcript: transcript.isEmpty ? nil : transcript)
         do {
             try store.save(thought)
             selectedID = thought.id
