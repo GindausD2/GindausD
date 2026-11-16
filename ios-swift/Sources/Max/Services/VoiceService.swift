@@ -277,7 +277,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     func speak(_ text: String, preferredVoice: String = "female") {
         stopSpeaking()
 
-        let clean = cleanForSpeech(text)
+        let clean = ReplyText.speech(text)
         guard !clean.isEmpty else { return }
 
         let settings = StorageService.shared.loadSettings()
@@ -426,28 +426,6 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         isPreparingSpeech = true
         isSpeaking = true
         speechSynthesizer.speak(utterance)
-    }
-
-    // MARK: - Markdown Stripper
-
-    private func cleanForSpeech(_ text: String) -> String {
-        var s = text
-        // Bold / italic
-        s = s.replacingOccurrences(of: "**", with: "")
-        s = s.replacingOccurrences(of: "__", with: "")
-        s = s.replacingOccurrences(of: "*",  with: "")
-        s = s.replacingOccurrences(of: "_",  with: "")
-        // Headings
-        s = s.replacingOccurrences(of: #"#{1,6}\s"#, with: "", options: .regularExpression)
-        // Code fences → "code block"
-        s = s.replacingOccurrences(of: #"```[\s\S]*?```"#, with: "code block", options: .regularExpression)
-        s = s.replacingOccurrences(of: "`", with: "")
-        // Bullet / numbered list markers
-        s = s.replacingOccurrences(of: #"(?m)^\s*[-•]\s"#,  with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: #"(?m)^\s*\d+\.\s"#, with: "", options: .regularExpression)
-        // Links [label](url) → label
-        s = s.replacingOccurrences(of: #"\[([^\]]+)\]\([^)]+\)"#, with: "$1", options: .regularExpression)
-        return s.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     func stopSpeaking() {
