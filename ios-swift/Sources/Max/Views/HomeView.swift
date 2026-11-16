@@ -968,9 +968,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     private func pushToWidget(_ text: String) {
-        let clean = text
-            .replacingOccurrences(of: #"_Using [^_]+…_"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = ReplyText.display(text)
         guard !clean.isEmpty else { return }
         let def = UserDefaults(suiteName: "group.com.gindausd.max")
         def?.set(clean, forKey: "max:widget_last_message")
@@ -1280,54 +1278,49 @@ final class HomeViewModel: ObservableObject {
             messages: trimmed,
             imageData: imageData
         ) { [weak self] chunk in
-            Task { @MainActor [weak self] in
-                guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
-                switch chunk {
-                case .text(let text):
-                    fullText += text
-                    self.streamingText = fullText
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                        self.messages[idx].isStreaming = true
-                    }
-                case .toolStart(let name):
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText + (fullText.isEmpty ? "" : "\n") + "_Using \(name)…_"
-                        self.messages[idx].isStreaming = true
-                    }
-                case .toolDone:
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                    }
-                case .done:
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                        self.messages[idx].isStreaming = false
-                    }
-                    self.streamingMessageId = nil
-                    self.streamingText = ""
-                    self.storage.saveMessages(self.messages)
-                    self.archiveCurrentConversation()
-                    self.pushToWidget(fullText)
-                    if allowSpeech && settings.voiceEnabled && !fullText.isEmpty {
-                        self.playSpeech(fullText, continueListening: true)
-                    } else {
-                        self.conversationState = .idle
-                    }
-                case .error(let errText):
-                    if errText == ClaudeError.consentRequired.errorDescription {
-                        self.showAIPrivacy = true
-                    }
-                    self.continuousActive = false
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText.isEmpty ? "Error: \(errText)" : fullText + "\n\nReply interrupted: " + errText
-                        self.messages[idx].isStreaming = false
-                    }
-                    self.streamingMessageId = nil
-                    self.streamingText = ""
-                    self.conversationState = .idle
-                    self.storage.saveMessages(self.messages)
+            guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
+            switch chunk {
+            case .text(let text):
+                fullText += text
+                self.streamingText = ReplyText.display(fullText, streaming: true)
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = fullText
+                    self.messages[idx].isStreaming = true
                 }
+            case .resetReply:
+                fullText = ""
+                self.streamingText = ""
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = ""
+                }
+            case .done:
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = fullText
+                    self.messages[idx].isStreaming = false
+                }
+                self.streamingMessageId = nil
+                self.streamingText = ""
+                self.storage.saveMessages(self.messages)
+                self.archiveCurrentConversation()
+                self.pushToWidget(fullText)
+                if allowSpeech && settings.voiceEnabled && !fullText.isEmpty {
+                    self.playSpeech(fullText, continueListening: true)
+                } else {
+                    self.conversationState = .idle
+                }
+            case .error(let errText):
+                if errText == ClaudeError.consentRequired.errorDescription {
+                    self.showAIPrivacy = true
+                }
+                self.continuousActive = false
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = fullText.isEmpty ? "Error: \(errText)" : fullText + "\n\nReply interrupted: " + errText
+                    self.messages[idx].isStreaming = false
+                }
+                self.streamingMessageId = nil
+                self.streamingText = ""
+                self.conversationState = .idle
+                self.storage.saveMessages(self.messages)
             }
         }
     }

@@ -15,6 +15,17 @@ function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerSt
   } });
   return { calls, handler };
 }
+test('the chat prompt asks for plain replies and confirms reminders only after success', async () => {
+  const f = fixture();
+  const response = await f.handler(request({ messages: [{ role: 'user', content: 'Set a reminder at 15 pm' }] }));
+  assert.equal(response.status, 200);
+  await response.text();
+  const system = JSON.parse(f.calls.at(-1).options.body).messages[0].content;
+  assert.match(system, /short, conversational sentences in plain text/);
+  assert.match(system, /ask for the missing details together without repeating them/);
+  assert.match(system, /If a requested time has passed, ask for a new time/);
+  assert.match(system, /Confirm actions only after a tool reports success/);
+});
 test('missing server configuration fails closed', async () => { const h = createHandler({ env: {}, fetchImpl: () => { throw Error('must not fetch'); } }); assert.equal((await h(request())).status, 503); });
 test('life-memory tool definitions and source-bearing results survive the authenticated continuation contract', async () => {
   const f = fixture();

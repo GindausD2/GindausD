@@ -7,6 +7,7 @@ struct TranscriptBubble: View {
     private var isUser: Bool { message.role == "user" }
 
     var body: some View {
+        let text = message.displayContent
         HStack(alignment: .top, spacing: 10) {
             if isUser { Spacer(minLength: 48) }
             if !isUser {
@@ -15,7 +16,7 @@ struct TranscriptBubble: View {
                     .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 10) {
-                Text(message.content.isEmpty && isStreaming ? " " : message.content)
+                Text(text.isEmpty && isStreaming ? " " : text)
                     .font(.body)
                     .foregroundStyle(.primary)
                     .textSelection(.enabled)

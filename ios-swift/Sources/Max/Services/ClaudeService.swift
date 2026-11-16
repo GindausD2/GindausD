@@ -2,10 +2,9 @@ import Foundation
 
 // MARK: - Stream Chunk
 
-enum StreamChunk {
+enum StreamChunk: Sendable {
     case text(String)
-    case toolStart(String)      // tool name
-    case toolDone
+    case resetReply
     case done
     case error(String)
 }
@@ -321,7 +320,7 @@ final class ClaudeService {
     func streamMessage(
         messages: [Message],
         imageData: Data? = nil,     // JPEG/PNG data to send alongside the last user message
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) -> Task<Void, Never> {
         Task {
             do {
@@ -339,7 +338,7 @@ final class ClaudeService {
                     onChunk: onChunk
                 )
             } catch {
-                if !Task.isCancelled { onChunk(.error(error.localizedDescription)) }
+                if !Task.isCancelled { await onChunk(.error(error.localizedDescription)) }
             }
         }
     }
@@ -352,7 +351,7 @@ final class ClaudeService {
         imageData: Data? = nil,
         conversationHistory: [ClaudeRequestMessage],
         round: Int,
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) async throws {
 
         try Task.checkCancellation()
@@ -492,7 +491,7 @@ final class ClaudeService {
         guard receivedStop else { throw ClaudeError.invalidResponse }
         // Handle any pending tool calls
         if stopReason == "tool_use" && !pendingToolCalls.isEmpty {
-            onChunk(.toolDone)
+            await onChunk(.resetReply)
             try await executeToolsAndContinue(
                 sessionToken: sessionToken,
                 accountScope: accountScope,
@@ -504,7 +503,10 @@ final class ClaudeService {
                 onChunk: onChunk
             )
         } else {
-            onChunk(.done)
+            guard !accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ClaudeError.invalidResponse
+            }
+            await onChunk(.done)
         }
     }
 
@@ -514,7 +516,7 @@ final class ClaudeService {
         currentToolCallIndex: inout Int?,
         stopReason: inout String?,
         accumulatedText: inout String,
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) async throws -> Bool {
 
         guard let data = event.data else { return false }
@@ -538,7 +540,6 @@ final class ClaudeService {
                     let toolCall = AccumulatedToolCall(id: toolId, name: toolName)
                     pendingToolCalls.append(toolCall)
                     currentToolCallIndex = index
-                    onChunk(.toolStart(toolName))
                 }
             }
 
@@ -549,7 +550,7 @@ final class ClaudeService {
                 if deltaType == "text_delta" {
                     let text = delta["text"] as? String ?? ""
                     accumulatedText += text
-                    onChunk(.text(text))
+                    await onChunk(.text(text))
                 } else if deltaType == "input_json_delta" {
                     let partialJSON = delta["partial_json"] as? String ?? ""
                     // Append to the last tool call's input
@@ -584,7 +585,7 @@ final class ClaudeService {
         round: Int,
         accumulatedText: String,
         pendingToolCalls: [AccumulatedToolCall],
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) async throws {
         var assistantBlocks: [ClaudeRequestBlock] = []
         if !accumulatedText.isEmpty { assistantBlocks.append(ClaudeRequestBlock(type: "text", text: accumulatedText)) }
