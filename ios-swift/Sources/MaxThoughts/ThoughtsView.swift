@@ -62,8 +62,12 @@ struct ThoughtsView: View {
                             Button { capture.play(audio) } label: { Label("Play recording", systemImage: "play.circle") }
                         }
                         if let transcript = thought.transcript, !transcript.isEmpty {
+                            #if os(watchOS)
+                            Text(transcript)
+                            #else
                             Text(transcript).textSelection(.enabled)
                             transcriptActions(transcript)
+                            #endif
                         }
                         Button { alertEditor = AlertEditor(thought: thought, kind: .reminder) } label: {
                             Label(store.alert(for: thought.id, kind: .reminder) == nil ? "Remind me" : "Manage reminder", systemImage: "bell")
@@ -161,12 +165,14 @@ struct ThoughtsView: View {
                         }
                         .disabled(capture.starting)
                     }
+                    #if !os(watchOS)
                     if !capture.recording && !draftTranscript.isEmpty {
                         Text("Transcript").font(.headline)
                         TextEditor(text: $draftTranscript).frame(minHeight: 90)
                             .accessibilityLabel("Edit transcript")
                         transcriptActions(draftTranscript)
                     }
+                    #endif
                     Button("Save thought", action: save)
                         .disabled(scope == nil || capture.starting || capture.recording ||
                                   (draftAudio == nil && draftTranscript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
