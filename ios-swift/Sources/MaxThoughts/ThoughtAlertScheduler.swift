@@ -18,6 +18,7 @@ struct ScheduledThoughtAlert: Codable, Equatable {
     let kind: ThoughtAlertKind
     let date: Date
     var confirmed = false
+    var label: String? = nil
 }
 
 enum ThoughtAlertError: LocalizedError {
@@ -48,7 +49,7 @@ enum ThoughtAlertScheduler {
             guard alert.date > Date.now else { throw ThoughtAlertError.timePassed }
             try Task.checkCancellation()
             let presentation = AlarmPresentation(alert: .init(
-                title: "Max thought alarm",
+                title: LocalizedStringResource(stringLiteral: alert.label ?? "Max thought alarm"),
                 stopButton: .init(text: "Stop", textColor: .white, systemImageName: "stop.fill")
             ))
             let attributes = AlarmAttributes(presentation: presentation, metadata: ThoughtAlarmMetadata(), tintColor: .cyan)
