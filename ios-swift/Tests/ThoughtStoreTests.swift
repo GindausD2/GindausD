@@ -54,6 +54,27 @@ final class ThoughtStoreTests: XCTestCase {
     }
 
     @MainActor
+    func testStandaloneAlarmPersistsWithoutCreatingAThought() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ThoughtStore(directory: directory, scheduleAlert: { _ in })
+        store.open(scope: "a")
+        let id = UUID()
+        try await store.scheduleAlert(for: id, kind: .alarm, date: .now.addingTimeInterval(60),
+                                      scope: "a", label: "Leave for work")
+        XCTAssertTrue(store.thoughts.isEmpty)
+        let reopened = ThoughtStore(directory: directory, cancelAlert: { _ in })
+        reopened.open(scope: "b")
+        XCTAssertTrue(reopened.standaloneAlarms.isEmpty)
+        reopened.open(scope: "a")
+        let alarm = try XCTUnwrap(reopened.standaloneAlarms.first)
+        XCTAssertEqual(alarm.thoughtID, id)
+        XCTAssertEqual(alarm.label, "Leave for work")
+        try reopened.cancelAlert(alarm)
+        XCTAssertTrue(reopened.standaloneAlarms.isEmpty)
+    }
+
+    @MainActor
     func testFailedScheduleDoesNotShowAnActiveAlert() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -16,6 +16,8 @@ struct HomeView: View {
     @State private var showCompanion: Bool = false
     @State private var showThoughts = false
     @State private var showThoughtsDock = false
+    @State private var recordThoughtRequested = false
+    @State private var showAlarms = false
     @ObservedObject private var thoughtStore = ThoughtStore.shared
 
     private var thoughtScope: String? { authService.currentUser?.id?.lowercased() }
@@ -73,6 +75,16 @@ struct HomeView: View {
                         } }
                 }
             }
+            .sheet(isPresented: $showAlarms) {
+                if let thoughtScope { HomeAlarmsView(store: thoughtStore, scope: thoughtScope) }
+            }
+            .onChange(of: thoughtScope, initial: true) { previous, current in
+                thoughtStore.open(scope: current)
+                if previous != current {
+                    showAlarms = false
+                    recordThoughtRequested = false
+                }
+            }
             .sheet(isPresented: $showReport) { SupportContactView(reporting: true) }
             .onAppear(perform: restoreConversation)
             .onChange(of: viewModel.conversationState) { _, state in updateLiveActivity(state) }
@@ -90,7 +102,8 @@ struct HomeView: View {
     private var thoughtsPanel: some View {
         ThoughtsView(store: thoughtStore, scope: thoughtScope,
                      canSync: authService.currentUser?.isDemo == false,
-                     prepareRecording: { viewModel.endConversation() })
+                     prepareRecording: { viewModel.endConversation() },
+                     captureRequested: $recordThoughtRequested)
     }
 
     private var conversationLayout: some View {
@@ -477,6 +490,7 @@ struct HomeView: View {
             } else {
                 orbDock
             }
+            if !voiceTurnActive && !isTyping { homeCaptureShortcuts }
             floatingShortcuts
         }
         .buttonStyle(.plain)
@@ -626,6 +640,32 @@ struct HomeView: View {
         .padding(.trailing, 10)
         .padding(.vertical, 10)
         .glassCard(cornerRadius: 34, depth: .regular)
+    }
+
+    private var homeCaptureShortcuts: some View {
+        HStack(spacing: 16) {
+            Button {
+                guard thoughtScope != nil else { return }
+                composerFocused = false
+                recordThoughtRequested = true
+                if !showThoughtsDock { showThoughts = true }
+            } label: {
+                Label("Record", systemImage: "waveform").frame(minHeight: 44)
+            }
+            .accessibilityLabel("Record a thought")
+            if #available(iOS 26.0, *), !ProcessInfo.processInfo.isiOSAppOnMac {
+                Button {
+                    viewModel.endConversation()
+                    composerFocused = false
+                    showAlarms = true
+                } label: {
+                    Label("Alarms", systemImage: "alarm").frame(minHeight: 44)
+                }
+            }
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .disabled(thoughtScope == nil)
     }
 
     private var floatingShortcuts: some View {

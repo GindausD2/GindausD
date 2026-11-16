@@ -5,7 +5,9 @@ import UIKit
 
 struct ThoughtAlertView: View {
     @ObservedObject var store: ThoughtStore
-    let thought: MaxThought
+    let thoughtID: UUID
+    let title: String
+    let standalone: Bool
     let kind: ThoughtAlertKind
     let scope: String
     @State private var date = Date.now.addingTimeInterval(300)
@@ -15,14 +17,34 @@ struct ThoughtAlertView: View {
     @Environment(\.openURL) private var openURL
     @State private var permissionMissing = false
 
+    @State private var alarmLabel = ""
+
+    init(store: ThoughtStore, thought: MaxThought, kind: ThoughtAlertKind, scope: String) {
+        self.init(store: store, thoughtID: thought.id, title: thought.title, kind: kind, scope: scope, standalone: false)
+    }
+
+    init(store: ThoughtStore, thoughtID: UUID, title: String, kind: ThoughtAlertKind, scope: String, standalone: Bool) {
+        self.store = store
+        self.thoughtID = thoughtID
+        self.title = title
+        self.kind = kind
+        self.scope = scope
+        self.standalone = standalone
+    }
+
     private var scheduled: ScheduledThoughtAlert? {
-        store.alert(for: thought.id, kind: kind)
+        store.alert(for: thoughtID, kind: kind)
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Text(thought.title)
+                if standalone && scheduled == nil {
+                    TextField("Alarm name", text: $alarmLabel)
+                        .disabled(working)
+                } else {
+                    Text(scheduled?.label ?? title)
+                }
                 if let scheduled {
                     LabeledContent("Scheduled on this device", value: scheduled.date.formatted(date: .abbreviated, time: .shortened))
                     Button("Cancel \(kind.rawValue)", role: .destructive) {
@@ -87,7 +109,9 @@ struct ThoughtAlertView: View {
         result = nil
         permissionMissing = false
         do {
-            try await store.scheduleAlert(for: thought.id, kind: kind, date: date, scope: scope)
+            let name = alarmLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+            let label = standalone ? (name.isEmpty ? title : String(name.prefix(80))) : nil
+            try await store.scheduleAlert(for: thoughtID, kind: kind, date: date, scope: scope, label: label)
             result = "\(kind.name) set for \(date.formatted(date: .abbreviated, time: .shortened))."
         } catch let error as ThoughtAlertError {
             switch error {

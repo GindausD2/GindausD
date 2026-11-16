@@ -93,14 +93,19 @@ final class ThoughtStore: ObservableObject {
         alerts.first { $0.confirmed && $0.thoughtID == thoughtID && $0.kind == kind && $0.date > now }
     }
 
-    func scheduleAlert(for thoughtID: UUID, kind: ThoughtAlertKind, date: Date, scope: String) async throws {
+    var standaloneAlarms: [ScheduledThoughtAlert] {
+        alerts.filter { $0.confirmed && $0.kind == .alarm && $0.label != nil && $0.date > .now }
+            .sorted { $0.date < $1.date }
+    }
+
+    func scheduleAlert(for thoughtID: UUID, kind: ThoughtAlertKind, date: Date, scope: String, label: String? = nil) async throws {
         guard self.scope == scope, !alerts.contains(where: {
             $0.thoughtID == thoughtID && $0.kind == kind && $0.date > .now
         }) else {
             throw CocoaError(.fileWriteNoPermission)
         }
         guard date > .now else { throw ThoughtAlertError.timePassed }
-        let alert = ScheduledThoughtAlert(id: UUID(), thoughtID: thoughtID, kind: kind, date: date)
+        let alert = ScheduledThoughtAlert(id: UUID(), thoughtID: thoughtID, kind: kind, date: date, label: label)
         // Persist the ID before scheduling so an interrupted request can be cleaned up.
         try writeAlerts(alerts + [alert], scope: scope)
         do {
