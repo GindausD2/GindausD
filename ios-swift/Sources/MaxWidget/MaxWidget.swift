@@ -62,6 +62,9 @@ struct MaxWidgetProvider: TimelineProvider {
 
 // MARK: - Static orb (no animation — widgets are snapshots)
 
+private let widgetGlacier = Color(red: 0.57, green: 0.81, blue: 0.93)
+private let widgetBackground = Color(red: 0.05, green: 0.11, blue: 0.15)
+
 private struct WidgetOrb: View {
     let size: CGFloat
 
@@ -111,7 +114,7 @@ private struct SmallWidgetView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.06, green: 0.04, blue: 0.02)
+            widgetBackground
 
             VStack(spacing: 6) {
                 WidgetOrb(size: 56)
@@ -123,7 +126,7 @@ private struct SmallWidgetView: View {
 
                 Text("Tap to talk")
                     .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color(red: 1.00, green: 0.55, blue: 0.05).opacity(0.85))
+                    .foregroundStyle(widgetGlacier.opacity(0.85))
             }
         }
         .widgetURL(URL(string: "maxapp://listen"))
@@ -137,7 +140,7 @@ private struct MediumWidgetView: View {
 
     var body: some View {
         ZStack {
-            Color(red: 0.06, green: 0.04, blue: 0.02)
+            widgetBackground
 
             HStack(spacing: 0) {
                 // Left: orb + label
@@ -161,6 +164,7 @@ private struct MediumWidgetView: View {
                 // Right: last message
                 VStack(alignment: .leading, spacing: 6) {
                     Text(entry.lastMessage)
+                        .privacySensitive()
                         .font(.system(size: 13, weight: .regular))
                         .foregroundStyle(Color.white.opacity(0.88))
                         .lineLimit(4)
@@ -168,10 +172,15 @@ private struct MediumWidgetView: View {
 
                     Spacer(minLength: 0)
 
+                    Link(destination: URL(string: "maxapp://camera")!) {
+                        Label("Camera", systemImage: "viewfinder")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(widgetGlacier)
+                    }
                     if let t = entry.lastMessageAt {
                         Text(relativeTime(t))
                             .font(.system(size: 10, weight: .medium))
-                            .foregroundStyle(Color(red: 1.00, green: 0.55, blue: 0.05).opacity(0.7))
+                            .foregroundStyle(widgetGlacier.opacity(0.7))
                     }
                 }
                 .padding(.horizontal, 14)
@@ -196,7 +205,7 @@ private struct AccessoryCircularView: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color(red: 1.00, green: 0.55, blue: 0.05).opacity(0.18))
+                .fill(widgetGlacier.opacity(0.18))
             WidgetOrb(size: 32)
         }
         .widgetURL(URL(string: "maxapp://listen"))
@@ -216,7 +225,7 @@ private struct AccessoryRectangularView: View {
                     MaxLogoView(width: 18).accessibilityHidden(true)
                     Text("Max").font(.system(size: 13, weight: .bold))
                 }
-                Text(entry.lastMessage)
+                Text("Tap to talk")
                     .font(.system(size: 11))
                     .lineLimit(2)
                     .foregroundStyle(.secondary)
@@ -233,7 +242,7 @@ private struct AccessoryInlineView: View {
 
     var body: some View {
         Label {
-            Text(entry.lastMessage)
+            Text("Talk to Max")
                 .lineLimit(1)
         } icon: {
             Image(systemName: "waveform.circle.fill")
@@ -274,10 +283,10 @@ struct MaxWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: MaxWidgetProvider()) { entry in
             MaxWidgetEntryView(entry: entry)
-                .containerBackground(Color(red: 0.06, green: 0.04, blue: 0.02), for: .widget)
+                .containerBackground(widgetBackground, for: .widget)
         }
         .configurationDisplayName("Max")
-        .description("Talk to Max or see your last conversation.")
+        .description("Talk to Max, see your last reply, or open the camera from the medium widget.")
         .supportedFamilies([
             .systemSmall,
             .systemMedium,

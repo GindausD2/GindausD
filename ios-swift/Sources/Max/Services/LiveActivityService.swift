@@ -98,16 +98,17 @@ final class LiveActivityService {
         push(state)
     }
 
-    func updateCamera(session: UUID, stage: CameraCard.Stage, photo: UIImage?, result: String?) {
+    @discardableResult
+    func updateCamera(session: UUID, stage: CameraCard.Stage, photo: UIImage?, result: String?, announce: Bool = false) -> Bool {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else {
             clearCamera(session: session)
-            return
+            return false
         }
         if currentActivity == nil || currentActivity?.activityState == .ended || currentActivity?.activityState == .dismissed {
             if let owner = cameraSession { clearCamera(session: owner) }
             startPersistentSession()
         }
-        guard currentActivity != nil else { return }
+        guard currentActivity != nil else { return false }
         if let owner = cameraSession, owner != session { clearCamera(session: owner) }
         cameraSession = session
         let source = photo.map(ObjectIdentifier.init)
@@ -119,7 +120,13 @@ final class LiveActivityService {
         }
         var state = currentState
         state.camera = CameraCard(stage: stage, result: result, thumbnail: thumbnail)
-        if state != currentState { push(state) }
+        if state != currentState {
+            let alert: AlertConfiguration? = announce && stage == .result
+                ? AlertConfiguration(title: "Max", body: "Identification ready", sound: .default)
+                : nil
+            push(state, alert: alert)
+        }
+        return true
     }
 
     func clearCamera(session: UUID) {
@@ -237,7 +244,7 @@ final class LiveActivityService {
 
     // MARK: - Private
 
-    private func push(_ state: MaxActivityAttributes.ContentState) {
+    private func push(_ state: MaxActivityAttributes.ContentState, alert: AlertConfiguration? = nil) {
         guard let activity = currentActivity else { return }
         currentState = state
         let version = generation
@@ -246,7 +253,7 @@ final class LiveActivityService {
         updateTask = Task {
             await previous?.value
             guard !Task.isCancelled, generation == version, currentActivity?.id == activity.id else { return }
-            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(8 * 3600)))
+            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(8 * 3600)), alertConfiguration: alert)
         }
     }
 

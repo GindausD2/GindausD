@@ -30,6 +30,10 @@ struct VisualIntelligenceView: View {
     @State private var captureID: UUID?
     @State private var islandSession = UUID()
     @State private var isIdentifying = false
+    @State private var announcedAnswer: String?
+    @State private var showFullResult = false
+    @State private var saveKind: VisualSaveKind?
+    @State private var savedMessage: String?
     @State private var photo: UIImage?
     @State private var selection: PhotosPickerItem?
     @State private var transcript = ""
@@ -74,41 +78,41 @@ struct VisualIntelligenceView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 14) {
-                    Picker("Mode", selection: $mode) {
-                        ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .disabled(busy || recording || captureID != nil)
-
-                    if mode == .translateSpeech {
-                        speechInput
-                    } else {
-                        viewfinder
-                        photoControls
-                    }
-
-                    if mode == .translatePhoto || mode == .translateSpeech {
-                        Picker("Translate to", selection: $language) {
-                            ForEach(languages, id: \.self) { Text($0) }
+            Group {
+                if mode == .translateSpeech {
+                    VStack(spacing: 0) {
+                        cameraHeader
+                        ScrollView {
+                            VStack(spacing: 16) {
+                                speechInput
+                                languagePicker
+                                requestControls
+                            }
+                            .padding(16)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .disabled(busy || recording)
                     }
-
-                    requestControls
+                    .background(Color(.systemGroupedBackground))
+                } else {
+                    cameraScreen
                 }
-                .padding(16)
-                .frame(maxWidth: 640)
-                .frame(maxWidth: .infinity)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Visual Intelligence")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .toolbar(.hidden, for: .navigationBar)
+            .sheet(isPresented: $showFullResult) {
+                NavigationStack {
+                    ScrollView {
+                        if let answer { answerCard(answer) }
+                    }
+                    .padding(16)
+                    .navigationTitle(mode == .readText ? "Text from photo" : "Max’s answer")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) { Button("Done") { showFullResult = false } }
+                    }
+                }
+            }
+            .sheet(item: $saveKind) { kind in
+                VisualSaveView(kind: kind, text: answer ?? "", account: account) { savedMessage = $0 }
+            }
             .sheet(isPresented: $showAIPrivacy) { AIPrivacyView(scope: account) }
             .confirmationDialog("Analyze this photo with cloud AI?", isPresented: $confirmPhotoUpload, titleVisibility: .visible) {
                 Button(mode.label, action: analyze)
@@ -120,8 +124,11 @@ struct VisualIntelligenceView: View {
             .task(id: mode) { await updateCameraPermission() }
             .onChange(of: islandUpdate, initial: true) { _, update in
                 if let update {
-                    LiveActivityService.shared.updateCamera(session: islandSession, stage: update.stage,
-                                                            photo: photo, result: update.result)
+                    let announce = update.result != nil && announcedAnswer != update.result
+                    let presented = LiveActivityService.shared.updateCamera(session: islandSession, stage: update.stage,
+                                                                            photo: photo, result: update.result,
+                                                                            announce: announce && scenePhase == .active)
+                    if announce && presented && scenePhase == .active { announcedAnswer = update.result }
                 } else {
                     LiveActivityService.shared.clearCamera(session: islandSession)
                 }
@@ -149,18 +156,56 @@ struct VisualIntelligenceView: View {
         .tint(Color(hex: "#315E73"))
     }
 
+    private var cameraHeader: some View {
+        HStack(spacing: 12) {
+            Picker("Mode", selection: $mode) {
+                ForEach(Mode.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.menu)
+            .disabled(busy || recording || captureID != nil)
+            .frame(minHeight: 44)
+            Spacer()
+            Button("Done") { dismiss() }.frame(minHeight: 44)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 4)
+        .background(.regularMaterial)
+    }
+
+    private var languagePicker: some View {
+        Picker("Translate to", selection: $language) {
+            ForEach(languages, id: \.self) { Text($0) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .disabled(busy || recording)
+    }
+
+    private var cameraScreen: some View {
+        GeometryReader { geometry in
+            ZStack {
+                viewfinder.ignoresSafeArea()
+                VStack(spacing: 0) {
+                    cameraHeader
+                    Spacer(minLength: 12)
+                    cameraBottom
+                        .frame(maxHeight: geometry.size.height * (dynamicTypeSize.isAccessibilitySize ? 0.68 : 0.46))
+                }
+            }
+        }
+        .background(.black)
+    }
+
     private var viewfinder: some View {
-        Color.black
-            .aspectRatio(4.0 / 5.0, contentMode: .fit)
-            .overlay {
+        GeometryReader { geometry in
+            ZStack {
+                Color.black
                 if let photo {
-                    GeometryReader { geometry in
-                        Image(uiImage: photo)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                            .accessibilityLabel("Selected photo")
-                    }
+                    Image(uiImage: photo)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                        .accessibilityLabel("Selected photo")
                 } else if cameraWanted && !camera.unavailable {
                     VisualCameraPreview(session: camera.session, device: camera.device)
                         .accessibilityHidden(true)
@@ -177,34 +222,70 @@ struct VisualIntelligenceView: View {
                     .foregroundStyle(.white)
                 }
             }
-            .overlay(alignment: .top) {
-                if photo != nil && !dynamicTypeSize.isAccessibilitySize {
-                    if let answer { answerCard(answer, overPhoto: true).padding(12) }
-                    else if busy {
-                        ProgressView(mode == .readText ? "Reading text…" : "Analyzing photo…")
-                            .padding(12)
-                            .background(.regularMaterial, in: Capsule())
-                            .padding(12)
-                    }
-                }
-            }
-            .overlay(alignment: .bottom) {
-                if photo == nil && cameraWanted && !camera.unavailable {
+        }
+    }
+
+    @ViewBuilder private var cameraBottom: some View {
+        if photo == nil {
+            VStack(spacing: 10) {
+                if let error { Text(error).font(.footnote).foregroundStyle(.red) }
+                if busy { ProgressView("Opening photo…") }
+                if cameraWanted && !camera.unavailable {
                     Button(action: takePhoto) {
-                        Circle()
-                            .strokeBorder(.white, lineWidth: 3)
-                            .frame(width: 62, height: 62)
+                        Circle().strokeBorder(.white, lineWidth: 3)
+                            .frame(width: 64, height: 64)
                             .overlay { Circle().fill(.white).padding(6) }
                     }
                     .buttonStyle(.plain)
-                    .opacity(camera.device == nil || busy || captureID != nil ? 0.5 : 1)
                     .disabled(camera.device == nil || busy || captureID != nil)
                     .accessibilityLabel("Take photo")
-                    .padding(.bottom, 16)
                 }
+                photoControls
             }
-            .clipShape(RoundedRectangle(cornerRadius: 24))
-            .frame(maxWidth: 440)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(.regularMaterial)
+        } else {
+            ViewThatFits(in: .vertical) {
+                capturedControls
+                ScrollView { capturedControls }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollDismissesKeyboard(.interactively)
+            }
+            .background(.regularMaterial)
+        }
+    }
+
+    private var capturedControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            photoControls
+            if mode == .translatePhoto { languagePicker }
+            if answer != nil {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 16) { resultActions }
+                    VStack(alignment: .leading, spacing: 4) { resultActions }
+                }
+                if let savedMessage { Text(savedMessage).font(.footnote) }
+            } else {
+                requestControls
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 600)
+        .frame(maxWidth: .infinity, alignment: .center)
+    }
+
+    @ViewBuilder private var resultActions: some View {
+        Button("View result") { showFullResult = true }
+            .buttonStyle(.borderedProminent)
+        Menu("Save", systemImage: "square.and.arrow.down") {
+            ForEach(VisualSaveKind.allCases) { kind in
+                Button(kind.title) { saveKind = kind }
+            }
+        }
+        .frame(minHeight: 44)
     }
 
     private var photoControls: some View {
@@ -221,7 +302,7 @@ struct VisualIntelligenceView: View {
             .font(.callout.weight(.semibold))
             .frame(minHeight: 44)
 
-            if mode == .identify && photo != nil {
+            if mode == .identify && photo != nil && answer == nil {
                 TextField("Ask about what you see (optional)", text: $question, axis: .vertical)
                     .lineLimit(1...3)
                     .padding(12)
@@ -247,7 +328,7 @@ struct VisualIntelligenceView: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if let answer, mode == .translateSpeech || dynamicTypeSize.isAccessibilitySize {
-                answerCard(answer, overPhoto: false)
+                answerCard(answer)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -262,7 +343,7 @@ struct VisualIntelligenceView: View {
         }
     }
 
-    private func answerCard(_ text: String, overPhoto: Bool) -> some View {
+    private func answerCard(_ text: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
                 if playingResult {
@@ -297,12 +378,12 @@ struct VisualIntelligenceView: View {
                 Text(text).textSelection(.enabled)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxHeight: overPhoto ? 150 : 420)
+            .frame(maxHeight: 420)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .foregroundStyle(overPhoto ? Color.white : Color.primary)
-        .background(overPhoto ? Color.black.opacity(0.86) : Color(.secondarySystemGroupedBackground),
+        .foregroundStyle(.primary)
+        .background(Color(.secondarySystemGroupedBackground),
                     in: RoundedRectangle(cornerRadius: 16))
     }
 
@@ -497,6 +578,8 @@ struct VisualIntelligenceView: View {
 
     private func clearResult() {
         stopResult()
+        announcedAnswer = nil
+        savedMessage = nil
         answer = nil
     }
 

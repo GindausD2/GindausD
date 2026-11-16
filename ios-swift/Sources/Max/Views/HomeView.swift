@@ -18,6 +18,9 @@ struct HomeView: View {
     @State private var showThoughtsDock = false
     @State private var recordThoughtRequested = false
     @State private var showAlarms = false
+    @State private var quickSaveKind: VisualSaveKind?
+    @State private var quickSaveMessage: String?
+    @State private var pendingSaveConfirmation: String?
     @ObservedObject private var thoughtStore = ThoughtStore.shared
 
     private var thoughtScope: String? { authService.currentUser?.id?.lowercased() }
@@ -81,9 +84,24 @@ struct HomeView: View {
             .onChange(of: thoughtScope, initial: true) { previous, current in
                 thoughtStore.open(scope: current)
                 if previous != current {
+                    quickSaveKind = nil
+                    quickSaveMessage = nil
+                    pendingSaveConfirmation = nil
                     showAlarms = false
                     recordThoughtRequested = false
                 }
+            }
+            .sheet(item: $quickSaveKind, onDismiss: {
+                quickSaveMessage = pendingSaveConfirmation
+                pendingSaveConfirmation = nil
+            }) { kind in
+                VisualSaveView(kind: kind, text: "", account: StorageService.shared.accountScope) { pendingSaveConfirmation = $0 }
+            }
+            .alert(quickSaveMessage ?? "", isPresented: Binding(
+                get: { quickSaveMessage != nil },
+                set: { if !$0 { quickSaveMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { quickSaveMessage = nil }
             }
             .sheet(isPresented: $showReport) { SupportContactView(reporting: true) }
             .onAppear(perform: restoreConversation)
@@ -564,6 +582,15 @@ struct HomeView: View {
             Button("Thoughts", systemImage: "waveform") {
                 viewModel.endConversation()
                 if !showThoughtsDock { showThoughts = true }
+            }
+            Menu("Save", systemImage: "square.and.arrow.down") {
+                ForEach(VisualSaveKind.allCases) { kind in
+                    Button(kind.title) {
+                        viewModel.endConversation()
+                        composerFocused = false
+                        quickSaveKind = kind
+                    }
+                }
             }
             Button("Type a message", systemImage: "keyboard") { openTextEntry() }
             if !voiceTurnActive { voiceActions }

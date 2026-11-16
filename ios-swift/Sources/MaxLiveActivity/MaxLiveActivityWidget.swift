@@ -152,7 +152,7 @@ private struct IslandDetails: View {
             if let result = camera.result {
                 Text(result)
                     .font(.subheadline.weight(.medium))
-                    .lineLimit(3)
+                    .lineLimit(4)
             } else {
                 Text(camera.stage == .captured ? "Open Max to identify" : camera.stage.label)
                     .font(.subheadline.weight(.medium))
