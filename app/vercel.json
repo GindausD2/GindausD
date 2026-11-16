@@ -5,7 +5,8 @@
       "codex/max-v1-app-review": false,
       "codex/max-v1-apple-devices": false,
       "codex/max-v2-advanced-memory": false,
-      "codex/max-testflight-combined": false
+      "codex/max-testflight-combined": false,
+      "codex/max-approval-evidence": false
     }
   }
 }

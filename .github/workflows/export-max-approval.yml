@@ -1,0 +1,47 @@
+name: Export Max approval screenshot
+on:
+  push:
+    branches: ['codex/max-approval-evidence']
+    paths: ['.github/workflows/export-max-approval.yml']
+permissions:
+  actions: read
+  contents: read
+jobs:
+  dark-home:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Extract the native dark-mode Home capture
+        env:
+          MAX_EVIDENCE_TOKEN: ${{ github.token }}
+          MAX_EVIDENCE_REPO: ${{ github.repository }}
+        run: |
+          curl --fail --silent --show-error --location --proto-redir '=https' --max-time 50 \
+            -H "Authorization: Bearer $MAX_EVIDENCE_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$MAX_EVIDENCE_REPO/actions/jobs/133484363786/logs" \
+            -o "$RUNNER_TEMP/max-approval-source.log"
+          python3 - <<'PY'
+          import base64, os, re
+          from pathlib import Path
+
+          directory = Path(os.environ["RUNNER_TEMP"])
+          source = (directory / "max-approval-source.log").read_text(errors="replace")
+          name = "Max_Reference_Home_Dark"
+          pieces = re.findall(r"MAX_UI_IMAGE " + name + r" ([A-Za-z0-9+/=]+)", source)
+          if not pieces or "MAX_UI_IMAGE_END " + name not in source:
+              names = sorted(set(re.findall(r"MAX_UI_IMAGE_END (\w+)", source)))
+              raise SystemExit(f"Dark-mode capture missing. Captures present: {names}")
+          data = base64.b64decode("".join(pieces), validate=True)
+          if len(data) < 5000 or not data.startswith(b"\xff\xd8\xff") or not data.endswith(b"\xff\xd9"):
+              raise SystemExit("Incomplete screenshot")
+          (directory / "Max_Corrected_Home_Simulator.jpg").write_bytes(data)
+          for index, piece in enumerate(pieces):
+              print(f"MAX_APPROVAL_JPEG {index} {piece}")
+          print(f"MAX_APPROVAL_DONE {len(pieces)} {len(data)}")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Max-corrected-home-simulator
+          path: ${{ runner.temp }}/Max_Corrected_Home_Simulator.jpg
+          if-no-files-found: error
