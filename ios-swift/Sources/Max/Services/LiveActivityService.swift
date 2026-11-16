@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import UIKit
 
 // MARK: - LiveActivityService
 //
@@ -20,7 +21,13 @@ typealias ToolCard = MaxActivityAttributes.ContentState.ToolCard
 final class LiveActivityService {
 
     static let shared = LiveActivityService()
-    private init() {}
+    private init() {
+        if let directory = CameraCard.previewDirectory { try? FileManager.default.removeItem(at: directory) }
+    }
+
+    typealias CameraCard = MaxActivityAttributes.ContentState.CameraCard
+    private var cameraSession: UUID?
+    private var cameraImage: ObjectIdentifier?
 
     private var currentActivity: Activity<MaxActivityAttributes>?
     private var retiredIDs = Set<String>()
@@ -77,6 +84,7 @@ final class LiveActivityService {
         }
 
         cardExpiryTask?.cancel()
+        if let cameraSession { clearCamera(session: cameraSession) }
         push(.init(phase: .listening, snippet: "", emailAlert: currentState.emailAlert))
     }
 
@@ -84,7 +92,69 @@ final class LiveActivityService {
 
     func update(phase: MaxActivityAttributes.ContentState.Phase, snippet: String = "") {
         let clipped = String(snippet.suffix(80))
-        push(.init(phase: phase, snippet: clipped, toolCard: currentState.toolCard, emailAlert: currentState.emailAlert))
+        var state = currentState
+        state.phase = phase
+        state.snippet = clipped
+        push(state)
+    }
+
+    func updateCamera(session: UUID, stage: CameraCard.Stage, photo: UIImage?, result: String?) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            clearCamera(session: session)
+            return
+        }
+        if currentActivity == nil || currentActivity?.activityState == .ended || currentActivity?.activityState == .dismissed {
+            if let owner = cameraSession { clearCamera(session: owner) }
+            startPersistentSession()
+        }
+        guard currentActivity != nil else { return }
+        if let owner = cameraSession, owner != session { clearCamera(session: owner) }
+        cameraSession = session
+        let source = photo.map(ObjectIdentifier.init)
+        var thumbnail = currentState.camera?.thumbnail
+        if cameraImage != source {
+            removeCameraThumbnail()
+            thumbnail = photo.flatMap(writeCameraThumbnail)
+            cameraImage = source
+        }
+        var state = currentState
+        state.camera = CameraCard(stage: stage, result: result, thumbnail: thumbnail)
+        if state != currentState { push(state) }
+    }
+
+    func clearCamera(session: UUID) {
+        guard cameraSession == session else { return }
+        removeCameraThumbnail()
+        cameraSession = nil
+        cameraImage = nil
+        var state = currentState
+        state.camera = nil
+        push(state)
+    }
+
+    private func writeCameraThumbnail(_ image: UIImage) -> UUID? {
+        guard let directory = CameraCard.previewDirectory, image.size.width > 0, image.size.height > 0 else { return nil }
+        let id = UUID()
+        let edge: CGFloat = 144
+        let scale = max(edge / image.size.width, edge / image.size.height)
+        let width = image.size.width * scale
+        let height = image.size.height * scale
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let thumbnail = UIGraphicsImageRenderer(size: CGSize(width: edge, height: edge), format: format).image { _ in
+            image.draw(in: CGRect(x: (edge - width) / 2, y: (edge - height) / 2, width: width, height: height))
+        }
+        guard let jpeg = thumbnail.jpegData(compressionQuality: 0.7) else { return nil }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try jpeg.write(to: directory.appendingPathComponent(id.uuidString + ".jpg"), options: [.atomic, .completeFileProtection])
+            return id
+        } catch { return nil }
+    }
+
+    private func removeCameraThumbnail() {
+        if let url = currentState.camera?.thumbnailURL { try? FileManager.default.removeItem(at: url) }
     }
 
     func showToolCard(_ card: ToolCard) {
@@ -150,6 +220,9 @@ final class LiveActivityService {
         let activities = Activity<MaxActivityAttributes>.activities
         retiredIDs.formUnion(activities.map(\.id))
         generation = UUID()
+        removeCameraThumbnail()
+        cameraSession = nil
+        cameraImage = nil
         cardExpiryTask?.cancel()
         let pendingUpdate = updateTask
         updateTask?.cancel()

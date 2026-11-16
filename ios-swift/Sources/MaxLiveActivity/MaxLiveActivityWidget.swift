@@ -16,6 +16,7 @@
 import ActivityKit
 import SwiftUI
 import WidgetKit
+import UIKit
 
 typealias MaxAttr = MaxActivityAttributes
 
@@ -31,12 +32,12 @@ struct MaxLiveActivityWidget: Widget {
         ActivityConfiguration(for: MaxAttr.self) { context in
             VStack(alignment: .leading, spacing: 10) {
                 IslandHeader(state: context.state)
-                IslandDetails(state: context.state)
+                IslandDetails(state: context.state, showCameraPreview: false)
             }
             .padding(14)
             .activityBackgroundTint(.black)
             .activitySystemActionForegroundColor(.white)
-            .widgetURL(URL(string: "maxapp://listen"))
+            .widgetURL(URL(string: context.state.camera == nil ? "maxapp://listen" : "maxapp://camera"))
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -50,7 +51,7 @@ struct MaxLiveActivityWidget: Widget {
             } compactLeading: {
                 IslandOrb(size: 18)
             } compactTrailing: {
-                if context.state.phase != .idle || context.state.toolCard != nil || context.state.emailAlert != nil {
+                if context.state.camera != nil || context.state.phase != .idle || context.state.toolCard != nil || context.state.emailAlert != nil {
                     Image(systemName: context.state.statusSymbol)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(glacier)
@@ -61,7 +62,7 @@ struct MaxLiveActivityWidget: Widget {
                     .accessibilityLabel(Text("Max, " + context.state.statusLabel))
             }
             .keylineTint(glacier)
-            .widgetURL(URL(string: "maxapp://listen"))
+            .widgetURL(URL(string: context.state.camera == nil ? "maxapp://listen" : "maxapp://camera"))
         }
         .supplementalActivityFamilies([.small])
     }
@@ -103,10 +104,13 @@ private struct IslandHeader: View {
 
 private struct IslandDetails: View {
     let state: MaxAttr.ContentState
+    var showCameraPreview = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if let card = state.toolCard {
+            if let camera = state.camera {
+                if showCameraPreview { cameraDetails(camera) }
+            } else if let card = state.toolCard {
                 if let heading = card.taskHeading {
                     Text(heading).font(.headline).lineLimit(1)
                 }
@@ -123,7 +127,7 @@ private struct IslandDetails: View {
                     .lineLimit(2)
                     .privacySensitive()
             }
-            if state.phase == .idle {
+            if state.phase == .idle && state.camera == nil {
                 HStack(spacing: 14) {
                     Link(destination: URL(string: "maxapp://listen")!) { Label("Talk", systemImage: "mic") }
                     Link(destination: URL(string: "maxapp://briefing")!) { Label("Briefing", systemImage: "sun.horizon") }
@@ -135,6 +139,27 @@ private struct IslandDetails: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .foregroundStyle(.white)
+    }
+
+    private func cameraDetails(_ camera: MaxAttr.ContentState.CameraCard) -> some View {
+        HStack(alignment: .center, spacing: 9) {
+            if let url = camera.thumbnailURL, let photo = UIImage(contentsOfFile: url.path) {
+                Image(uiImage: photo).resizable().scaledToFill()
+                    .frame(width: 43, height: 43)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .accessibilityHidden(true)
+            }
+            if let result = camera.result {
+                Text(result)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(3)
+            } else {
+                Text(camera.stage == .captured ? "Open Max to identify" : camera.stage.label)
+                    .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
+            }
+        }
+        .privacySensitive()
     }
 
     private func detail(icon: String, title: String, subtitle: String) -> some View {

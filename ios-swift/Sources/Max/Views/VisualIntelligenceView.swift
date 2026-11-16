@@ -28,6 +28,8 @@ struct VisualIntelligenceView: View {
     @State private var cameraAccess = AVCaptureDevice.authorizationStatus(for: .video)
     @State private var showLibrary = false
     @State private var captureID: UUID?
+    @State private var islandSession = UUID()
+    @State private var isIdentifying = false
     @State private var photo: UIImage?
     @State private var selection: PhotosPickerItem?
     @State private var transcript = ""
@@ -50,6 +52,24 @@ struct VisualIntelligenceView: View {
     private var cameraWanted: Bool {
         scenePhase == .active && mode != .translateSpeech && cameraAccess == .authorized &&
             photo == nil && !showLibrary
+    }
+
+    private struct IslandUpdate: Equatable {
+        let stage: LiveActivityService.CameraCard.Stage
+        let image: ObjectIdentifier?
+        let result: String?
+    }
+
+    private var islandUpdate: IslandUpdate? {
+        guard scenePhase != .background, mode == .identify, !showLibrary,
+              StorageService.shared.accountScope == account else { return nil }
+        let stage: LiveActivityService.CameraCard.Stage
+        if answer != nil { stage = .result }
+        else if isIdentifying { stage = .identifying }
+        else if captureID != nil { stage = .capturing }
+        else if photo != nil { stage = .captured }
+        else { stage = .open }
+        return IslandUpdate(stage: stage, image: photo.map(ObjectIdentifier.init), result: answer)
     }
 
     var body: some View {
@@ -98,6 +118,14 @@ struct VisualIntelligenceView: View {
             }
             .photosPicker(isPresented: $showLibrary, selection: $selection, matching: .images)
             .task(id: mode) { await updateCameraPermission() }
+            .onChange(of: islandUpdate, initial: true) { _, update in
+                if let update {
+                    LiveActivityService.shared.updateCamera(session: islandSession, stage: update.stage,
+                                                            photo: photo, result: update.result)
+                } else {
+                    LiveActivityService.shared.clearCamera(session: islandSession)
+                }
+            }
             .onChange(of: cameraWanted, initial: true) { _, requested in camera.setRunning(requested) }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { cameraAccess = AVCaptureDevice.authorizationStatus(for: .video) }
@@ -389,6 +417,8 @@ struct VisualIntelligenceView: View {
         let text = selectedMode == .translateSpeech ? transcript : (selectedMode == .identify ? question : "")
         clearResult()
         run {
+            isIdentifying = selectedMode == .identify
+            defer { isIdentifying = false }
             if selectedMode == .readText {
                 guard let photo, let image = Self.normalizedImage(photo, edge: 2400)?.cgImage else {
                     error = "Choose a photo with the writing in view."
@@ -488,6 +518,7 @@ struct VisualIntelligenceView: View {
     }
 
     private func cancel() {
+        LiveActivityService.shared.clearCamera(session: islandSession)
         captureID = nil
         camera.setRunning(false)
         work?.cancel()

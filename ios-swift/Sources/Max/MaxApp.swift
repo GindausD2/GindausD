@@ -42,6 +42,8 @@ struct MaxApp: App {
                     switch url.host {
                     case "listen":
                         MaxShortcutRequest.enqueue(.voice)
+                    case "camera":
+                        MaxShortcutRequest.enqueue(.camera)
                     case "briefing":
                         UserDefaults.standard.set(true, forKey: "max.pendingBriefing")
                         NotificationCenter.default.post(name: .maxStartBriefing, object: nil)

@@ -4,15 +4,20 @@ import Foundation
 /// Requests never bypass Home's access gate or start a microphone in the background.
 @MainActor
 enum MaxShortcutRequest {
-    enum Action: Equatable { case voice, island }
+    enum Action: Equatable { case voice, island, camera }
     private static let voiceKey = "max.pendingVoiceActivation"
     private static let islandKey = "max.pendingIslandActivation"
+    private static let cameraKey = "max.pendingCameraActivation"
     private static let requestedAtKey = "max.shortcutRequestedAt"
     private static let lifetime: TimeInterval = 5 * 60
 
     static func enqueue(_ action: Action, defaults: UserDefaults = .standard, notify: Bool = true, now: Date = Date()) {
         clear(defaults: defaults)
-        defaults.set(true, forKey: action == .voice ? voiceKey : islandKey)
+        switch action {
+        case .voice: defaults.set(true, forKey: voiceKey)
+        case .island: defaults.set(true, forKey: islandKey)
+        case .camera: defaults.set(true, forKey: cameraKey)
+        }
         defaults.set(now, forKey: requestedAtKey)
         if notify { NotificationCenter.default.post(name: .maxWidgetActivate, object: nil) }
     }
@@ -27,6 +32,7 @@ enum MaxShortcutRequest {
         let action: Action?
         if defaults.bool(forKey: voiceKey) { action = .voice }
         else if defaults.bool(forKey: islandKey) { action = .island }
+        else if defaults.bool(forKey: cameraKey) { action = .camera }
         else { return nil }
         clear(defaults: defaults)
         return action
@@ -41,6 +47,7 @@ enum MaxShortcutRequest {
     private static func clear(defaults: UserDefaults) {
         defaults.removeObject(forKey: voiceKey)
         defaults.removeObject(forKey: islandKey)
+        defaults.removeObject(forKey: cameraKey)
         defaults.removeObject(forKey: requestedAtKey)
     }
 }

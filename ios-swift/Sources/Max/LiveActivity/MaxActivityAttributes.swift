@@ -24,15 +24,18 @@ public struct MaxActivityAttributes: ActivityAttributes {
 
         /// Proactive email reminder shown in the Dynamic Island while Max is idle
         public var emailAlert: EmailAlert?
+        public var camera: CameraCard?
 
-        public init(phase: Phase, snippet: String, toolCard: ToolCard? = nil, emailAlert: EmailAlert? = nil) {
+        public init(phase: Phase, snippet: String, toolCard: ToolCard? = nil, emailAlert: EmailAlert? = nil, camera: CameraCard? = nil) {
             self.phase = phase
             self.snippet = snippet
             self.toolCard = toolCard
             self.emailAlert = emailAlert
+            self.camera = camera
         }
 
         public var statusLabel: String {
+            if let camera { return camera.stage.label }
             if let card = toolCard {
                 if card.reminderStage == .setting { return "Setting reminder" }
                 return "Ready"
@@ -41,8 +44,53 @@ public struct MaxActivityAttributes: ActivityAttributes {
         }
 
         public var statusSymbol: String {
+            if let camera { return camera.stage.symbol }
             if let toolCard { return toolCard.iconName }
             return emailAlert == nil ? phase.symbolName : "envelope.fill"
+        }
+
+        public struct CameraCard: Codable, Hashable {
+            public enum Stage: String, Codable, Hashable {
+                case open, capturing, captured, identifying, result
+
+                public var label: String {
+                    switch self {
+                    case .open: "Camera open"
+                    case .capturing: "Taking photo…"
+                    case .captured: "Photo ready"
+                    case .identifying: "Identifying…"
+                    case .result: "Identification ready"
+                    }
+                }
+
+                public var symbol: String {
+                    switch self {
+                    case .open, .capturing: "camera"
+                    case .captured: "photo"
+                    case .identifying: "viewfinder"
+                    case .result: "checkmark.circle.fill"
+                    }
+                }
+            }
+
+            public let stage: Stage
+            public let result: String?
+            public let thumbnail: UUID?
+
+            init(stage: Stage, result: String? = nil, thumbnail: UUID? = nil) {
+                self.stage = stage
+                self.result = result.map { String($0.unicodeScalars.prefix(160)) }
+                self.thumbnail = thumbnail
+            }
+
+            static var previewDirectory: URL? {
+                FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: "group.com.gindausd.max")?
+                    .appendingPathComponent("Library/Caches/VisualActivity", isDirectory: true)
+            }
+
+            var thumbnailURL: URL? {
+                thumbnail.flatMap { Self.previewDirectory?.appendingPathComponent($0.uuidString + ".jpg") }
+            }
         }
 
         // MARK: - Email Alert

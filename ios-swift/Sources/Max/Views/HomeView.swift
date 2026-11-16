@@ -278,8 +278,12 @@ struct HomeView: View {
         showCompanion = false
         showHistory = false
         showCamera = false
-        showVisualIntelligence = false
         composerFocused = false
+        if action == .camera {
+            if !showVisualIntelligence { openVisualIntelligence() }
+            return
+        }
+        showVisualIntelligence = false
         let result = liveActivity.startPersistentSession()
         if action == .voice {
             viewModel.activateVoice()
