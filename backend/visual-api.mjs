@@ -1,16 +1,15 @@
-import { Buffer } from 'node:buffer';
+import { isBoundedJPEG, MAX_PHOTO_BASE64_BYTES } from './photo-upload.mjs';
 import { authorizeMax, requireAIConsent, apiError, readJSON } from './access.mjs';
 
 const languages = new Set(['English', 'Hausa', 'French', 'Arabic', 'Spanish', 'German', 'Portuguese', 'Chinese', 'Japanese', 'Korean']);
 const modes = new Set(['identify', 'translatePhoto', 'translateSpeech']);
-const MAX_IMAGE = 400_000;
 
 /** @param {{env: Record<string, string | undefined>, fetchImpl: typeof fetch, now: () => number, verifyPaid: (proof: string | null, userID: string) => Promise<any>}} options */
 export function createVisualAPI({ env, fetchImpl, now, verifyPaid }) {
   return async request => {
     if (new URL(request.url).pathname !== '/v1/visual') return null;
     if (request.method !== 'POST') return apiError(405, 'Use POST');
-    const parsed = await readJSON(request, MAX_IMAGE + 8192);
+    const parsed = await readJSON(request, MAX_PHOTO_BASE64_BYTES + 8192);
     if (parsed.error) return parsed.error;
     const { mode, jpeg, text, language } = parsed.body;
     if (!modes.has(mode) || typeof text !== 'string' || text.length > 4000 ||
@@ -19,15 +18,8 @@ export function createVisualAPI({ env, fetchImpl, now, verifyPaid }) {
     }
     if (mode === 'translateSpeech') {
       if (jpeg !== undefined || !text.trim()) return apiError(400, 'Provide the reviewed speech transcript only.');
-    } else {
-      if (typeof jpeg !== 'string' || jpeg.length > MAX_IMAGE || !/^[A-Za-z0-9+/]+={0,2}$/.test(jpeg) || jpeg.length % 4 !== 0) {
-        return apiError(400, 'Choose a JPEG photo within the upload limit.');
-      }
-      const bytes = Buffer.from(jpeg, 'base64');
-      if (bytes.length < 5 || bytes[0] !== 255 || bytes[1] !== 216 || bytes[2] !== 255 ||
-          bytes[bytes.length - 2] !== 255 || bytes[bytes.length - 1] !== 217) {
-        return apiError(400, 'The photo is not a valid JPEG upload.');
-      }
+    } else if (!isBoundedJPEG(jpeg)) {
+      return apiError(400, 'Choose a valid JPEG photo within the upload limit.');
     }
     if (!env.OPENAI_API_KEY?.trim()) return apiError(503, 'Max Visual Intelligence is not connected yet.');
 

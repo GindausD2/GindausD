@@ -501,7 +501,7 @@ struct VisualIntelligenceView: View {
             isIdentifying = selectedMode == .identify
             defer { isIdentifying = false }
             if selectedMode == .readText {
-                guard let photo, let image = Self.normalizedImage(photo, edge: 2400)?.cgImage else {
+                guard let photo, let image = PhotoUpload.normalizedImage(photo, edge: 2400)?.cgImage else {
                     error = "Choose a photo with the writing in view."
                     return
                 }
@@ -520,7 +520,7 @@ struct VisualIntelligenceView: View {
             let jpeg: String?
             if selectedMode == .translateSpeech { jpeg = nil }
             else {
-                guard let photo, let encoded = Self.boundedJPEG(photo) else {
+                guard let photo, let encoded = PhotoUpload.jpeg(photo)?.base64EncodedString() else {
                     error = "This photo is too large to analyze. Try a smaller photo."
                     return
                 }
@@ -610,29 +610,6 @@ struct VisualIntelligenceView: View {
             voice.onRecordingLimit = nil
             voice.stopRecording()
         }
-    }
-
-    private static func normalizedImage(_ image: UIImage, edge: CGFloat) -> UIImage? {
-        let longest = max(image.size.width, image.size.height)
-        guard longest > 0 else { return nil }
-        let ratio = min(1, edge / longest)
-        let size = CGSize(width: max(1, image.size.width * ratio), height: max(1, image.size.height * ratio))
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = true
-        return UIGraphicsImageRenderer(size: size, format: format).image { _ in
-            image.draw(in: CGRect(origin: .zero, size: size))
-        }
-    }
-
-    private static func boundedJPEG(_ image: UIImage) -> String? {
-        for edge in [CGFloat(1280), 960, 720] {
-            if let data = normalizedImage(image, edge: edge)?.jpegData(compressionQuality: 0.75),
-               data.count <= 300_000 {
-                return data.base64EncodedString()
-            }
-        }
-        return nil
     }
 
     private struct Payload: Encodable {

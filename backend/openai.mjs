@@ -8,6 +8,14 @@ export function openAIMessages(messages, system) {
     }
     const calls = message.content.filter(b => b.type === 'tool_use');
     const results = message.content.filter(b => b.type === 'tool_result');
+    if (message.content.some(b => b.type === 'image')) {
+      if (message.role !== 'user' || pending.size || calls.length || results.length) throw Error('Invalid photo message');
+      const content = message.content.map(block => block.type === 'image'
+        ? { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + block.source.data } }
+        : { type: 'text', text: block.text });
+      output.push({ role: 'user', content });
+      continue;
+    }
     const content = message.content.filter(b => b.type === 'text').map(b => b.text).join('\n');
     if (calls.length) {
       if (message.role !== 'assistant' || results.length || pending.size) throw Error('Invalid tool calls');

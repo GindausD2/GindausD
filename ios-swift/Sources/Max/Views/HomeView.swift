@@ -574,7 +574,7 @@ struct HomeView: View {
                     .accessibilityLabel("Live transcription")
                 }
             } else if !isTyping {
-                Text(viewModel.inputText.isEmpty ? "Tap to hear Max · Hold for voice options" : "Draft ready · tap Type to edit")
+                Text(viewModel.inputText.isEmpty ? "Tap to hear Max · Hold for voice options" : "Draft ready · use + to edit")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -587,7 +587,6 @@ struct HomeView: View {
                 }
             }
             if !voiceTurnActive && !isTyping { homeCaptureShortcuts }
-            floatingShortcuts
         }
         .buttonStyle(.plain)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.24), value: viewModel.conversationState)
@@ -667,6 +666,11 @@ struct HomeView: View {
                 }
             }
             Button("Type a message", systemImage: "keyboard") { openTextEntry() }
+            Button("Your day", systemImage: "square.grid.2x2") {
+                viewModel.endConversation()
+                showCompanion = true
+            }
+            Button("Morning briefing", systemImage: "sun.horizon") { viewModel.startMorningBriefing() }
             if !voiceTurnActive { voiceActions }
             Button("New conversation", systemImage: "square.and.pencil") {
                 pendingImage = nil
@@ -784,37 +788,6 @@ struct HomeView: View {
         .disabled(thoughtScope == nil)
     }
 
-    private var floatingShortcuts: some View {
-        HStack(spacing: 20) {
-            if dynamicTypeSize.isAccessibilitySize {
-                Button(action: openTextEntry) {
-                    Label("Type", systemImage: "keyboard").frame(minHeight: 44)
-                }
-                Menu {
-                    Button("Your day", systemImage: "square.grid.2x2") {
-                        viewModel.endConversation(); showCompanion = true
-                    }
-                    Button("Morning briefing", systemImage: "sun.horizon") { viewModel.startMorningBriefing() }
-                } label: {
-                    Label("More", systemImage: "ellipsis").frame(minHeight: 44)
-                }
-                .accessibilityLabel("More companion tools")
-            } else {
-                Button { viewModel.endConversation(); showCompanion = true } label: {
-                    Label("Your day", systemImage: "square.grid.2x2").frame(minHeight: 44)
-                }
-                Button(action: openTextEntry) {
-                    Label("Type", systemImage: "keyboard").frame(minHeight: 44)
-                }
-                Button { viewModel.startMorningBriefing() } label: {
-                    Label("Briefing", systemImage: "sun.horizon").frame(minHeight: 44)
-                }
-            }
-        }
-        .font(.caption.weight(.medium))
-        .foregroundStyle(.secondary)
-    }
-
     private func openTextEntry() {
         viewModel.endConversation()
         isTyping = true
@@ -822,11 +795,20 @@ struct HomeView: View {
     }
 
     private func sendDraft() {
-        viewModel.sendTextMessage()
-        if viewModel.inputText.isEmpty {
-            composerFocused = false
-            isTyping = false
+        guard !voiceTurnActive, !viewModel.isDictating else { return }
+        var imageData: Data? = nil
+        if let image = pendingImage {
+            guard viewModel.reviewCloudAIIfNeeded() else { return }
+            guard let jpeg = PhotoUpload.jpeg(image) else {
+                photoLoadFailed = true
+                return
+            }
+            imageData = jpeg
         }
+        guard viewModel.sendTextMessage(imageData: imageData) else { return }
+        pendingImage = nil
+        composerFocused = false
+        isTyping = false
     }
 
     // MARK: - Status Pill
@@ -916,13 +898,7 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
 
-            Button {
-                guard viewModel.reviewCloudAIIfNeeded() else { return }
-                let img = pendingImage
-                pendingImage = nil
-                viewModel.sendTextMessage(image: img)
-                if viewModel.inputText.isEmpty { isTyping = false; composerFocused = false }
-            } label: {
+            Button(action: sendDraft) {
                 Text("Send")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.white)
@@ -931,6 +907,8 @@ struct HomeView: View {
                     .background(Color(hex: "#315E73"), in: Capsule())
             }
             .buttonStyle(.plain)
+            .disabled(voiceTurnActive || viewModel.isDictating)
+            .accessibilityLabel("Send attached photo")
         }
         .padding(12)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1093,17 +1071,18 @@ final class HomeViewModel: ObservableObject {
         return true
     }
 
-    func sendTextMessage(image: UIImage? = nil) {
+    @discardableResult
+    func sendTextMessage(imageData: Data? = nil) -> Bool {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty || image != nil, conversationState == .idle, !isDictating, !isTranscribing, !startingVoice else { return }
-        guard reviewCloudAIIfNeeded() else { return }
+        guard !text.isEmpty || imageData != nil, conversationState == .idle, !isDictating, !isTranscribing, !startingVoice else { return false }
+        guard reviewCloudAIIfNeeded() else { return false }
         let allowSpeech = !prefersTextReplyForDraft
         inputText = ""
         prefersTextReplyForDraft = false
         let displayText = text.isEmpty ? "What do you see in this image?" : text
         addUserMessage(displayText)
-        let imageData = image.flatMap { $0.jpegData(compressionQuality: 0.8) }
         streamResponse(userText: displayText, imageData: imageData, allowSpeech: allowSpeech)
+        return true
     }
 
     func handleMicTap() {

@@ -58,7 +58,7 @@ private enum ClaudeRequestContent: Encodable {
 // Encodes either a text or base-64 image part for vision messages
 private enum ClaudeContentPart: Encodable {
     case text(String)
-    case image(base64: String, mediaType: String)
+    case image(base64: String)
 
     private enum CK: String, CodingKey { case type, text, source }
     private enum SK: String, CodingKey { case type, mediaType = "media_type", data }
@@ -69,11 +69,11 @@ private enum ClaudeContentPart: Encodable {
         case .text(let t):
             try c.encode("text",  forKey: .type)
             try c.encode(t,       forKey: .text)
-        case .image(let b64, let mime):
+        case .image(let b64):
             try c.encode("image", forKey: .type)
             var s = c.nestedContainer(keyedBy: SK.self, forKey: .source)
             try s.encode("base64", forKey: .type)
-            try s.encode(mime,     forKey: .mediaType)
+            try s.encode("image/jpeg", forKey: .mediaType)
             try s.encode(b64,      forKey: .data)
         }
     }
@@ -326,7 +326,7 @@ final class ClaudeService {
 
     func streamMessage(
         messages: [Message],
-        imageData: Data? = nil,     // JPEG/PNG data to send alongside the last user message
+        imageData: Data? = nil,     // Prepared JPEG to send alongside the last user message
         onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) -> Task<Void, Never> {
         Task {
@@ -397,9 +397,7 @@ final class ClaudeService {
             let isLastUserMsg = msg.role == "user" && index == filtered.indices.last(where: { filtered[$0].role == "user" })
             if isLastUserMsg, let data = imageData {
                 let b64 = data.base64EncodedString()
-                // Detect JPEG vs PNG by magic bytes
-                let mime = data.prefix(4).elementsEqual([0x89, 0x50, 0x4E, 0x47]) ? "image/png" : "image/jpeg"
-                var parts: [ClaudeContentPart] = [.image(base64: b64, mediaType: mime)]
+                var parts: [ClaudeContentPart] = [.image(base64: b64)]
                 if !msg.content.isEmpty {
                     parts.append(.text(msg.content))
                 }
@@ -439,6 +437,7 @@ final class ClaudeService {
         try Task.checkCancellation()
 
         let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
         urlRequest.httpBody = try encoder.encode(request)
 
         guard store.memoryGeneration == memoryGeneration else { throw ClaudeError.memoryChanged }
