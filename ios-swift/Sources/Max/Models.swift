@@ -9,6 +9,10 @@ struct Message: Identifiable, Codable {
     var timestamp: Date
     var isStreaming: Bool = false
 
+    var displayContent: String {
+        role == "assistant" ? ReplyText.display(content, streaming: isStreaming) : content
+    }
+
     init(id: String = UUID().uuidString, role: String, content: String, timestamp: Date = Date(), isStreaming: Bool = false) {
         self.id = id
         self.role = role
@@ -39,9 +43,11 @@ struct AuthUser: Codable, Equatable {
         return isDemo == true ? "Guest" : nil
     }
 
+    static let demoTrialDays = 3
+
     var trialExpiresAt: Date? {
         guard isDemo == true, let trialStartedAt else { return nil }
-        return trialStartedAt.addingTimeInterval(7 * 24 * 3600)
+        return trialStartedAt.addingTimeInterval(TimeInterval(Self.demoTrialDays * 24 * 3600))
     }
 
     func demoIsExpired(at date: Date) -> Bool {
@@ -244,7 +250,7 @@ struct Conversation: Identifiable, Codable {
 
     var assistantPreview: String {
         messages.first(where: { $0.role == "assistant" && !$0.content.isEmpty })
-            .map { String($0.content.prefix(100)) } ?? ""
+            .map { String($0.displayContent.prefix(100)) } ?? ""
     }
 
     var userMessageCount: Int { messages.filter { $0.role == "user" }.count }

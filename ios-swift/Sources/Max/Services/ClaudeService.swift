@@ -2,10 +2,9 @@ import Foundation
 
 // MARK: - Stream Chunk
 
-enum StreamChunk {
+enum StreamChunk: Sendable {
     case text(String)
-    case toolStart(String)      // tool name
-    case toolDone
+    case resetReply
     case done
     case error(String)
 }
@@ -321,7 +320,7 @@ final class ClaudeService {
     func streamMessage(
         messages: [Message],
         imageData: Data? = nil,     // JPEG/PNG data to send alongside the last user message
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) -> Task<Void, Never> {
         Task {
             do {
@@ -339,7 +338,7 @@ final class ClaudeService {
                     onChunk: onChunk
                 )
             } catch {
-                if !Task.isCancelled { onChunk(.error(error.localizedDescription)) }
+                if !Task.isCancelled { await onChunk(.error(error.localizedDescription)) }
             }
         }
     }
@@ -352,7 +351,7 @@ final class ClaudeService {
         imageData: Data? = nil,
         conversationHistory: [ClaudeRequestMessage],
         round: Int,
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) async throws {
 
         try Task.checkCancellation()
@@ -401,7 +400,12 @@ final class ClaudeService {
         if let proof = await StoreKitService.shared.signedTransactionProof() {
             urlRequest.setValue(proof, forHTTPHeaderField: "X-Max-Transaction")
         }
-        guard await AuthService.shared.currentUser?.id == accountScope else { throw URLError(.userAuthenticationRequired) }
+        guard await AuthService.shared.currentUser?.id == accountScope else { throw ClaudeError.signInRequired }
+        guard let consent = await StorageService.shared.cloudAIConsentVersion(for: accountScope) else {
+            throw ClaudeError.consentRequired
+        }
+        urlRequest.setValue(consent, forHTTPHeaderField: AIProcessingConsent.header)
+        try Task.checkCancellation()
 
         let encoder = JSONEncoder()
         urlRequest.httpBody = try encoder.encode(request)
@@ -426,7 +430,13 @@ final class ClaudeService {
                 await StoreKitService.shared.refreshEntitlements()
             }
             let serverError = errorBody?["error"] as? String
-            throw ClaudeError.apiError(httpResponse.statusCode, serverError ?? "Max couldn't reply just now. Please try again.")
+            let errorCode = errorBody?["code"] as? String
+            if errorCode == "openai_consent_required" || errorCode == "ai_consent_required" ||
+                serverError?.localizedCaseInsensitiveContains("data sharing") == true {
+                throw ClaudeError.consentRequired
+            }
+            let message = serverError.flatMap { $0.localizedCaseInsensitiveContains("OpenAI") ? nil : $0 }
+            throw ClaudeError.apiError(httpResponse.statusCode, message ?? "Max couldn't reply just now. Please try again.")
         }
 
         // SSE parsing state
@@ -481,7 +491,7 @@ final class ClaudeService {
         guard receivedStop else { throw ClaudeError.invalidResponse }
         // Handle any pending tool calls
         if stopReason == "tool_use" && !pendingToolCalls.isEmpty {
-            onChunk(.toolDone)
+            await onChunk(.resetReply)
             try await executeToolsAndContinue(
                 sessionToken: sessionToken,
                 accountScope: accountScope,
@@ -493,7 +503,10 @@ final class ClaudeService {
                 onChunk: onChunk
             )
         } else {
-            onChunk(.done)
+            guard !accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw ClaudeError.invalidResponse
+            }
+            await onChunk(.done)
         }
     }
 
@@ -503,7 +516,7 @@ final class ClaudeService {
         currentToolCallIndex: inout Int?,
         stopReason: inout String?,
         accumulatedText: inout String,
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) async throws -> Bool {
 
         guard let data = event.data else { return false }
@@ -527,7 +540,6 @@ final class ClaudeService {
                     let toolCall = AccumulatedToolCall(id: toolId, name: toolName)
                     pendingToolCalls.append(toolCall)
                     currentToolCallIndex = index
-                    onChunk(.toolStart(toolName))
                 }
             }
 
@@ -538,7 +550,7 @@ final class ClaudeService {
                 if deltaType == "text_delta" {
                     let text = delta["text"] as? String ?? ""
                     accumulatedText += text
-                    onChunk(.text(text))
+                    await onChunk(.text(text))
                 } else if deltaType == "input_json_delta" {
                     let partialJSON = delta["partial_json"] as? String ?? ""
                     // Append to the last tool call's input
@@ -573,7 +585,7 @@ final class ClaudeService {
         round: Int,
         accumulatedText: String,
         pendingToolCalls: [AccumulatedToolCall],
-        onChunk: @escaping @Sendable (StreamChunk) -> Void
+        onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) async throws {
         var assistantBlocks: [ClaudeRequestBlock] = []
         if !accumulatedText.isEmpty { assistantBlocks.append(ClaudeRequestBlock(type: "text", text: accumulatedText)) }
@@ -603,6 +615,7 @@ enum ClaudeError: LocalizedError {
     case apiError(Int, String)
     case noAPIKey
     case signInRequired
+    case consentRequired
     case tooManyActions
 
     var errorDescription: String? {
@@ -615,6 +628,8 @@ enum ClaudeError: LocalizedError {
             return "Max is not connected yet. Notes, saved places, and reminders are still available."
         case .signInRequired:
             return "Sign in to talk with Max. You can still use your saved notes and reminders."
+        case .consentRequired:
+            return "Review AI privacy in Max before using cloud AI."
         case .tooManyActions:
             return "Let's take this one step at a time. Please try a simpler request."
         }

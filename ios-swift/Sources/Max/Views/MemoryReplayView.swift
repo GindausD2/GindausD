@@ -50,7 +50,7 @@ struct MemoryReplayView: View {
                             }
                         } label: { Label(voice.isSpeaking ? "Stop narration" : "Read this card", systemImage: voice.isSpeaking ? "stop.fill" : "speaker.wave.2") }
                             .disabled(!store.usesSavedMemory && !voice.isSpeaking).frame(minHeight: 44)
-                        Text("Narration uses the existing Max voice service and may send this saved text to Max and OpenAI. Memory pause disables narration.")
+                        Text("Narration uses your selected voice. You can manage cloud voice processing in AI privacy. Memory pause disables narration.")
                             .font(.caption2).foregroundStyle(.secondary)
                         Text("Hiding a card changes the replay only. Its details remain in the saved event and supporting source.")
                             .font(.caption2).foregroundStyle(.secondary)

@@ -34,7 +34,8 @@ struct MaxApp: App {
         WindowGroup {
             RootView()
                 .environmentObject(authService)
-                .preferredColorScheme(resolvedScheme)
+                .background(WindowAppearance(style: interfaceStyle)
+                    .allowsHitTesting(false).accessibilityHidden(true))
                 // Handle widget deep link: maxapp://listen
                 .onOpenURL { url in
                     guard url.scheme == "maxapp" else { return }
@@ -87,11 +88,11 @@ struct MaxApp: App {
 
     // MARK: - Helpers
 
-    private var resolvedScheme: ColorScheme? {
+    private var interfaceStyle: UIUserInterfaceStyle {
         switch appearance {
         case "light": return .light
         case "dark":  return .dark
-        default:      return nil
+        default:      return .unspecified
         }
     }
 
@@ -107,6 +108,32 @@ struct MaxApp: App {
         let center = UNUserNotificationCenter.current()
         center.delegate = NotificationDelegate.shared
         center.requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
+    }
+}
+
+// Update the window trait so an already-presented sheet changes along with its parent.
+private struct WindowAppearance: UIViewRepresentable {
+    var style: UIUserInterfaceStyle
+
+    func makeUIView(context: Context) -> AppearanceView { AppearanceView() }
+
+    func updateUIView(_ view: AppearanceView, context: Context) {
+        view.style = style
+        view.applyStyle()
+    }
+
+    final class AppearanceView: UIView {
+        var style: UIUserInterfaceStyle = .unspecified
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            applyStyle()
+        }
+
+        func applyStyle() {
+            guard let window, window.overrideUserInterfaceStyle != style else { return }
+            window.overrideUserInterfaceStyle = style
+        }
     }
 }
 

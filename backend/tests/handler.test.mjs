@@ -4,7 +4,7 @@ import { createHandler } from '../handler.mjs';
 import { textStream, frame, chunk } from './openai-fixtures.mjs';
 const env = { OPENAI_API_KEY: 'server-secret', SUPABASE_URL: 'https://auth.example', SUPABASE_ANON_KEY: 'public-key' };
 const payload = { messages: [{ role: 'user', content: 'Remember my idea' }] };
-const request = (body = payload, token = 'valid-session') => new Request('https://max.example/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
+const request = (body = payload, token = 'valid-session', consent = '1') => new Request('https://max.example/v1/messages', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(consent ? { 'X-Max-OpenAI-Consent': consent } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: JSON.stringify(body) });
 function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerStatus = 200, user = { id: 'verified-user', is_anonymous: false }, now = Date.now } = {}) {
   const calls = [];
   const handler = createHandler({ env, verifyPaid: async () => ({ active: true }), now, fetchImpl: async (url, options) => {
@@ -15,6 +15,17 @@ function fixture({ authStatus = 200, quota = true, quotaStatus = 200, providerSt
   } });
   return { calls, handler };
 }
+test('the chat prompt asks for plain replies and confirms reminders only after success', async () => {
+  const f = fixture();
+  const response = await f.handler(request({ messages: [{ role: 'user', content: 'Set a reminder at 15 pm' }] }));
+  assert.equal(response.status, 200);
+  await response.text();
+  const system = JSON.parse(f.calls.at(-1).options.body).messages[0].content;
+  assert.match(system, /short, conversational sentences in plain text/);
+  assert.match(system, /ask for the missing details together without repeating them/);
+  assert.match(system, /If a requested time has passed, ask for a new time/);
+  assert.match(system, /Confirm actions only after a tool reports success/);
+});
 test('missing server configuration fails closed', async () => { const h = createHandler({ env: {}, fetchImpl: () => { throw Error('must not fetch'); } }); assert.equal((await h(request())).status, 503); });
 test('life-memory tool definitions and source-bearing results survive the authenticated continuation contract', async () => {
   const f = fixture();
@@ -91,9 +102,9 @@ test('full native tool feedback round trip retains IDs, schema and per-request q
 });
 
 const trialStart = Date.parse('2026-10-01T08:00:00.000Z');
-const trialEnd = trialStart + 7 * 24 * 60 * 60 * 1000;
+const trialEnd = trialStart + 3 * 24 * 60 * 60 * 1000;
 const guest = { id: 'guest-account', is_anonymous: true, created_at: new Date(trialStart).toISOString() };
-test('a guest can stream real AI before seven days without an Apple identity', async () => {
+test('a guest can stream real AI before three days without an Apple identity', async () => {
   const f = fixture({ user: guest, now: () => trialEnd - 1 });
   const response = await f.handler(request());
   assert.equal(response.status, 200);
@@ -105,7 +116,7 @@ test('guest expiry is exact and refresh/client trial claims cannot restart it', 
     const f = fixture({ user: { ...guest, last_sign_in_at: new Date(current).toISOString(), user_metadata: { is_anonymous: false, trial_started_at: new Date(current).toISOString() } }, now: () => current });
     const response = await f.handler(request({ ...payload, is_anonymous: false, trial_started_at: new Date(current).toISOString() }));
     assert.equal(response.status, 402);
-    assert.equal((await response.json()).code, 'demo_expired');
+    assert.deepEqual(await response.json(), {error: 'Your three-day demo has ended.', code: 'demo_expired'});
     assert.equal(f.calls.length, 1, 'expired guests must not consume quota or reach OpenAI');
   }
 });
@@ -124,3 +135,13 @@ test('a verified permanent user is not mistaken for an expired guest', async () 
   assert.equal((await f.handler(request())).status, 200);
 });
 
+
+test('missing or stale AI permission does not consume quota or contact a provider', async () => {
+  for (const consent of ['', '0']) {
+    const f = fixture();
+    const r = await f.handler(request(payload, 'valid-session', consent));
+    assert.equal(r.status, 403);
+    assert.equal((await r.json()).code, 'openai_consent_required');
+    assert.equal(f.calls.length, 1);
+  }
+});

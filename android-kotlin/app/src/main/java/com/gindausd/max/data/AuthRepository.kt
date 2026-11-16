@@ -36,15 +36,15 @@ class AuthRepository private constructor(private val context: Context) {
             val user = _currentUser.value ?: return false
             if (user.isDemo != true) return false
             val elapsed = System.currentTimeMillis() - _demoStartDate
-            return elapsed > SEVEN_DAYS_MS
+            return elapsed >= DEMO_TRIAL_MS
         }
 
     val demoTrialDaysRemaining: Int
         get() {
             if (_currentUser.value?.isDemo != true) return 0
             val elapsed = System.currentTimeMillis() - _demoStartDate
-            val remaining = SEVEN_DAYS_MS - elapsed
-            return maxOf(0, (remaining / DAY_MS).toInt())
+            val remaining = DEMO_TRIAL_MS - elapsed
+            return ((remaining.coerceIn(0L, DEMO_TRIAL_MS) + DAY_MS - 1) / DAY_MS).toInt()
         }
 
     init {
@@ -124,7 +124,7 @@ class AuthRepository private constructor(private val context: Context) {
     companion object {
         private val KEY_USER = stringPreferencesKey("auth_user")
         private val KEY_DEMO_START = longPreferencesKey("demo_start_date")
-        private const val SEVEN_DAYS_MS = 7L * 24 * 60 * 60 * 1000
+        private const val DEMO_TRIAL_MS = 3L * 24 * 60 * 60 * 1000
         private const val DAY_MS = 24L * 60 * 60 * 1000
 
         @Volatile private var INSTANCE: AuthRepository? = null

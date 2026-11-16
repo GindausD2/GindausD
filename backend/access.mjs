@@ -1,3 +1,5 @@
+const DEMO_TRIAL_MS = 3 * 24 * 60 * 60 * 1000;
+
 export const apiError = (status, error, code) => Response.json({ error, ...(code ? { code } : {}) }, { status, headers: { 'Cache-Control': 'no-store' } });
 
 export async function authorizeMax({ request, env, fetchImpl, verifyPaid, now, signal, proof }) {
@@ -16,13 +18,21 @@ export async function authorizeMax({ request, env, fetchImpl, verifyPaid, now, s
   if (typeof user?.id !== 'string' || !user.id || typeof user.is_anonymous !== 'boolean') return { error: apiError(503, 'Your account could not be verified.') };
   if (user.is_anonymous) {
     const created = typeof user.created_at === 'string' ? Date.parse(user.created_at) : NaN;
-    if (!Number.isFinite(created) || created > now()) return { error: apiError(503, 'Your demo could not be verified.') };
-    if (now() >= created + 7 * 86400000) return { error: apiError(402, 'Your seven-day demo has ended.', 'demo_expired') };
+    const current = now();
+    if (!Number.isFinite(created) || created > current) return { error: apiError(503, 'Your demo could not be verified.') };
+    if (current >= created + DEMO_TRIAL_MS) return { error: apiError(402, 'Your three-day demo has ended.', 'demo_expired') };
     return { user, headers, base, subscription: null };
   }
   const subscription = await verifyPaid(proof ?? request.headers.get('x-max-transaction'), user.id);
   if (!subscription?.active) return { error: apiError(402, 'An active Max subscription is required.', 'subscription_required') };
   return { user, headers, base, subscription };
+}
+
+export function requireAIConsent(request) {
+  if (request.headers.get('x-max-openai-consent') !== '1') {
+    return apiError(403, 'Review AI privacy in Max before using cloud AI.', 'openai_consent_required');
+  }
+  return null;
 }
 
 export async function readJSON(request, maxBytes) {

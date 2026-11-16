@@ -31,7 +31,7 @@ struct ProfileHubView: View {
                         .tracking(-0.5)
                         .multilineTextAlignment(.center)
                         .padding(.top, 22)
-                    Label(authService.currentUser?.isDemo == true ? "Seven-day demo" : "Your personal space", systemImage: "person.crop.circle")
+                    Label(authService.currentUser?.isDemo == true ? "Three-day demo" : "Your personal space", systemImage: "person.crop.circle")
                         .font(.caption).foregroundStyle(.secondary)
                         .padding(.top, 8)
                     Spacer(minLength: 40)

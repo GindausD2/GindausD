@@ -18,6 +18,7 @@ struct SettingsView: View {
     @State private var showSignOutConfirm: Bool = false
     @State private var showSubscription: Bool = false
     @State private var showPrivacy: Bool = false
+    @State private var showAIPrivacy = false
     @State private var showMemory: Bool = false
     @State private var showVocabulary = false
     @State private var showIslandDebug: Bool = false
@@ -83,15 +84,8 @@ struct SettingsView: View {
                                        title: "Max Support") { showSupport = true }
                             PrivacyPolicyLink().padding(.horizontal, 16)
                             Divider().padding(.leading, 56)
-                            ProfileRow(icon: "doc.text.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "AI Provider Policies") {
-                                UIApplication.shared.open(URL(string: "https://openai.com/policies/")!)
-                            }
-                            Divider().padding(.leading, 56)
                             ProfileRow(icon: "lock.shield.fill", iconColor: Color(hex: "#6B7280"),
-                                       title: "AI Data Handling") {
-                                UIApplication.shared.open(URL(string: "https://developers.openai.com/api/docs/guides/your-data")!)
-                            }
+                                       title: "AI privacy") { showAIPrivacy = true }
                             Divider().padding(.leading, 56)
                             HStack {
                                 Label {
@@ -149,35 +143,16 @@ struct SettingsView: View {
                         // ── Guest Sign in with Apple ──────────────────────────
                         if authService.currentUser?.isDemo == true {
                             VStack(spacing: 10) {
-                                SignInWithAppleButton(.signIn, onRequest: { req in
-                                    authService.prepareAppleSignIn(req)
-                                }, onCompletion: { result in
-                                    switch result {
-                                    case .success(let auth):
-                                        guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-                                              let data = credential.identityToken,
-                                              let token = String(data: data, encoding: .utf8) else {
-                                            authService.authError = "Apple sign-in couldn't complete. Please try again."
-                                            return
-                                        }
-                                        let name = [credential.fullName?.givenName,
-                                                    credential.fullName?.familyName]
-                                            .compactMap { $0 }.joined(separator: " ")
-                                        Task {
-                                            await authService.signInWithApple(
-                                                idToken: token,
-                                                name: name.isEmpty ? nil : name
-                                            )
-                                            if authService.currentUser?.isDemo != true { dismiss() }
-                                        }
-                                    case .failure(let error):
-                                        authService.cancelAppleSignIn()
-                                        authService.authError = error.localizedDescription
-                                    }
+                                SignInWithAppleButton(.continue, onRequest: {
+                                    authService.prepareAppleSignIn($0)
+                                }, onCompletion: {
+                                    authService.completeAppleSignIn($0) { dismiss() }
                                 })
                                 .signInWithAppleButtonStyle(.black)
                                 .frame(height: 50)
                                 .cornerRadius(12)
+                                .disabled(authService.isLoading)
+                                if authService.isLoading { ProgressView() }
 
                                 if let error = authService.authError { Text(error).font(.footnote).foregroundStyle(.red) }
                                 Text("Continue with Apple to keep this guest account. Your notes stay on this iPhone.")
@@ -200,6 +175,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showSubscription) { SubscriptionSheet() }
         .sheet(isPresented: $showMemory, onDismiss: { settings = storage.loadSettings() }) { MemoryView() }
         .sheet(isPresented: $showVocabulary) { VocabularyView() }
+        .sheet(isPresented: $showAIPrivacy) {
+            AIPrivacyView(scope: storage.accountScope)
+        }
         .sheet(isPresented: $showPrivacy)      { PrivacySheet(settings: $settings, onSave: saveSettings) }
         .sheet(isPresented: $showIslandDebug)  { IslandDebugSheet() }
         .sheet(isPresented: $showEmailConfig)  { EmailConfigSheet() }
@@ -289,7 +267,7 @@ struct SettingsView: View {
             HStack(spacing: 4) {
                 Image(systemName: subscribed ? "crown.fill" : "plus")
                     .font(.system(size: 12, weight: .semibold))
-                Text(subscribed ? "Max Pro" : "7-day demo")
+                Text(subscribed ? "Max Pro" : "3-day demo")
                     .font(.subheadline)
             }
             .foregroundStyle(subscribed ? Color(hex: "#F59E0B") : .secondary)
@@ -376,7 +354,7 @@ private struct SubscriptionSheet: View {
                 if authService.currentUser?.isDemo == true {
                     VStack(spacing: 20) {
                         MaxLogoView(width: 84)
-                        Text("Your seven-day demo").font(.title2.weight(.semibold))
+                        Text("Your three-day demo").font(.title2.weight(.semibold))
                         Text("No payment is needed during your demo. Continue with Apple when you’re ready to subscribe.")
                         Button("Continue with Apple") { authService.beginDemoUpgrade(); dismiss() }
                     }.multilineTextAlignment(.center).padding(24)
@@ -419,7 +397,7 @@ private struct PrivacySheet: View {
                         .onChange(of: settings.personalisedSuggestions) { _, _ in onSave() }
                 } header: { Text("Data Usage") }
                 Section {
-                    Text("When you send a message, Max sends the conversation and relevant saved context to OpenAI through Max's server. Notes and history remain stored on this device. See AI Data Handling for the provider's retention controls.")
+                    Text("See AI privacy to review and manage cloud AI processing.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } header: { Text("Note") }
@@ -579,15 +557,15 @@ private struct AssistantSheet: View {
                         .font(.caption).foregroundStyle(.secondary)
                     if settings.voiceEnabled {
                         Picker("Spoken replies", selection: Binding(get: { settings.voiceProvider ?? "openai" }, set: { settings.voiceProvider = $0; onSave() })) {
-                            Text("OpenAI voice").tag("openai")
+                            Text("Max voice").tag("openai")
                             Text("iPhone voice").tag("device")
                         }
                         if (settings.voiceProvider ?? "openai") == "openai" {
                             Picker("Voice style", selection: Binding(get: { settings.openAIVoice ?? "marin" }, set: { settings.openAIVoice = $0; onSave() })) {
-                                Text("Marin").tag("marin")
-                                Text("Cedar").tag("cedar")
+                                Text("Voice 1").tag("marin")
+                                Text("Voice 2").tag("cedar")
                             }
-                            Text("Max’s voice is AI-generated. Spoken text is sent to OpenAI. Up to 3,000 characters per UTC day; longer replies and unavailable voice use your iPhone voice.")
+                            Text("Max’s voice is AI-generated. Up to 3,000 characters per UTC day; longer replies and unavailable voice use your iPhone voice.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         Picker(selection: $settings.preferredVoice) {

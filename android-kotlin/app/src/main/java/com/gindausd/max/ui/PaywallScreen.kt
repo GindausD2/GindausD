@@ -187,7 +187,7 @@ fun PaywallScreen(
 
             // Trial note
             Text(
-                text = "Start your 7-day free trial. Cancel anytime.",
+                text = "Max offers a 3-day free demo.",
                 color = OrangePrimary,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,

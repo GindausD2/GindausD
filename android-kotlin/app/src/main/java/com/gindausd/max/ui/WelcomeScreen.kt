@@ -289,7 +289,7 @@ private fun SignInPage(
             colors = ButtonDefaults.outlinedButtonColors(contentColor = OrangePrimary),
             border = androidx.compose.foundation.BorderStroke(1.dp, OrangePrimary)
         ) {
-            Text("Try Free for 7 Days", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text("Try Free for 3 Days", fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -321,14 +321,14 @@ private fun DemoPage(
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = "7-day free trial",
+            text = "3-day free demo",
             color = OrangePrimary,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "Experience the full power of Max for 7 days — no credit card required.",
+            text = "Experience the full power of Max for 3 days — no credit card required.",
             color = Color(0xFF8A7A6A),
             fontSize = 15.sp,
             textAlign = TextAlign.Center,

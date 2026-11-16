@@ -1,7 +1,8 @@
 {
   "git": {
     "deploymentEnabled": {
-      "codex/max-v1-app-review": false
+      "codex/max-v1-app-review": false,
+      "codex/max-v1-apple-devices": false
     }
   }
 }

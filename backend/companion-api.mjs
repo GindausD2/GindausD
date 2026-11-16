@@ -1,4 +1,4 @@
-import { authorizeMax, apiError, readJSON } from './access.mjs';
+import { authorizeMax, requireAIConsent, apiError, readJSON } from './access.mjs';
 import { createAppleSubscriptionVerifier, SubscriptionUnavailable } from './apple-subscriptions.mjs';
 import { realtimeSpeech } from './realtime-speech.mjs';
 import { safeProviderCode } from './provider-errors.mjs';
@@ -24,13 +24,15 @@ export function createCompanionAPI({ env = process.env, fetchImpl = fetch, now =
         if (!access.subscription) return apiError(402, 'Continue with Apple before subscribing.', 'subscription_required');
         return Response.json(access.subscription, { headers: { 'Cache-Control': 'no-store' } });
       }
+      const consentError = requireAIConsent(request);
+      if (consentError) return consentError;
       const quota = await fetchImpl(access.base + '/rest/v1/rpc/consume_max_voice', {
         method: 'POST', headers: { ...access.headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ characters: body.text.length }), signal,
       });
       if (!quota.ok) return apiError(503, 'Max voice is temporarily unavailable.');
       const allowed = await quota.json();
-      if (allowed === false) return apiError(429, 'Your OpenAI voice limit has been reached. The iPhone voice is still available.', 'voice_limit');
+      if (allowed === false) return apiError(429, 'Your Max voice limit has been reached. The iPhone voice is still available.', 'voice_limit');
       if (allowed !== true) return apiError(503, 'Max voice is temporarily unavailable.');
       const wav = await speak({ text: body.text, voice: body.voice, env, signal });
       return new Response(wav, { headers: { 'Content-Type': 'audio/wav', 'Cache-Control': 'no-store' } });

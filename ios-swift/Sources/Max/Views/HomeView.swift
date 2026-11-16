@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import Combine
 import UIKit
 import WidgetKit
@@ -13,16 +14,28 @@ struct HomeView: View {
     @ObservedObject private var lifeApproval = LifeMemoryApproval.shared
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
+    @State private var showThoughts = false
+    @State private var showThoughtsDock = false
+    @State private var recordThoughtRequested = false
+    @State private var showAlarms = false
+    @ObservedObject private var thoughtStore = ThoughtStore.shared
+
+    private var thoughtScope: String? { authService.currentUser?.id?.lowercased() }
     @State private var showProfile = false
     @State private var showReport = false
     @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var islandNotice: String?
     @State private var showHistory: Bool = false
-    @State private var showCamera: Bool = false
+    @State private var showCamera = false
+    @State private var showImageSources = false
+    @State private var showPhotoLibrary = false
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var photoLoadFailed = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
     @FocusState private var composerFocused: Bool
@@ -35,7 +48,42 @@ struct HomeView: View {
     }
 
     var body: some View {
-        conversationPresentation
+        GeometryReader { geometry in
+            let wide = horizontalSizeClass == .regular &&
+                geometry.size.width >= (dynamicTypeSize.isAccessibilitySize ? 980 : 640)
+            HStack(spacing: 0) {
+                conversationPresentation
+                    .frame(width: wide && showThoughtsDock ? geometry.size.width * 0.52 : geometry.size.width)
+                if wide && showThoughtsDock {
+                    Divider().accessibilityHidden(true)
+                    thoughtsPanel
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(CompanionCanvas())
+                }
+            }
+            .onChange(of: wide, initial: true) { _, wide in
+                showThoughtsDock = wide
+                if wide { showThoughts = false }
+            }
+        }
+            .sheet(isPresented: $showThoughts) {
+                NavigationStack {
+                    thoughtsPanel
+                        .toolbar { ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showThoughts = false }
+                        } }
+                }
+            }
+            .sheet(isPresented: $showAlarms) {
+                if let thoughtScope { HomeAlarmsView(store: thoughtStore, scope: thoughtScope) }
+            }
+            .onChange(of: thoughtScope, initial: true) { previous, current in
+                thoughtStore.open(scope: current)
+                if previous != current {
+                    showAlarms = false
+                    recordThoughtRequested = false
+                }
+            }
             .sheet(isPresented: $showReport) { SupportContactView(reporting: true) }
             .onAppear(perform: restoreConversation)
             .onChange(of: viewModel.conversationState) { _, state in updateLiveActivity(state) }
@@ -48,6 +96,13 @@ struct HomeView: View {
             .onReceive(NotificationCenter.default.publisher(for: .maxWidgetActivate)) { _ in
                 handlePendingShortcut()
             }
+    }
+
+    private var thoughtsPanel: some View {
+        ThoughtsView(store: thoughtStore, scope: thoughtScope,
+                     canSync: authService.currentUser?.isDemo == false,
+                     prepareRecording: { viewModel.endConversation() },
+                     captureRequested: $recordThoughtRequested)
     }
 
     private var conversationLayout: some View {
@@ -105,7 +160,7 @@ struct HomeView: View {
                 }
                 Button("OK", role: .cancel) { islandNotice = nil }
             } message: { Text(islandNotice ?? "Please try again.") }
-            .onChange(of: authService.currentUser) { _, _ in pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+            .onChange(of: authService.currentUser) { _, _ in viewModel.showAIPrivacy = false; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { viewModel.endConversation() }
                 if phase == .active { handlePendingShortcut() }
@@ -118,6 +173,9 @@ struct HomeView: View {
 
     private var conversationPresentation: some View {
         conversationInteractions
+            .sheet(isPresented: $viewModel.showAIPrivacy) {
+                AIPrivacyView(scope: StorageService.shared.accountScope)
+            }
             .sheet(isPresented: $showCompanion) { CompanionView() }
             .sheet(isPresented: $showProfile) { CompanionProfileSheet(onClearHistory: viewModel.clearHistory) }
             .sheet(isPresented: $showHistory) {
@@ -132,13 +190,38 @@ struct HomeView: View {
                 ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
                     .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
             }
+            .confirmationDialog("Add a Photo", isPresented: $showImageSources, titleVisibility: .visible) {
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button("Take Photo") { showCamera = true }
+                }
+                Button("Choose from Library") { showPhotoLibrary = true }
+            }
             .fullScreenCover(isPresented: $showCamera) {
-                ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
-                    .ignoresSafeArea()
+                CameraPickerView(selectedImage: $capturedImage, isPresented: $showCamera).ignoresSafeArea()
+            }
+            .photosPicker(isPresented: $showPhotoLibrary, selection: $selectedPhoto, matching: .images)
+            .task(id: selectedPhoto) {
+                guard let item = selectedPhoto else { return }
+                let scope = StorageService.shared.accountScope
+                let data = try? await item.loadTransferable(type: Data.self)
+                guard !Task.isCancelled, StorageService.shared.accountScope == scope else { return }
+                selectedPhoto = nil
+                if let data, let image = UIImage(data: data) { pendingImage = image }
+                else { photoLoadFailed = true }
             }
             .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
                 LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
                     .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
+            }
+            .alert("Max couldn’t open this photo", isPresented: $photoLoadFailed) {
+                Button("OK", role: .cancel) {}
+            } message: { Text("Try choosing the photo again.") }
+            .onChange(of: authService.currentUser?.storageScope) { _, _ in
+                selectedPhoto = nil
+                capturedImage = nil
+                pendingImage = nil
+                showPhotoLibrary = false
+                showCamera = false
             }
             .onChange(of: capturedImage) { _, img in
                 guard let img else { return }
@@ -382,8 +465,18 @@ struct HomeView: View {
         VStack(spacing: 8) {
             if voiceTurnActive {
                 statusPill.transition(.opacity)
+                if viewModel.conversationState == .listening, !viewModel.liveTranscript.isEmpty {
+                    ScrollView {
+                        Text(viewModel.liveTranscript)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 94)
+                    .padding(.horizontal, 12)
+                    .accessibilityLabel("Live transcription")
+                }
             } else if !isTyping {
-                Text(viewModel.inputText.isEmpty ? "Tap the mic to talk to Max" : "Draft ready · tap Type to edit")
+                Text(viewModel.inputText.isEmpty ? "Tap to hear Max · Hold for voice options" : "Draft ready · tap Type to edit")
                     .font(.caption).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
@@ -392,6 +485,7 @@ struct HomeView: View {
             } else {
                 orbDock
             }
+            if !voiceTurnActive && !isTyping { homeCaptureShortcuts }
             floatingShortcuts
         }
         .buttonStyle(.plain)
@@ -408,30 +502,58 @@ struct HomeView: View {
             conversationActions
                 .glassCard(cornerRadius: 22, interactive: true)
             Spacer(minLength: 0)
-            Button { viewModel.handleOrbTap() } label: {
-                OrbView(state: viewModel.orbState(isPlayingSpeech: playback.isSpeaking && !playback.isPreparingSpeech), size: 64)
+            if voiceTurnActive {
+                orbButton
+            } else {
+                orbButton
+                    .contextMenu { voiceActions }
+                    .accessibilityActions { voiceActions }
             }
-            .accessibilityLabel(viewModel.orbAccessibilityLabel)
-            .accessibilityHint(viewModel.orbAccessibilityHint)
             Spacer(minLength: 0)
-            microphoneButton(dictation: false)
+            Color.clear
+                .frame(width: 44, height: 44)
+                .accessibilityHidden(true)
+                .allowsHitTesting(false)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 4)
     }
 
+    private var orbButton: some View {
+        Button(action: viewModel.handleOrbTap) {
+            OrbView(state: viewModel.orbState(isPlayingSpeech: playback.isSpeaking && !playback.isPreparingSpeech), size: 64)
+                .contentShape(Circle())
+        }
+        .accessibilityLabel(viewModel.orbAccessibilityLabel)
+        .accessibilityHint(viewModel.orbAccessibilityHint)
+    }
+
+    @ViewBuilder private var voiceActions: some View {
+        Button("Talk to Max", systemImage: "waveform") {
+            composerFocused = false
+            viewModel.activateVoice()
+        }
+        Button("Dictate a message", systemImage: "text.bubble") {
+            composerFocused = false
+            viewModel.handleMicTap()
+        }
+    }
+
     private var conversationActions: some View {
         Menu {
+            Button("Thoughts", systemImage: "waveform") {
+                viewModel.endConversation()
+                if !showThoughtsDock { showThoughts = true }
+            }
             Button("Type a message", systemImage: "keyboard") { openTextEntry() }
-            Button("Dictate a message", systemImage: "waveform") { viewModel.handleMicTap() }
-                .disabled(voiceTurnActive)
+            if !voiceTurnActive { voiceActions }
             Button("New conversation", systemImage: "square.and.pencil") {
                 pendingImage = nil
                 composerFocused = false
                 isTyping = false
                 viewModel.startNewChat()
             }
-            Button("Attach a photo", systemImage: "photo") { showCamera = true }
+            Button("Attach a photo", systemImage: "photo") { showImageSources = true }
             Button("Report a response", systemImage: "flag") {
                 viewModel.endConversation()
                 showReport = true
@@ -446,30 +568,6 @@ struct HomeView: View {
                 .frame(width: 44, height: 44)
         }
         .accessibilityLabel("Conversation actions")
-    }
-
-    private func microphoneButton(dictation: Bool) -> some View {
-        Button {
-            if dictation {
-                viewModel.handleMicTap()
-            } else {
-                composerFocused = false
-                viewModel.handleVoiceTap()
-            }
-        } label: {
-            Image(systemName: voiceTurnActive ? "stop.fill" : "mic.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(Color(UIColor.systemBackground))
-                .frame(width: 44, height: 44)
-                .background(Color(UIColor.label), in: Circle())
-        }
-        .accessibilityLabel(dictation ? "Dictate a message" : voiceButtonLabel)
-        .accessibilityHint(dictation ? "Turn your voice into editable text" : "")
-    }
-
-    private var voiceButtonLabel: String {
-        if viewModel.conversationState == .listening { return "Send voice message" }
-        return voiceTurnActive ? "Stop voice conversation" : "Talk to Max"
     }
 
     private var textComposer: some View {
@@ -504,19 +602,53 @@ struct HomeView: View {
                     }
                     .disabled(viewModel.isTranscribing)
                     .accessibilityLabel("Send message")
-                } else {
-                    microphoneButton(dictation: true)
                 }
             }
             if viewModel.prefersTextReplyForDraft {
-                Text("Voice draft · edit, then send")
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 16) {
+                    Text("Voice draft").font(.caption).foregroundStyle(.secondary)
+                    if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("Copy", systemImage: "document.on.document") {
+                            UIPasteboard.general.string = viewModel.inputText
+                        }
+                        .frame(minHeight: 44)
+                        ShareLink(item: viewModel.inputText) { Label("Share", systemImage: "square.and.arrow.up") }
+                            .frame(minHeight: 44)
+                    }
+                }
+                .font(.caption)
             }
         }
         .padding(.leading, 4)
         .padding(.trailing, 10)
         .padding(.vertical, 10)
         .glassCard(cornerRadius: 34, depth: .regular)
+    }
+
+    private var homeCaptureShortcuts: some View {
+        HStack(spacing: 16) {
+            Button {
+                guard thoughtScope != nil else { return }
+                composerFocused = false
+                recordThoughtRequested = true
+                if !showThoughtsDock { showThoughts = true }
+            } label: {
+                Label("Record", systemImage: "waveform").frame(minHeight: 44)
+            }
+            .accessibilityLabel("Record a thought")
+            if #available(iOS 26.0, *), !ProcessInfo.processInfo.isiOSAppOnMac {
+                Button {
+                    viewModel.endConversation()
+                    composerFocused = false
+                    showAlarms = true
+                } label: {
+                    Label("Alarms", systemImage: "alarm").frame(minHeight: 44)
+                }
+            }
+        }
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .disabled(thoughtScope == nil)
     }
 
     private var floatingShortcuts: some View {
@@ -601,18 +733,19 @@ struct HomeView: View {
         if viewModel.isTranscribing { return "Transcribing…" }
         switch viewModel.conversationState {
         case .idle:      return "Idle"
-        case .listening: return "Listening… tap to send"
+        case .listening: return "Recording… tap to send"
         case .thinking:  return "Thinking…"
         case .speaking:
+            if let fallback = playback.playbackNotice { return fallback }
             if playback.isPreparingSpeech { return "Getting Max’s voice ready…" }
-            return playback.playbackNotice ?? "Max is speaking…"
+            return "Max is speaking…"
         }
     }
 
     // MARK: - Camera Button
 
     private var cameraButton: some View {
-        Button { showCamera = true } label: {
+        Button { showImageSources = true } label: {
             ZStack {
                 Circle()
                     .fill(Color(white: 0.0).opacity(0.06))
@@ -651,6 +784,7 @@ struct HomeView: View {
             .buttonStyle(.plain)
 
             Button {
+                guard viewModel.reviewCloudAIIfNeeded() else { return }
                 let img = pendingImage
                 pendingImage = nil
                 viewModel.sendTextMessage(image: img)
@@ -689,6 +823,7 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var liveTranscript = ""
     @Published private(set) var prefersTextReplyForDraft = false
     @Published var dictationError: String?
+    @Published var showAIPrivacy = false
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
@@ -712,7 +847,10 @@ final class HomeViewModel: ObservableObject {
         let capture = capture ?? VoiceService.shared
         self.capture = capture
         capture.transcriptUpdates.sink { [weak self] text in
-            guard let self, self.isDictating, self.dictationScope == self.storage.accountScope else { return }
+            guard let self else { return }
+            let scope = self.isDictating ? self.dictationScope : self.loadedScope
+            guard scope == self.storage.accountScope,
+                  self.isDictating || self.conversationState == .listening else { return }
             self.liveTranscript = text
         }.store(in: &voiceSubscriptions)
         capture.recordingUpdates.sink { [weak self] recording in
@@ -722,6 +860,7 @@ final class HomeViewModel: ObservableObject {
             } else {
                 // An interruption ends the listening turn without sending partial speech.
                 self.continuousActive = false
+                self.liveTranscript = ""
                 self.conversationState = .idle
             }
         }.store(in: &voiceSubscriptions)
@@ -749,7 +888,7 @@ final class HomeViewModel: ObservableObject {
 
     var orbAccessibilityHint: String {
         if isDictating { return "Finish dictation and review your message before sending" }
-        return conversationState == .idle && !startingVoice && !isTranscribing ? "Tap to hear Max. Use the microphone to talk to Max." : ""
+        return conversationState == .idle && !startingVoice && !isTranscribing ? "Tap to hear Max. Voice options are also in Conversation actions." : ""
     }
 
     func loadMessages() {
@@ -781,9 +920,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     private func pushToWidget(_ text: String) {
-        let clean = text
-            .replacingOccurrences(of: #"_Using [^_]+…_"#, with: "", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let clean = ReplyText.display(text)
         guard !clean.isEmpty else { return }
         let def = UserDefaults(suiteName: "group.com.gindausd.max")
         def?.set(clean, forKey: "max:widget_last_message")
@@ -807,9 +944,18 @@ final class HomeViewModel: ObservableObject {
         storage.saveConversation(conv)
     }
 
+    func reviewCloudAIIfNeeded() -> Bool {
+        guard storage.allowsCloudAI(scope: storage.accountScope) else {
+            showAIPrivacy = true
+            return false
+        }
+        return true
+    }
+
     func sendTextMessage(image: UIImage? = nil) {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || image != nil, conversationState == .idle, !isDictating, !isTranscribing, !startingVoice else { return }
+        guard reviewCloudAIIfNeeded() else { return }
         let allowSpeech = !prefersTextReplyForDraft
         inputText = ""
         prefersTextReplyForDraft = false
@@ -880,6 +1026,7 @@ final class HomeViewModel: ObservableObject {
 
     func sendPlacesQuery() {
         guard conversationState == .idle, !isDictating, !startingVoice, !isTranscribing else { return }
+        guard reviewCloudAIIfNeeded() else { return }
         let query = "What interesting places are near me right now?"
         addUserMessage(query)
         streamResponse(userText: query, imageData: nil)
@@ -895,7 +1042,7 @@ final class HomeViewModel: ObservableObject {
             guard turnID == briefingID, !Task.isCancelled, storage.accountScope == scope else { return }
             conversationState = .idle
             addUserMessage("Good morning — give me my daily briefing.")
-            if kMaxAPIBaseURL.isEmpty {
+            if kMaxAPIBaseURL.isEmpty || !storage.allowsCloudAI(scope: scope) {
                 messages.append(Message(role: "assistant", content: snapshot))
                 storage.saveMessages(messages)
                 archiveCurrentConversation()
@@ -989,6 +1136,7 @@ final class HomeViewModel: ObservableObject {
 
     private func startListening() {
         guard !startingVoice, !isTranscribing else { return }
+        liveTranscript = ""
         startingVoice = true
         dictationError = nil
         let activationID = UUID()
@@ -1024,6 +1172,7 @@ final class HomeViewModel: ObservableObject {
             let transcription = await capture.stopAndTranscribe()
             guard turnID == listeningID, storage.accountScope == scope, !Task.isCancelled else { return }
             isTranscribing = false
+            liveTranscript = ""
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
                 return
@@ -1034,6 +1183,12 @@ final class HomeViewModel: ObservableObject {
                 inputText += (inputText.isEmpty ? "" : " ") + transcription
                 prefersTextReplyForDraft = true
                 dictationError = notice
+                return
+            }
+            guard reviewCloudAIIfNeeded() else {
+                continuousActive = false
+                inputText += (inputText.isEmpty ? "" : " ") + transcription
+                prefersTextReplyForDraft = true
                 return
             }
             addUserMessage(transcription)
@@ -1075,51 +1230,49 @@ final class HomeViewModel: ObservableObject {
             messages: trimmed,
             imageData: imageData
         ) { [weak self] chunk in
-            Task { @MainActor [weak self] in
-                guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
-                switch chunk {
-                case .text(let text):
-                    fullText += text
-                    self.streamingText = fullText
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                        self.messages[idx].isStreaming = true
-                    }
-                case .toolStart(let name):
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText + (fullText.isEmpty ? "" : "\n") + "_Using \(name)…_"
-                        self.messages[idx].isStreaming = true
-                    }
-                case .toolDone:
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                    }
-                case .done:
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText
-                        self.messages[idx].isStreaming = false
-                    }
-                    self.streamingMessageId = nil
-                    self.streamingText = ""
-                    self.storage.saveMessages(self.messages)
-                    self.archiveCurrentConversation()
-                    self.pushToWidget(fullText)
-                    if allowSpeech && settings.voiceEnabled && !fullText.isEmpty {
-                        self.playSpeech(fullText, continueListening: true)
-                    } else {
-                        self.conversationState = .idle
-                    }
-                case .error(let errText):
-                    self.continuousActive = false
-                    if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
-                        self.messages[idx].content = fullText.isEmpty ? "Error: \(errText)" : fullText + "\n\nReply interrupted: " + errText
-                        self.messages[idx].isStreaming = false
-                    }
-                    self.streamingMessageId = nil
-                    self.streamingText = ""
-                    self.conversationState = .idle
-                    self.storage.saveMessages(self.messages)
+            guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
+            switch chunk {
+            case .text(let text):
+                fullText += text
+                self.streamingText = ReplyText.display(fullText, streaming: true)
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = fullText
+                    self.messages[idx].isStreaming = true
                 }
+            case .resetReply:
+                fullText = ""
+                self.streamingText = ""
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = ""
+                }
+            case .done:
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = fullText
+                    self.messages[idx].isStreaming = false
+                }
+                self.streamingMessageId = nil
+                self.streamingText = ""
+                self.storage.saveMessages(self.messages)
+                self.archiveCurrentConversation()
+                self.pushToWidget(fullText)
+                if allowSpeech && settings.voiceEnabled && !fullText.isEmpty {
+                    self.playSpeech(fullText, continueListening: true)
+                } else {
+                    self.conversationState = .idle
+                }
+            case .error(let errText):
+                if errText == ClaudeError.consentRequired.errorDescription {
+                    self.showAIPrivacy = true
+                }
+                self.continuousActive = false
+                if let idx = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[idx].content = fullText.isEmpty ? "Error: \(errText)" : fullText + "\n\nReply interrupted: " + errText
+                    self.messages[idx].isStreaming = false
+                }
+                self.streamingMessageId = nil
+                self.streamingText = ""
+                self.conversationState = .idle
+                self.storage.saveMessages(self.messages)
             }
         }
     }

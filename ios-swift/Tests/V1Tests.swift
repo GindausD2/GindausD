@@ -1,21 +1,90 @@
 import XCTest
+import AuthenticationServices
 import SwiftUI
 import UIKit
 @testable import Max
 
 @MainActor
 final class V1Tests: XCTestCase {
-    func testGuestTrialEndsAtSevenDaysAndSurvivesEncoding() throws {
+    func testAIConsentIsExplicitScopedAndRevocable() {
+        let storage = StorageService.shared
+        let previous = storage.accountScope
+        let account = UUID().uuidString
+        let other = UUID().uuidString
+        storage.setAccountScope(account)
+        defer {
+            storage.setAccountScope(account)
+            storage.setCloudAIAllowed(false, scope: account)
+            storage.setAccountScope(previous)
+        }
+        XCTAssertFalse(storage.allowsCloudAI(scope: account))
+        XCTAssertTrue(storage.setCloudAIAllowed(true, scope: account))
+        XCTAssertTrue(storage.allowsCloudAI(scope: account))
+        storage.setAccountScope(other)
+        XCTAssertFalse(storage.allowsCloudAI(scope: other))
+        XCTAssertFalse(storage.allowsCloudAI(scope: account))
+        XCTAssertFalse(storage.setCloudAIAllowed(true, scope: account))
+        storage.setAccountScope(account)
+        XCTAssertTrue(storage.setCloudAIAllowed(false, scope: account))
+        XCTAssertFalse(storage.allowsCloudAI(scope: account))
+    }
+
+    func testReminderIslandOnlyShowsSetAfterConfirmation() {
+        typealias State = MaxActivityAttributes.ContentState
+        var card = State.ToolCard(kind: .reminder, line1: "Buy groceries", line2: "Tomorrow",
+                                  iconName: "bell.fill", reminderStage: .setting)
+        XCTAssertEqual(card.taskHeading, "Setting reminder…")
+        card.reminderStage = .set
+        let state = State(phase: .idle, snippet: "", toolCard: card)
+        XCTAssertEqual(state.toolCard?.taskHeading, "Reminder set")
+        XCTAssertEqual(state.statusSymbol, "bell.fill")
+    }
+
+    func testGuestTrialEndsAtThreeDaysAndSurvivesEncoding() throws {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         let guest = AuthUser(id: "guest-a", name: "Guest", email: nil, isDemo: true, trialStartedAt: start)
         let restored = try JSONDecoder().decode(AuthUser.self, from: JSONEncoder().encode(guest))
-        let expiry = start.addingTimeInterval(7 * 24 * 3600)
+        let expiry = start.addingTimeInterval(3 * 24 * 3600)
         XCTAssertEqual(restored.trialExpiresAt, expiry)
         XCTAssertFalse(restored.demoIsExpired(at: expiry.addingTimeInterval(-1)))
         XCTAssertTrue(restored.allowsAccess(hasSubscription: false, at: expiry.addingTimeInterval(-1)))
         XCTAssertTrue(restored.demoIsExpired(at: expiry))
         XCTAssertFalse(restored.allowsAccess(hasSubscription: true, at: expiry), "A purchase cannot silently extend an unconverted guest trial")
         XCTAssertTrue(restored.demoIsExpired(at: expiry.addingTimeInterval(1)))
+    }
+
+    func testOldAppleCallbackCannotConsumeRetry() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var attempt: AppleSignInAttempt? = AppleSignInAttempt(
+            state: "retry", nonce: "retry-nonce", linkGuest: true, accountID: "guest-a",
+            guestID: UUID(), startedAt: now
+        )
+        XCTAssertNil(AppleSignInAttempt.consume(&attempt, state: "previous", accountID: "guest-a", now: now))
+        XCTAssertNil(AppleSignInAttempt.consume(&attempt, state: nil, accountID: "guest-a", now: now))
+        XCTAssertEqual(AppleSignInAttempt.consume(&attempt, state: "retry", accountID: "guest-a", now: now)?.nonce, "retry-nonce")
+        XCTAssertNil(AppleSignInAttempt.consume(&attempt, state: "retry", accountID: "guest-a", now: now))
+    }
+
+    func testAppleChallengeExpiresAndCannotFollowAnAccountSwitch() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let challenge = AppleSignInAttempt(state: "state", nonce: "nonce", linkGuest: true,
+                                           accountID: "guest-a", guestID: UUID(), startedAt: now)
+        var attempt: AppleSignInAttempt? = challenge
+        XCTAssertNil(AppleSignInAttempt.consume(&attempt, state: "state", accountID: "guest-b", now: now))
+        XCTAssertNil(attempt)
+        attempt = challenge
+        XCTAssertNil(AppleSignInAttempt.consume(&attempt, state: "state", accountID: "guest-a",
+                                                now: now.addingTimeInterval(300)))
+        XCTAssertNil(attempt)
+    }
+
+    func testAppleDismissalDoesNotShowARawError() {
+        let domain = ASAuthorizationError.errorDomain
+        let canceled = NSError(domain: domain, code: ASAuthorizationError.Code.canceled.rawValue)
+        let failed = NSError(domain: domain, code: ASAuthorizationError.Code.failed.rawValue)
+        XCTAssertNil(AuthService.appleAuthorizationMessage(canceled))
+        XCTAssertEqual(AuthService.appleAuthorizationMessage(failed),
+                       "Apple couldn’t complete sign-in. Please try again.")
     }
 
     func testGuestDataScopeSurvivesAppleConversionAndIsolatesOtherGuests() {

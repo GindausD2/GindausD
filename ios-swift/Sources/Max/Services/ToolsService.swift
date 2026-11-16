@@ -193,6 +193,11 @@ final class ToolsService {
                 return encodeResult(["error": "Reminder cancelled. Nothing was scheduled."])
             }
         }
+        let pendingCard = ToolCard(kind: .reminder, line1: title,
+                                   line2: Reminder(title: title, body: body, fireDate: fireDate).triggerSummary(),
+                                   iconName: "bell.fill", reminderStage: .setting)
+        LiveActivityService.shared.showToolCard(pendingCard)
+        defer { LiveActivityService.shared.clearToolCard(matching: pendingCard) }
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound, .badge])) ?? false
         guard granted else {
@@ -230,7 +235,8 @@ final class ToolsService {
                     kind: .reminder,
                     line1: title,
                     line2: reminder.triggerSummary(),
-                    iconName: "bell.fill"
+                    iconName: "bell.fill",
+                    reminderStage: .set
                 ))
             }
 

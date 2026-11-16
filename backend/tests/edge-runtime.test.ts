@@ -34,7 +34,7 @@ Deno.test('Deno Edge handler plays WAV through a real local ws connection with f
       speak: (options: any) => realtimeSpeech({ ...options, socketFactory: () => new WebSocket(`ws://127.0.0.1:${server.addr.port}`) }),
     });
     const result = await handle(new Request('https://max.invalid/v1/speech', {
-      method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'X-Max-OpenAI-Consent': '1', Authorization: 'Bearer fixture', 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: 'Hello Max.', voice: 'marin' }),
     }));
     if (result.status !== 200 || result.headers.get('content-type') !== 'audio/wav') throw new Error('Voice request failed');
@@ -71,7 +71,7 @@ Deno.test('Deno Edge transcription forwards bounded binary audio as multipart an
     },
   }));
   const result = await handle(new Request('https://max.invalid/functions/v1/max-api/v1/transcriptions', {
-    method: 'POST', headers: { Authorization: 'Bearer fixture', 'Content-Type': 'audio/wav' }, body: bytes,
+    method: 'POST', headers: { 'X-Max-OpenAI-Consent': '1', Authorization: 'Bearer fixture', 'Content-Type': 'audio/wav' }, body: bytes,
   }));
   if (result.status !== 200 || (await result.json()).text !== 'Um, I, I mean, Na gode.' || providerCalls !== 1) throw Error('Transcription failed');
 });

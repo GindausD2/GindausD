@@ -141,6 +141,32 @@ final class StorageService {
 
     // MARK: - Settings
 
+    private let cloudAIConsentKey = "max:cloudAIConsent"
+
+    func allowsCloudAI(scope: String) -> Bool {
+        cloudAIConsentVersion(for: scope) != nil
+    }
+
+    func cloudAIConsentVersion(for scope: String) -> String? {
+        guard accountScope == scope, UUID(uuidString: scope) != nil,
+              UserDefaults.standard.string(forKey: scoped(cloudAIConsentKey, scope: scope)) == AIProcessingConsent.version else {
+            return nil
+        }
+        return AIProcessingConsent.version
+    }
+
+    @discardableResult
+    func setCloudAIAllowed(_ allowed: Bool, scope: String) -> Bool {
+        guard accountScope == scope, UUID(uuidString: scope) != nil else { return false }
+        let key = scoped(cloudAIConsentKey, scope: scope)
+        if allowed {
+            UserDefaults.standard.set(AIProcessingConsent.version, forKey: key)
+        } else {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+        return true
+    }
+
     func loadSettings() -> AppSettings {
         guard let data = readData(for: settingsKey),
               let settings = try? decoder.decode(AppSettings.self, from: data)

@@ -32,6 +32,19 @@ public struct MaxActivityAttributes: ActivityAttributes {
             self.emailAlert = emailAlert
         }
 
+        public var statusLabel: String {
+            if let card = toolCard {
+                if card.reminderStage == .setting { return "Setting reminder" }
+                return "Ready"
+            }
+            return emailAlert == nil ? phase.label : "New mail"
+        }
+
+        public var statusSymbol: String {
+            if let toolCard { return toolCard.iconName }
+            return emailAlert == nil ? phase.symbolName : "envelope.fill"
+        }
+
         // MARK: - Email Alert
 
         /// Shown persistently in the Dynamic Island when unread important emails exist.
@@ -50,7 +63,7 @@ public struct MaxActivityAttributes: ActivityAttributes {
         public enum Phase: String, Codable, Hashable {
             case idle      // waiting for input
             case listening // mic is active, recording user speech
-            case thinking  // waiting for Claude's response
+            case thinking  // waiting for Max’s response
             case speaking  // TTS is playing the response
 
             public var label: String {
@@ -87,12 +100,21 @@ public struct MaxActivityAttributes: ActivityAttributes {
             public var line2: String
             /// SF Symbol name for the leading icon
             public var iconName: String
+            public enum ReminderStage: String, Codable, Hashable { case setting, set }
+            public var reminderStage: ReminderStage?
 
-            public init(kind: Kind, line1: String, line2: String, iconName: String) {
+            public var taskHeading: String? {
+                if reminderStage == .setting { return "Setting reminder…" }
+                if reminderStage == .set { return "Reminder set" }
+                return nil
+            }
+
+            public init(kind: Kind, line1: String, line2: String, iconName: String, reminderStage: ReminderStage? = nil) {
                 self.kind = kind
                 self.line1 = line1
                 self.line2 = line2
                 self.iconName = iconName
+                self.reminderStage = reminderStage
             }
         }
     }

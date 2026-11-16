@@ -25,3 +25,10 @@ Use the same signed build, live review backend, metadata and screenshots that wi
 - Upload fresh iPhone and iPad screenshots as required for the signed build, add paid-feature disclosures, and complete the review notes and metadata before submitting.
 
 Reference: [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/) and [Sign in with Apple account deletion](https://developer.apple.com/documentation/technotes/tn3194-handling-account-deletions-and-revoking-tokens-for-sign-in-with-apple).
+
+
+## AI privacy and Live Activities
+
+- A new install requires an explicit choice in AI privacy before Max sends a cloud chat request. Settings also provides AI privacy for review and withdrawal. Denying permission keeps typed drafts and leaves local tools available. When the app uses on-device voice instead, Max skips the cloud synthesis request.
+- Check chat, cloud transcription, and cloud playback against the matching beta backend. Its AI routes require the app’s versioned permission header before they spend quota or call the provider. The app uses the header expected by the deployed beta. Older native builds lack it and cannot use the beta’s cloud AI routes. Check the beta health and cloud request flow from the signed build before distributing.
+- On a physical Dynamic Island iPhone, expand Max while setting a reminder. Verify that “Setting reminder” progresses to “Reminder set” only after scheduling succeeds. Deny notifications or cancel a reminder and verify it never displays a success state. Confirm the Lock Screen fallback, concise status, and that sign-out clears the activity.

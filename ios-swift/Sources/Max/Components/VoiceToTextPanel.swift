@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The microphone captures a draft; the user decides when to send it.
 struct VoiceToTextPanel: View {
@@ -19,7 +20,7 @@ struct VoiceToTextPanel: View {
                     .symbolEffect(.variableColor, isActive: !reduceMotion && !isPreparing && !isFinishing)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(isPreparing ? "Getting ready…" : isFinishing ? "Finishing…" : "Listening")
+                    Text(isPreparing ? "Getting ready…" : isFinishing ? "Finishing…" : "Recording")
                         .font(.headline)
                     Text("Voice to text")
                         .font(.caption).foregroundStyle(.secondary)
@@ -47,6 +48,14 @@ struct VoiceToTextPanel: View {
                     .frame(minWidth: 70, minHeight: 44)
                     .foregroundStyle(.secondary)
                 Spacer()
+                if !transcript.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = transcript
+                    } label: {
+                        Image(systemName: "document.on.document").frame(width: 44, height: 44)
+                    }
+                    .accessibilityLabel("Copy live transcription")
+                }
                 Button(action: onDone) {
                     Label("Done", systemImage: "checkmark")
                         .font(.body.weight(.semibold))

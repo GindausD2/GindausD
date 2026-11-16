@@ -3,3 +3,4 @@ Configuration/Public.xcconfig
 DerivedData/
 .build/
 .swiftpm/
+/build/internal-beta/

@@ -2,6 +2,8 @@ name: Max
 options:
   deploymentTarget:
     iOS: '18.0'
+    macOS: '14.0'
+    watchOS: '11.0'
 packages:
   Supabase:
     url: https://github.com/supabase/supabase-swift
@@ -19,6 +21,7 @@ targets:
     platform: iOS
     sources:
       - path: Sources/Max
+      - path: Sources/MaxThoughts
       - path: Sources/SharedBrand
     configFiles:
       Debug: Configuration/Public.xcconfig
@@ -78,6 +81,61 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Configuration/Widget.entitlements
         APPLICATION_EXTENSION_API_ONLY: YES
         SKIP_INSTALL: YES
+  MaxWatch:
+    type: application
+    platform: watchOS
+    sources: [Sources/MaxWatch, Sources/MaxThoughts]
+    dependencies:
+      - target: MaxWatchWidget
+        embed: true
+    info:
+      path: Configuration/Watch-Info.plist
+      properties:
+        CFBundleDisplayName: Max
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        WKApplication: true
+        WKWatchOnly: true
+        NSMicrophoneUsageDescription: Record thoughts in Max.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.gindausd.max.watch.capture
+            CFBundleURLSchemes: [max-watch]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.watch
+        TARGETED_DEVICE_FAMILY: '4'
+        CODE_SIGN_ENTITLEMENTS: Configuration/MaxWatch.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  MaxWatchWidget:
+    type: app-extension
+    platform: watchOS
+    sources: [Sources/MaxWatchWidget]
+    info:
+      path: Configuration/WatchWidget-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.watch.capture
+        TARGETED_DEVICE_FAMILY: '4'
+        APPLICATION_EXTENSION_API_ONLY: YES
+        SKIP_INSTALL: YES
+  MaxMac:
+    type: application
+    platform: macOS
+    sources: [Sources/MaxMac, Sources/MaxThoughts]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.gindausd.max.mac
+        TARGETED_DEVICE_FAMILY: ''
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Max
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Record thoughts in Max.
+        CODE_SIGN_ENTITLEMENTS: Configuration/MaxMac.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   MaxTests:
     type: bundle.unit-test
     platform: iOS
@@ -95,3 +153,11 @@ schemes:
         Max: all
     test:
       targets: [MaxTests]
+  MaxWatch:
+    build:
+      targets:
+        MaxWatch: all
+  MaxMac:
+    build:
+      targets:
+        MaxMac: all

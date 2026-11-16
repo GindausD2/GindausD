@@ -4,6 +4,21 @@ import Combine
 
 @MainActor
 final class VoiceToTextTests: XCTestCase {
+    func testCloudVoiceReplayRequiresTheSameAccountVoiceAndReply() {
+        let audio = Data([1, 2])
+        let recent = RecentCloudSpeech(scope: "account", voice: "marin", text: "Hello", data: audio)
+        XCTAssertEqual(recent.audio(scope: "account", voice: "marin", text: "Hello"), audio)
+        XCTAssertNil(recent.audio(scope: "another account", voice: "marin", text: "Hello"))
+        XCTAssertNil(recent.audio(scope: "account", voice: "cedar", text: "Hello"))
+        XCTAssertNil(recent.audio(scope: "account", voice: "marin", text: "New reply"))
+    }
+
+    func testCloudVoiceFallbackDistinguishesPermissionAndQuota() {
+        XCTAssertEqual(CloudSpeechFallback.from(status: 403, code: "openai_consent_required"), .permission)
+        XCTAssertEqual(CloudSpeechFallback.from(status: 429, code: "voice_limit"), .limit)
+        XCTAssertEqual(CloudSpeechFallback.from(status: 502, code: nil), .unavailable)
+    }
+
     private func settle(until ready: () -> Bool) async {
         for _ in 0..<100 {
             if ready() { return }
@@ -14,7 +29,7 @@ final class VoiceToTextTests: XCTestCase {
     private func isolated(_ body: () async throws -> Void) async rethrows {
         let store = StorageService.shared
         let previous = store.accountScope
-        let scope = "dictation-" + UUID().uuidString
+        let scope = UUID().uuidString
         store.setAccountScope(scope)
         defer {
             for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("max.account.\(scope).") { UserDefaults.standard.removeObject(forKey: key) }
@@ -172,6 +187,8 @@ final class VoiceToTextTests: XCTestCase {
 
     func testConversationMicSendsSpeechWithoutReplacingTypedDraft() async {
         await isolated {
+            let store = StorageService.shared
+            XCTAssertTrue(store.setCloudAIAllowed(true, scope: store.accountScope))
             let capture = TestVoiceCapture()
             let model = HomeViewModel(capture: capture)
             model.loadMessages()
@@ -187,6 +204,28 @@ final class VoiceToTextTests: XCTestCase {
             XCTAssertEqual(model.inputText, "Keep this draft")
             XCTAssertFalse(capture.recording)
             model.endConversation()
+        }
+    }
+
+    func testVoiceAndTypedDraftStayLocalUntilPermission() async {
+        await isolated {
+            let capture = TestVoiceCapture()
+            let model = HomeViewModel(capture: capture)
+            model.loadMessages()
+            model.inputText = "Keep this draft"
+            model.sendTextMessage()
+            XCTAssertTrue(model.showAIPrivacy)
+            XCTAssertTrue(model.messages.isEmpty)
+            XCTAssertEqual(model.inputText, "Keep this draft")
+
+            model.showAIPrivacy = false
+            model.handleVoiceTap()
+            await settle { model.conversationState == .listening }
+            capture.result = "Buy groceries"
+            model.handleVoiceTap()
+            await settle { model.showAIPrivacy }
+            XCTAssertTrue(model.messages.isEmpty)
+            XCTAssertEqual(model.inputText, "Keep this draft Buy groceries")
         }
     }
 
