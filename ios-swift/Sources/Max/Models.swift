@@ -8,6 +8,11 @@ struct Message: Identifiable, Codable {
     var content: String
     var timestamp: Date
     var isStreaming: Bool = false
+    var memoryReferences: [String]? = nil
+    var isPrivateRecall: Bool? = nil
+    var lifeMemoryReference: String? = nil
+    var followUpMeetingReferences: [String]? = nil
+    var peopleRecallChoices: [String]? = nil
 
     var displayContent: String {
         role == "assistant" ? ReplyText.display(content, streaming: isStreaming) : content
@@ -101,10 +106,17 @@ struct Note: Identifiable, Codable {
 
 // MARK: - UserMemory
 
-struct UserMemory: Codable {
+struct UserMemory: Codable, Identifiable {
     var key: String
     var value: String
     var updatedAt: Date
+    var recordID: String? = nil
+    var project: String? = nil
+    var source: String? = nil
+    var revisions: [FactRevision]? = nil
+
+    var id: String { recordID ?? "legacy:" + key }
+    var scopeLabel: String { project ?? "Personal" }
 }
 
 // MARK: - PlaceVisit
@@ -176,6 +188,7 @@ struct MemoryCard: Identifiable, Codable {
     var category: MemoryCategory
     var content: String
     var createdAt: Date
+    var updatedAt: Date? = nil
 
     init(id: String = UUID().uuidString, category: MemoryCategory, content: String, createdAt: Date = Date()) {
         self.id = id
@@ -197,6 +210,8 @@ struct Reminder: Identifiable, Codable {
     var contextName: String?
     var placeID: String?
     var completedAt: Date? = nil
+    var followUpPerson: String? = nil
+    var followUpMeetingID: String? = nil
 
     func triggerSummary(place: PlaceVisit? = nil, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
         if triggerKind == "location" {

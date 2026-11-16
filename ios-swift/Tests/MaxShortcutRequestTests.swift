@@ -20,12 +20,22 @@ final class MaxShortcutRequestTests: XCTestCase {
         }
     }
 
+    func testThoughtShortcutWaitsForForegroundAndRunsOnce() {
+        isolated { defaults in
+            MaxShortcutRequest.enqueue(.saveThought, defaults: defaults, notify: false)
+            XCTAssertNil(MaxShortcutRequest.takePending(canEnterHome: false, isActive: true, defaults: defaults))
+            XCTAssertNil(MaxShortcutRequest.takePending(canEnterHome: true, isActive: false, defaults: defaults))
+            XCTAssertEqual(MaxShortcutRequest.takePending(canEnterHome: true, isActive: true, defaults: defaults), .saveThought)
+            XCTAssertNil(MaxShortcutRequest.takePending(canEnterHome: true, isActive: true, defaults: defaults))
+        }
+    }
+
     func testInitialLoginPreservesRequestButExistingAccountChangeClearsIt() {
         isolated { defaults in
             MaxShortcutRequest.enqueue(.voice, defaults: defaults, notify: false)
             MaxShortcutRequest.accountDidChange(hadPreviousUser: false, defaults: defaults)
             XCTAssertEqual(MaxShortcutRequest.takePending(canEnterHome: true, isActive: true, defaults: defaults), .voice)
-            for action in [MaxShortcutRequest.Action.voice, .island] {
+            for action in [MaxShortcutRequest.Action.voice, .island, .saveThought] {
                 MaxShortcutRequest.enqueue(action, defaults: defaults, notify: false)
                 MaxShortcutRequest.accountDidChange(hadPreviousUser: true, defaults: defaults)
                 XCTAssertNil(MaxShortcutRequest.takePending(canEnterHome: true, isActive: true, defaults: defaults))

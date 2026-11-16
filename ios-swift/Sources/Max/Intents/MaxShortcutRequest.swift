@@ -4,8 +4,9 @@ import Foundation
 /// Requests never bypass Home's access gate or start a microphone in the background.
 @MainActor
 enum MaxShortcutRequest {
-    enum Action: Equatable { case voice, island, camera }
+    enum Action: Equatable { case voice, island, camera, saveThought }
     private static let voiceKey = "max.pendingVoiceActivation"
+    private static let thoughtKey = "max.pendingThoughtCapture"
     private static let islandKey = "max.pendingIslandActivation"
     private static let cameraKey = "max.pendingCameraActivation"
     private static let requestedAtKey = "max.shortcutRequestedAt"
@@ -17,6 +18,7 @@ enum MaxShortcutRequest {
         case .voice: defaults.set(true, forKey: voiceKey)
         case .island: defaults.set(true, forKey: islandKey)
         case .camera: defaults.set(true, forKey: cameraKey)
+        case .saveThought: defaults.set(true, forKey: thoughtKey)
         }
         defaults.set(now, forKey: requestedAtKey)
         if notify { NotificationCenter.default.post(name: .maxWidgetActivate, object: nil) }
@@ -33,6 +35,7 @@ enum MaxShortcutRequest {
         if defaults.bool(forKey: voiceKey) { action = .voice }
         else if defaults.bool(forKey: islandKey) { action = .island }
         else if defaults.bool(forKey: cameraKey) { action = .camera }
+        else if defaults.bool(forKey: thoughtKey) { action = .saveThought }
         else { return nil }
         clear(defaults: defaults)
         return action
@@ -48,6 +51,7 @@ enum MaxShortcutRequest {
         defaults.removeObject(forKey: voiceKey)
         defaults.removeObject(forKey: islandKey)
         defaults.removeObject(forKey: cameraKey)
+        defaults.removeObject(forKey: thoughtKey)
         defaults.removeObject(forKey: requestedAtKey)
     }
 }

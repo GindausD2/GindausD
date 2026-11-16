@@ -11,6 +11,7 @@ struct HomeView: View {
 
     @ObservedObject private var playback = VoiceService.shared
     @ObservedObject private var reminderApproval = ReminderApprovalService.shared
+    @ObservedObject private var factApproval = FactApproval.shared
     @ObservedObject private var lifeApproval = LifeMemoryApproval.shared
     @StateObject private var viewModel: HomeViewModel
     @State private var showCompanion: Bool = false
@@ -26,6 +27,10 @@ struct HomeView: View {
     private var thoughtScope: String? { authService.currentUser?.id?.lowercased() }
     @State private var showProfile = false
     @State private var showReport = false
+    @State private var showProjectResume = false
+    @State private var inspectedMemory: MemoryLink?
+    @State private var inspectedLifeMemory: MemoryLink?
+    @State private var showEmailBrief = false
     @State private var isTyping: Bool
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
@@ -44,6 +49,11 @@ struct HomeView: View {
     @State private var pendingImage: UIImage? = nil
     @FocusState private var composerFocused: Bool
 
+    private struct MemoryLink: Identifiable {
+        let id: String
+        var account: String = ""
+    }
+
     private let liveActivity = LiveActivityService.shared
 
     init(viewModel: HomeViewModel? = nil) {
@@ -56,7 +66,7 @@ struct HomeView: View {
             let wide = horizontalSizeClass == .regular &&
                 geometry.size.width >= (dynamicTypeSize.isAccessibilitySize ? 980 : 640)
             HStack(spacing: 0) {
-                conversationPresentation
+                memoryPresentations
                     .frame(width: wide && showThoughtsDock ? geometry.size.width * 0.52 : geometry.size.width)
                 if wide && showThoughtsDock {
                     Divider().accessibilityHidden(true)
@@ -179,7 +189,18 @@ struct HomeView: View {
                 }
                 Button("OK", role: .cancel) { islandNotice = nil }
             } message: { Text(islandNotice ?? "Please try again.") }
-            .onChange(of: authService.currentUser) { _, _ in viewModel.showAIPrivacy = false; pendingImage = nil; isTyping = false; composerFocused = false; viewModel.endConversation(); viewModel.loadMessages() }
+            .onChange(of: authService.currentUser) { _, _ in
+                viewModel.showAIPrivacy = false
+                showProjectResume = false
+                showEmailBrief = false
+                inspectedMemory = nil
+                inspectedLifeMemory = nil
+                pendingImage = nil
+                isTyping = false
+                composerFocused = false
+                viewModel.endConversation()
+                viewModel.loadMessages()
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .background { viewModel.endConversation() }
                 if phase == .active { handlePendingShortcut() }
@@ -252,6 +273,25 @@ struct HomeView: View {
             }
     }
 
+    private var memoryPresentations: some View {
+        conversationPresentation
+            .sheet(item: Binding(get: { factApproval.pending }, set: { if $0 == nil { factApproval.cancel() } })) { proposal in
+                FactReviewView(proposal: proposal) { factApproval.finish(id: proposal.id, value: $0) }
+                    .onDisappear { factApproval.finish(id: proposal.id, value: nil) }
+            }
+            .sheet(isPresented: $showEmailBrief) { EmailBriefView() }
+            .sheet(item: $inspectedMemory) { link in MemoryView(initialFactID: link.id) }
+            .sheet(item: $inspectedLifeMemory) { link in
+                MemoryReplayView(eventID: link.id, scope: link.account)
+            }
+            .sheet(isPresented: $showProjectResume) {
+                ProjectResumeView(account: StorageService.shared.accountScope)
+            }
+            .sheet(item: $viewModel.thoughtDraft) { draft in
+                AddFactView(account: draft.account, capturedText: draft.text, captureNotice: draft.notice) {}
+            }
+    }
+
     private func restoreConversation() {
         viewModel.loadMessages()
         if scenePhase == .active { liveActivity.startPersistentSession() }
@@ -303,7 +343,9 @@ struct HomeView: View {
         }
         showVisualIntelligence = false
         let result = liveActivity.startPersistentSession()
-        if action == .voice {
+        if action == .saveThought {
+            viewModel.startThoughtCapture()
+        } else if action == .voice {
             viewModel.activateVoice()
         } else {
             switch result {
@@ -402,8 +444,22 @@ struct HomeView: View {
                                 .id("empty")
                         } else {
                             ForEach(viewModel.messages) { msg in
-                                TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
-                                    .id(msg.id)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    TranscriptBubble(message: msg, isStreaming: msg.isStreaming)
+                                    meetingLinks(for: msg)
+                                    ForEach(msg.memoryReferences ?? [], id: \.self) { id in
+                                        if let fact = StorageService.shared.recallFacts().first(where: { $0.id == id }) {
+                                            Button {
+                                                inspectedMemory = MemoryLink(id: id)
+                                            } label: {
+                                                Label("Memory consulted: \(fact.key) · \(fact.scopeLabel)", systemImage: "brain")
+                                                    .font(.caption)
+                                            }
+                                            .padding(.horizontal, 20)
+                                        }
+                                    }
+                                }
+                                .id(msg.id)
                             }
                         }
                     }
@@ -417,6 +473,21 @@ struct HomeView: View {
                 .onChange(of: viewModel.streamingText) { _, _ in
                     if let last = viewModel.messages.last { proxy.scrollTo(last.id, anchor: .bottom) }
                 }
+            }
+        }
+    }
+
+    private func meetingLinks(for message: Message) -> some View {
+        let ids = message.lifeMemoryReference.map { [$0] } ?? message.followUpMeetingReferences ?? []
+        return ForEach(ids, id: \.self) { id in
+            if let meeting = StorageService.shared.loadLifeEvents().first(where: { $0.id == id }) {
+                Button {
+                    inspectedLifeMemory = MemoryLink(id: id, account: StorageService.shared.accountScope)
+                } label: {
+                    Label("Open saved meeting: \(meeting.title)", systemImage: "person.crop.rectangle")
+                        .font(.caption)
+                }
+                .padding(.horizontal, 20)
             }
         }
     }
@@ -444,7 +515,7 @@ struct HomeView: View {
             if !compact && !viewModel.isDictating && viewModel.inputText.isEmpty {
                 HStack(spacing: 10) {
                     draftSuggestion("Plan my day", icon: "sun.horizon")
-                    draftSuggestion("Save a thought", icon: "square.and.pencil")
+                    draftSuggestion("Write a thought", icon: "square.and.pencil")
                 }.padding(.top, 10)
             }
             Spacer(minLength: 16)
@@ -456,7 +527,7 @@ struct HomeView: View {
 
     private func draftSuggestion(_ title: String, icon: String) -> some View {
         Button {
-            viewModel.inputText = title == "Save a thought" ? "Remember this: " : "Help me plan my day. "
+            viewModel.inputText = title == "Write a thought" ? "Remember this: " : "Help me plan my day. "
             isTyping = true
             composerFocused = true
         } label: {
@@ -511,6 +582,9 @@ struct HomeView: View {
                 textComposer
             } else {
                 orbDock
+                if viewModel.conversationState == .idle, let account = authService.currentUser?.storageScope {
+                    NextUpCard(account: account)
+                }
             }
             if !voiceTurnActive && !isTyping { homeCaptureShortcuts }
             floatingShortcuts
@@ -599,6 +673,17 @@ struct HomeView: View {
                 composerFocused = false
                 isTyping = false
                 viewModel.startNewChat()
+            }
+            Button("Email Brief", systemImage: "envelope") {
+                viewModel.endConversation()
+                composerFocused = false
+                showEmailBrief = true
+            }
+            Button("Save a thought", systemImage: "mic.badge.plus") { viewModel.startThoughtCapture() }
+            Button("Project Resume", systemImage: "arrow.uturn.right") {
+                viewModel.endConversation()
+                composerFocused = false
+                showProjectResume = true
             }
             Button("Visual Intelligence", systemImage: "viewfinder", action: openVisualIntelligence)
             Button("Attach a photo", systemImage: "photo") { showImageSources = true }
@@ -872,6 +957,14 @@ final class HomeViewModel: ObservableObject {
     @Published private(set) var prefersTextReplyForDraft = false
     @Published var dictationError: String?
     @Published var showAIPrivacy = false
+    struct ThoughtDraft: Identifiable {
+        let id = UUID()
+        let account: String
+        let text: String
+        let notice: String?
+    }
+    @Published var thoughtDraft: ThoughtDraft?
+    private var capturingThought = false
 
     private let storage = StorageService.shared
     private let claude  = ClaudeService.shared
@@ -1045,8 +1138,9 @@ final class HomeViewModel: ObservableObject {
         }
         continuousActive = false
         turnID = UUID()
-        let reply = messages.last(where: { $0.role == "assistant" && !$0.isStreaming && !$0.content.isEmpty && !$0.content.hasPrefix("⚠️") && !$0.content.hasPrefix("Error:") })?.content
-        playSpeech(reply ?? "Hi, I'm Max. I'm here. What's on your mind?")
+        let reply = messages.last(where: { $0.role == "assistant" && !$0.isStreaming && !$0.content.isEmpty && !$0.content.hasPrefix("⚠️") && !$0.content.hasPrefix("Error:") })
+        guard reply?.isPrivateRecall != true else { return }
+        playSpeech(reply?.content ?? "Hi, I'm Max. I'm here. What's on your mind?")
     }
 
     private func playSpeech(_ text: String, continueListening: Bool = false) {
@@ -1099,7 +1193,20 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    func startThoughtCapture() {
+        guard conversationState == .idle, !startingVoice, !isDictating, !isTranscribing, thoughtDraft == nil else { return }
+        guard storage.usesSavedMemory else {
+            dictationError = "Saved Memory is paused. Turn it on in Your Space → Memory to save a thought."
+            return
+        }
+        capturingThought = true
+        startDictation()
+    }
+
     func endConversation() {
+        capturingThought = false
+        thoughtDraft = nil
+        FactApproval.shared.cancel()
         LifeMemoryApproval.shared.cancel()
         ReminderApprovalService.shared.cancel()
         continuousActive = false
@@ -1149,6 +1256,7 @@ final class HomeViewModel: ObservableObject {
                 self.isDictating = false
                 self.liveTranscript = ""
                 self.dictationScope = nil
+                self.capturingThought = false
                 self.dictationError = error.localizedDescription
             }
         }
@@ -1173,9 +1281,15 @@ final class HomeViewModel: ObservableObject {
         conversationState = .idle
         liveTranscript = ""
         dictationScope = nil
+        let isThought = capturingThought
+        capturingThought = false
         guard scope == storage.accountScope else { inputText = ""; prefersTextReplyForDraft = false; return }
         let text = result?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !text.isEmpty else { dictationError = "Couldn't catch that. Your draft is still here — try again."; return }
+        if isThought {
+            thoughtDraft = ThoughtDraft(account: storage.accountScope, text: text, notice: capture.transcriptionNotice)
+            return
+        }
         inputText = dictationBaseDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         inputText += (inputText.isEmpty ? "" : " ") + text
         prefersTextReplyForDraft = true
@@ -1258,7 +1372,68 @@ final class HomeViewModel: ObservableObject {
         storage.saveMessages(messages)
     }
 
+    private func respondToFollowUps(_ question: String) -> Bool {
+        guard let person = FollowUps.requestedPerson(question),
+              let current = messages.indices.last, messages[current].role == "user" else { return false }
+        let enabled = storage.usesSavedMemory
+        let open = enabled ? FollowUps.open(for: person, reminders: storage.loadReminders()) : []
+        let people = Set(open.compactMap { $0.followUpPerson.map(MemoryIdentity.normalize) })
+        let shown = Array(open.prefix(10))
+        let text: String
+        if !enabled {
+            text = "Saved Memory is paused. Turn it on to look up personal follow-ups."
+        } else if people.count > 1 {
+            text = "More than one person matches. Ask again with their full name."
+        } else if shown.isEmpty {
+            text = "I found no open follow-ups for that person."
+        } else {
+            let name = shown.first?.followUpPerson ?? person
+            let lines = shown.map { reminder in
+                "• \(reminder.title) — \(reminder.fireDate < Date() ? "Overdue · " : "")\(reminder.triggerSummary())"
+            }
+            let more = open.count > shown.count ? "\nMore follow-ups are in Reminders." : ""
+            text = "Open follow-ups with \(name)\n\n" + lines.joined(separator: "\n") + more
+        }
+        var reply = Message(role: "assistant", content: text)
+        if people.count == 1 {
+            let savedIDs = Set(storage.loadLifeEvents().map(\.id))
+            var seen: Set<String> = []
+            reply.followUpMeetingReferences = shown.compactMap(\.followUpMeetingID)
+                .filter { savedIDs.contains($0) && seen.insert($0).inserted }
+        }
+        appendPrivateMemoryReply(reply, userIndex: current)
+        return true
+    }
+
+    private func appendPrivateMemoryReply(_ message: Message, userIndex: Int) {
+        messages[userIndex].isPrivateRecall = true
+        var reply = message
+        reply.isPrivateRecall = true
+        messages.append(reply)
+        storage.saveMessages(messages)
+        archiveCurrentConversation()
+        continuousActive = false
+        conversationState = .idle
+    }
+
+    private func respondToPeopleRecall(_ question: String) -> Bool {
+        guard let current = messages.indices.last, messages[current].role == "user" else { return false }
+        let previous = messages.dropLast().last
+        let choices = previous?.role == "assistant" ? previous?.peopleRecallChoices ?? [] : []
+        let enabled = storage.usesSavedMemory
+        guard let answer = PeopleRecall.answer(question, events: enabled ? storage.loadLifeEvents() : [],
+                                               previousChoices: choices) else { return false }
+        var reply = Message(role: "assistant", content: enabled ? answer.text : "Saved memory is paused. Turn it on to look up a past meeting.")
+        if enabled {
+            reply.lifeMemoryReference = answer.eventID
+            reply.peopleRecallChoices = answer.choices
+        }
+        appendPrivateMemoryReply(reply, userIndex: current)
+        return true
+    }
+
     private func streamResponse(userText: String, imageData: Data? = nil, allowSpeech: Bool = true) {
+        if imageData == nil, respondToFollowUps(userText) || respondToPeopleRecall(userText) { return }
         let settings = storage.loadSettings()
         let thisTurn = UUID(); turnID = thisTurn
         conversationState = .thinking
@@ -1270,7 +1445,7 @@ final class HomeViewModel: ObservableObject {
         var fullText = ""
 
         // Keep the last 40 messages (20 exchanges) to stay within token limits
-        let history = messages.filter { $0.id != streamId && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let history = messages.filter { $0.id != streamId && $0.isPrivateRecall != true && !$0.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         var trimmed = history.count > 40 ? Array(history.suffix(40)) : history
         if let index = trimmed.lastIndex(where: { $0.role == "user" }) { trimmed[index].content = userText }
 
@@ -1280,6 +1455,18 @@ final class HomeViewModel: ObservableObject {
         ) { [weak self] chunk in
             guard let self = self, self.turnID == thisTurn, self.loadedScope == self.storage.accountScope else { return }
             switch chunk {
+            case .memoryReferences(let ids):
+                if let index = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    let existing = self.messages[index].memoryReferences ?? []
+                    self.messages[index].memoryReferences = existing + ids.filter { !existing.contains($0) }
+                }
+            case .replaceText(let text):
+                fullText = text
+                self.streamingText = ReplyText.display(text)
+                if let index = self.messages.firstIndex(where: { $0.id == streamId }) {
+                    self.messages[index].content = text
+                    self.messages[index].memoryReferences = nil
+                }
             case .text(let text):
                 fullText += text
                 self.streamingText = ReplyText.display(fullText, streaming: true)

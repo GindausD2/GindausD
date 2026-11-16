@@ -1,7 +1,7 @@
 name: Verify Max V1
 on:
   push:
-    branches: [main, 'codex/max-v1-app-review', 'codex/max-v3-testflight-camera']
+    branches: [main, 'codex/max-v1-app-review', 'codex/max-v3-testflight-camera', 'codex/max-v2-advanced-memory', 'codex/max-testflight-combined']
   pull_request:
   workflow_dispatch:
 permissions:

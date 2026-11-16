@@ -4,20 +4,27 @@ import UIKit
 struct MemoryView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var authService = AuthService.shared
+    let initialFactID: String?
+    @State private var query = ""
+    @State private var facts: [UserMemory] = []
     @State private var selectedCategory: MemoryCategory = .personal
     @State private var cards: [MemoryCard] = []
     @State private var accountScope = ""
     @State private var adding = false
+    @State private var addingFact = false
+    @State private var chooseAdd = false
     @State private var editing: SavedMemoryTarget?
     @State private var memoryEnabled = true
     @State private var showLifeMemory = false
     private let storage = StorageService.shared
 
+    init(initialFactID: String? = nil) { self.initialFactID = initialFactID }
+
     var body: some View {
         ZStack {
             CompanionCanvas()
             VStack(spacing: 0) {
-                CompanionSheetHeader(title: "Memory", onClose: { dismiss() }, onAdd: { adding = true })
+                CompanionSheetHeader(title: "Memory", onClose: { dismiss() }, onAdd: { chooseAdd = true })
                 Button { showLifeMemory = true } label: { Label("Life Memory timeline", systemImage: "calendar.badge.clock") }.padding(.vertical, 8)
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle("Use saved memory", isOn: Binding(get: { memoryEnabled }, set: { enabled in
@@ -27,6 +34,10 @@ struct MemoryView: View {
                     Text(memoryEnabled ? "Edit or forget saved details anytime." : "Memory is paused. Max won't use saved details or save new facts. Existing memories stay here; chat history is separate.")
                         .font(.caption).foregroundStyle(.secondary)
                 }.padding(.horizontal, 20).padding(.vertical, 12)
+                TextField("Search saved memory", text: $query)
+                    .textFieldStyle(.roundedBorder)
+                    .padding(.horizontal, 20)
+                    .accessibilityLabel("Search saved memory")
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
                         ForEach(MemoryCategory.allCases, id: \.self) { category in
@@ -43,62 +54,76 @@ struct MemoryView: View {
                         }
                     }.padding(.horizontal, 20)
                 }.padding(.vertical, 8)
-                GeometryReader { geometry in
-                    ScrollView {
-                        if filteredCards.isEmpty {
-                            VStack(spacing: 18) {
-                                Image(systemName: selectedCategory.iconName)
-                                    .font(.system(size: 34, weight: .regular)).foregroundStyle(.secondary)
-                                Text("Nothing saved here yet.").font(.title3.weight(.semibold))
-                                Text(selectedCategory.emptySubtitle)
-                                    .font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                                Button { adding = true } label: {
-                                    Label("Add \(selectedCategory.label)", systemImage: "plus")
-                                        .font(.subheadline.weight(.semibold))
-                                        .padding(.horizontal, 24).padding(.vertical, 14)
-                                        .foregroundStyle(Color(UIColor.systemBackground))
-                                        .background(Color.primary, in: Capsule())
-                                }.buttonStyle(.plain).padding(.top, 6)
-                            }
-                            .padding(.horizontal, 30).padding(.vertical, 30)
-                            .frame(maxWidth: .infinity, minHeight: geometry.size.height)
-                        } else {
-                            LazyVStack(alignment: .leading, spacing: 14) {
-                                Text("Keep what matters. Edit or forget it anytime.")
-                                    .font(.caption).foregroundStyle(.secondary).padding(.bottom, 4)
-                                ForEach(filteredCards) { card in
-                                    VStack(alignment: .leading, spacing: 16) {
-                                        Text(card.content).font(.body).textSelection(.enabled)
-                                        HStack {
-                                            Text(card.createdAt, style: .date).font(.caption).foregroundStyle(.secondary)
-                                            Spacer()
-                                            Button { editing = .card(card) } label: { Label("Edit", systemImage: "pencil") }
-                                                .font(.caption.weight(.semibold))
-                                                .accessibilityLabel("Edit memory: \(String(card.content.prefix(70)))")
-                                        }
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 14) {
+                        if !filteredFacts.isEmpty {
+                            Text("Current facts").font(.headline).accessibilityAddTraits(.isHeader)
+                            ForEach(filteredFacts) { fact in
+                                Button { editing = .fact(fact) } label: {
+                                    VStack(alignment: .leading, spacing: 6) {
+                                        Text(fact.key).font(.headline)
+                                        Text(fact.value)
+                                        Text(fact.scopeLabel).font(.caption.weight(.semibold))
+                                        Text(fact.updatedAt, style: .date).font(.caption)
+                                        if let source = fact.source { Text(source).font(.caption) }
                                     }
-                                    .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-                                    .glassCard(cornerRadius: 26)
-                                }
-                            }.padding(20)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(16).glassCard(cornerRadius: 22, interactive: true)
+                                }.buttonStyle(.plain)
+                            }
                         }
-                    }
+                        Text("Source cards").font(.headline).accessibilityAddTraits(.isHeader)
+                        if filteredCards.isEmpty {
+                            Text(query.isEmpty ? "No cards in this category." : "No matching cards.")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                        ForEach(filteredCards) { card in
+                            Button { editing = .card(card) } label: {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(card.content)
+                                    Text(card.updatedAt ?? card.createdAt, style: .date).font(.caption)
+                                    Text("Personal · Saved card").font(.caption).foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(16).glassCard(cornerRadius: 22, interactive: true)
+                            }.buttonStyle(.plain)
+                        }
+                    }.padding(20)
                 }
             }
         }
         .tint(Color(hex: "#315E73"))
         .presentationCornerRadius(34).presentationDragIndicator(.hidden)
-        .onAppear { if accountScope.isEmpty { accountScope = storage.accountScope }; reload() }
+        .onAppear {
+            if accountScope.isEmpty {
+                accountScope = storage.accountScope
+                reload()
+                if let initialFactID, let fact = facts.first(where: { $0.id == initialFactID }) { editing = .fact(fact) }
+            } else { reload() }
+        }
         .onChange(of: authService.currentUser) { _, _ in reload() }
+        .confirmationDialog("Add to Memory", isPresented: $chooseAdd, titleVisibility: .visible) {
+            Button("Save a fact") { addingFact = true }
+            Button("Save a source card") { adding = true }
+        }
+        .sheet(isPresented: $addingFact) { AddFactView(account: accountScope, onSave: reload) }
         .sheet(isPresented: $adding) { AddMemorySheet(category: selectedCategory, accountScope: accountScope, onSave: reload) }
         .sheet(isPresented: $showLifeMemory) { LifeMemoryView() }
         .sheet(item: $editing) { SavedMemoryEditor(target: $0, accountScope: accountScope, onSave: reload) }
     }
+    private var filteredFacts: [UserMemory] {
+        facts.filter {
+            query.isEmpty || [$0.key, $0.value, $0.scopeLabel, $0.source ?? ""].contains { $0.localizedCaseInsensitiveContains(query) }
+        }.sorted { $0.updatedAt > $1.updatedAt }
+    }
     private var filteredCards: [MemoryCard] {
-        cards.filter { $0.category == selectedCategory }.sorted { $0.createdAt > $1.createdAt }
+        cards.filter {
+            query.isEmpty ? $0.category == selectedCategory : $0.content.localizedCaseInsensitiveContains(query)
+        }.sorted { ($0.updatedAt ?? $0.createdAt) > ($1.updatedAt ?? $1.createdAt) }
     }
     private func reload() {
-        guard storage.accountScope == accountScope else { cards = []; return }
+        guard storage.accountScope == accountScope else { cards = []; facts = []; dismiss(); return }
+        facts = storage.recallFacts()
         cards = storage.loadMemoryCards()
         memoryEnabled = storage.usesSavedMemory
     }

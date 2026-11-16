@@ -41,6 +41,20 @@ struct StartMaxIslandIntent: AppIntent {
     }
 }
 
+struct SaveThoughtIntent: AppIntent {
+    static var title: LocalizedStringResource = "Record a Memory"
+    static var description = IntentDescription(
+        "Opens Max to record a thought for you to review and save to Memory.",
+        categoryName: "Max AI"
+    )
+    static var openAppWhenRun = true
+
+    func perform() async throws -> some IntentResult {
+        await MainActor.run { MaxShortcutRequest.enqueue(.saveThought) }
+        return .result()
+    }
+}
+
 // MARK: - MaxShortcuts
 //
 // Registers the intent with the Shortcuts app and Action Button picker.
@@ -52,6 +66,12 @@ struct MaxShortcuts: AppShortcutsProvider {
             phrases: ["Show \(.applicationName) Island", "Start \(.applicationName) Island"],
             shortTitle: "Start Max Island",
             systemImageName: "capsule"
+        )
+        AppShortcut(
+            intent: SaveThoughtIntent(),
+            phrases: ["Record a memory with \(.applicationName)", "Capture an idea with \(.applicationName)"],
+            shortTitle: "Record a Memory",
+            systemImageName: "mic.badge.plus"
         )
         AppShortcut(
             intent: ActivateMaxIntent(),

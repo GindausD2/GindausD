@@ -5,7 +5,7 @@ enum SavedMemoryTarget: Identifiable {
     var id: String {
         switch self {
         case .note(let note): return "note:" + note.id
-        case .fact(let fact): return "fact:" + fact.key
+        case .fact(let fact): return "fact:" + fact.id
         case .card(let card): return "card:" + card.id
         }
     }
@@ -38,7 +38,12 @@ struct SavedMemoryEditor: View {
             Form {
                 Section("Saved detail") {
                     if case .note = target { TextField("Title", text: $title) }
-                    else if case .fact = target { Text(title).font(.headline) }
+                    else if case .fact(let fact) = target {
+                        LabeledContent("Fact", value: title)
+                        LabeledContent("Scope", value: fact.scopeLabel)
+                        LabeledContent("Updated", value: fact.updatedAt.formatted(date: .abbreviated, time: .shortened))
+                        if let source = fact.source { LabeledContent("Source", value: source) }
+                    }
                     else {
                         Picker("Category", selection: $category) {
                             ForEach(MemoryCategory.allCases, id: \.self) { Text($0.label).tag($0) }
@@ -46,10 +51,21 @@ struct SavedMemoryEditor: View {
                     }
                     TextEditor(text: $content).frame(minHeight: 140).accessibilityLabel("Saved memory contents")
                 }
+                if case .fact(let fact) = target, let revisions = fact.revisions, !revisions.isEmpty {
+                    Section("Previous versions · no longer current") {
+                        ForEach(Array(revisions.reversed().enumerated()), id: \.offset) { item in
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(item.element.value)
+                                Text(item.element.supersededAt, style: .date).font(.caption).foregroundStyle(.secondary)
+                                if let source = item.element.source { Text(source).font(.caption).foregroundStyle(.secondary) }
+                            }
+                        }
+                    }
+                }
                 Section {
                     Button("Forget this saved item", role: .destructive) { confirmForget = true }
                 } footer: {
-                    Text("Changes apply to future messages. Previous conversation history is managed separately.")
+                    Text("Changes apply to future messages. Original conversations remain. Manage them from + → Conversation history.")
                 }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
             }
@@ -66,7 +82,7 @@ struct SavedMemoryEditor: View {
             .alert("Forget this saved item?", isPresented: $confirmForget) {
                 Button("Cancel", role: .cancel) {}
                 Button("Forget", role: .destructive) { forget() }
-            } message: { Text("This removes the saved item. Earlier conversations remain in your timeline.") }
+            } message: { Text("This removes the saved item and its versions from memory lookup. Manage original conversations separately in + → Conversation history.") }
         }
     }
     private func save() {
@@ -74,7 +90,7 @@ struct SavedMemoryEditor: View {
         let saved: Bool
         switch target {
         case .note(let note): saved = storage.updateNote(id: note.id, title: title, content: content, accountScope: accountScope)
-        case .fact(let fact): saved = storage.updateFact(key: fact.key, value: content, accountScope: accountScope)
+        case .fact(let fact): saved = storage.updateFact(id: fact.id, value: content, accountScope: accountScope)
         case .card(let card): saved = storage.updateMemoryCard(id: card.id, content: content, category: category, accountScope: accountScope)
         }
         finish(saved)
@@ -84,7 +100,7 @@ struct SavedMemoryEditor: View {
         let forgotten: Bool
         switch target {
         case .note(let note): forgotten = storage.deleteNote(id: note.id, accountScope: accountScope)
-        case .fact(let fact): forgotten = storage.forgetFact(key: fact.key, accountScope: accountScope)
+        case .fact(let fact): forgotten = storage.forgetFact(id: fact.id, accountScope: accountScope)
         case .card(let card): forgotten = storage.deleteMemoryCard(id: card.id, accountScope: accountScope)
         }
         finish(forgotten)

@@ -38,6 +38,7 @@ final class EmailMonitorService: NSObject, ObservableObject, ASWebAuthentication
     private var verifier = ""
     private var state = ""
     private var lastFetchSucceeded = false
+    private var connectionRevision = UUID()
 
     var isConnected: Bool { accessToken != nil }
     @Published var connectError: String? = nil
@@ -66,12 +67,15 @@ final class EmailMonitorService: NSObject, ObservableObject, ASWebAuthentication
 
     /// Opens the Google OAuth consent screen. The user approves Gmail read-only access.
     /// On success the access token + refresh token are saved automatically.
-    func connect() async {
-        guard !clientID.isEmpty else { connectError = "Email connection isn't available yet."; return }
-        guard AuthService.shared.currentUser?.id != nil else { connectError = "Sign in to connect your email."; return }
+    @discardableResult
+    func connect() async -> Bool {
+        guard authenticationSession == nil else { return false }
+        connectError = nil
+        guard !clientID.isEmpty else { connectError = "Email connection isn't available yet."; return false }
+        guard AuthService.shared.currentUser?.id != nil else { connectError = "Sign in to connect your email."; return false }
         let accountScope = StorageService.shared.accountScope
         var random = [UInt8](repeating: 0, count: 32)
-        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else { connectError = "Couldn't start email sign-in."; return }
+        guard SecRandomCopyBytes(kSecRandomDefault, random.count, &random) == errSecSuccess else { connectError = "Couldn't start email sign-in."; return false }
         verifier = Data(random).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         let challenge = Data(SHA256.hash(data: Data(verifier.utf8))).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
         state = UUID().uuidString
@@ -88,7 +92,7 @@ final class EmailMonitorService: NSObject, ObservableObject, ASWebAuthentication
             .init(name: "access_type",   value: "offline"),
             .init(name: "prompt",        value: "consent")
         ]
-        guard let authURL = components.url else { return }
+        guard let authURL = components.url else { return false }
 
         do {
             let callbackURL = try await withCheckedThrowingContinuation { (cont: CheckedContinuation<URL, Error>) in
@@ -107,18 +111,21 @@ final class EmailMonitorService: NSObject, ObservableObject, ASWebAuthentication
             authenticationSession = nil
             guard StorageService.shared.accountScope == accountScope,
                   URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "state" })?.value == state else { throw URLError(.userAuthenticationRequired) }
-            await exchangeCodeForTokens(from: callbackURL, accountScope: accountScope)
-            connectError = isConnected ? nil : "Couldn't connect Gmail. Please try again."
+            let connected = await exchangeCodeForTokens(from: callbackURL, accountScope: accountScope)
+            connectError = connected ? nil : "Couldn't connect Gmail. Please try again."
+            return connected
         } catch {
             authenticationSession = nil
             let isCancel = (error as? ASWebAuthenticationSessionError)?.code == .canceledLogin
             if !isCancel {
                 connectError = "Connection failed. Please try again."
             }
+            return false
         }
     }
 
     func disconnect() {
+        connectionRevision = UUID()
         SecretStore.set(nil, for: kAccessToken)
         SecretStore.set(nil, for: kRefreshToken)
         LiveActivityService.shared.clearEmailAlert()
@@ -217,11 +224,98 @@ final class EmailMonitorService: NSObject, ObservableObject, ASWebAuthentication
         return EmailSummary(from: from, subject: subject)
     }
 
+
+    // MARK: - On-demand email brief
+
+    func searchForBrief(sender: String) async throws -> [BriefEmail] {
+        let query = try BriefEmail.senderQuery(sender)
+        let scope = StorageService.shared.accountScope
+        let revision = connectionRevision
+        let list: BriefEmail.SearchResults = try await briefRequest(
+            scope: scope,
+            revision: revision,
+            path: "messages",
+            query: [.init(name: "q", value: query), .init(name: "maxResults", value: "8")]
+        )
+
+        var emails: [BriefEmail] = []
+        for message in list.messages ?? [] {
+            let detail: BriefEmail.Message = try await briefRequest(
+                scope: scope,
+                revision: revision,
+                path: "messages/\(message.id)",
+                query: [
+                    .init(name: "format", value: "metadata"),
+                    .init(name: "metadataHeaders", value: "From"),
+                    .init(name: "metadataHeaders", value: "Subject"),
+                ]
+            )
+            emails.append(BriefEmail(message: detail))
+        }
+        guard StorageService.shared.accountScope == scope, connectionRevision == revision else {
+            throw CancellationError()
+        }
+        return emails.sorted { $0.receivedAt > $1.receivedAt }
+    }
+
+    func bodyForBrief(_ email: BriefEmail) async throws -> String {
+        let message: BriefEmail.Message = try await briefRequest(
+            scope: StorageService.shared.accountScope,
+            revision: connectionRevision,
+            path: "messages/\(email.id)",
+            query: [.init(name: "format", value: "full")]
+        )
+        guard let body = message.payload?.readableText else { throw BriefEmail.Failure.noText }
+        return body
+    }
+
+    private func briefRequest<Response: Decodable>(
+        scope: String,
+        revision: UUID,
+        path: String,
+        query: [URLQueryItem]
+    ) async throws -> Response {
+        try Task.checkCancellation()
+        guard StorageService.shared.accountScope == scope, connectionRevision == revision else {
+            throw CancellationError()
+        }
+        guard let token = accessToken else { throw BriefEmail.Failure.disconnected }
+        var components = URLComponents(string: "https://gmail.googleapis.com/gmail/v1/users/me/")!
+        components.path += path
+        components.queryItems = query
+        guard let url = components.url else { throw BriefEmail.Failure.unavailable }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        var (data, response) = try await URLSession.shared.data(for: request)
+        guard StorageService.shared.accountScope == scope, connectionRevision == revision else {
+            throw CancellationError()
+        }
+        if (response as? HTTPURLResponse)?.statusCode == 401 {
+            guard let updatedToken = await refreshAccessToken() else { throw BriefEmail.Failure.expired }
+            guard StorageService.shared.accountScope == scope, connectionRevision == revision else {
+                throw CancellationError()
+            }
+            request.setValue("Bearer \(updatedToken)", forHTTPHeaderField: "Authorization")
+            (data, response) = try await URLSession.shared.data(for: request)
+        }
+        try Task.checkCancellation()
+        guard StorageService.shared.accountScope == scope, connectionRevision == revision else {
+            throw CancellationError()
+        }
+        switch (response as? HTTPURLResponse)?.statusCode {
+        case 200: return try JSONDecoder().decode(Response.self, from: data)
+        case 401, 403: throw BriefEmail.Failure.expired
+        default: throw BriefEmail.Failure.unavailable
+        }
+    }
+
     // MARK: - Token Management
 
-    private func exchangeCodeForTokens(from callbackURL: URL, accountScope: String) async {
+    private func exchangeCodeForTokens(from callbackURL: URL, accountScope: String) async -> Bool {
+        let revision = connectionRevision
         guard let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
-                .queryItems?.first(where: { $0.name == "code" })?.value else { return }
+                .queryItems?.first(where: { $0.name == "code" })?.value else { return false }
 
         var req = URLRequest(url: URL(string: "https://oauth2.googleapis.com/token")!)
         req.httpMethod = "POST"
@@ -238,12 +332,17 @@ final class EmailMonitorService: NSObject, ObservableObject, ASWebAuthentication
         }.joined(separator: "&")
         req.httpBody = body.data(using: .utf8)
 
-        guard let (data, _) = try? await URLSession.shared.data(for: req),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        guard let (data, response) = try? await URLSession.shared.data(for: req),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = json["access_token"] as? String, !token.isEmpty,
+              StorageService.shared.accountScope == accountScope, connectionRevision == revision,
+              !Task.isCancelled else { return false }
 
-        guard StorageService.shared.accountScope == accountScope else { return }
-        accessToken  = json["access_token"]  as? String
+        connectionRevision = UUID()
+        accessToken = token
         refreshToken = json["refresh_token"] as? String
+        return true
     }
 
     private func refreshAccessToken() async -> String? {

@@ -5,6 +5,8 @@ import Foundation
 enum StreamChunk: Sendable {
     case text(String)
     case resetReply
+    case replaceText(String)
+    case memoryReferences([String])
     case done
     case error(String)
 }
@@ -163,29 +165,34 @@ final class ClaudeService {
             ),
             ToolDefinition(
                 name: "remember_fact",
-                description: "Remember a fact about the user for future reference.",
+                description: "Open editable native review for a requested or suggested lasting fact. Use only facts from the current user turn. Saving requires approval. If the user names a project include its exact name. For a database use key database, for working hours use work schedule, for a job use job, and for architecture use architecture.",
                 inputSchema: InputSchema(
                     type: "object",
                     properties: [
                         "key": PropertyDefinition(type: "string", description: "Fact category/key"),
-                        "value": PropertyDefinition(type: "string", description: "Fact value")
+                        "value": PropertyDefinition(type: "string", description: "Exact proposed current value"),
+                        "project": PropertyDefinition(type: "string", description: "Exact project name if supplied; omit for personal or an unnamed scope")
                     ],
                     required: ["key", "value"]
                 )
             ),
             ToolDefinition(
                 name: "recall_facts",
-                description: "Recall all stored facts about the user.",
-                inputSchema: InputSchema(type: "object", properties: [:], required: [])
+                description: "Look up authoritative current facts before answering about a remembered detail, project or next steps. Optionally filter by exact project name or fact key. For explicit history questions this may also return superseded values.",
+                inputSchema: InputSchema(type: "object", properties: [
+                    "project": PropertyDefinition(type: "string", description: "Project name when known"),
+                    "key": PropertyDefinition(type: "string", description: "Fact key when known; omit for project next steps")
+                ], required: [])
             ),
             ToolDefinition(
                 name: "schedule_reminder",
-                description: "Schedule a reminder notification.",
+                description: "Schedule a reminder notification after native confirmation. When the user explicitly asks to follow up with a person, send them something, or reminds themselves of a promise to them, include followUpPerson as the exact name spoken by the user. Ask for the due time if unclear.",
                 inputSchema: InputSchema(
                     type: "object",
                     properties: [
                         "title": PropertyDefinition(type: "string", description: "Reminder title"),
                         "body": PropertyDefinition(type: "string", description: "Reminder body text"),
+                        "followUpPerson": PropertyDefinition(type: "string", description: "Optional exact recipient named in the user’s request for a personal follow-up, including a request awaiting a due-time clarification"),
                         "fireAt": PropertyDefinition(type: "string", description: "Future ISO8601 timestamp with timezone; provide this or minutesFromNow"),
                         "minutesFromNow": PropertyDefinition(type: "string", description: "Positive minutes from now; provide this or fireAt")
                     ],
@@ -324,6 +331,15 @@ final class ClaudeService {
     ) -> Task<Void, Never> {
         Task {
             do {
+                let store = StorageService.shared
+                if imageData == nil, let text = messages.last(where: { $0.role == "user" })?.content,
+                   let (answer, references) = store.projectResumeAnswer(messages: messages) ?? store.answerKnownFact(text) {
+                    try Task.checkCancellation()
+                    onChunk(.text(answer))
+                    onChunk(.memoryReferences(references))
+                    onChunk(.done)
+                    return
+                }
                 guard let base = URL(string: kMaxAPIBaseURL), base.scheme == "https", base.host != nil else { throw ClaudeError.noAPIKey }
                 let session: (token: String, userID: String)
                 do { session = try await AuthService.shared.managedSession() }
@@ -337,8 +353,13 @@ final class ClaudeService {
                     round: 0,
                     onChunk: onChunk
                 )
+            } catch ClaudeError.memoryChanged {
+                if !Task.isCancelled {
+                    onChunk(.replaceText(ClaudeError.memoryChanged.localizedDescription))
+                    onChunk(.done)
+                }
             } catch {
-                if !Task.isCancelled { await onChunk(.error(error.localizedDescription)) }
+                if !Task.isCancelled { onChunk(.error(error.localizedDescription)) }
             }
         }
     }
@@ -358,12 +379,22 @@ final class ClaudeService {
         guard StorageService.shared.accountScope == accountScope else { throw ClaudeError.signInRequired }
         guard round < 6 else { throw ClaudeError.tooManyActions }
         // Build messages array for API
+        let store = StorageService.shared
+        let memoryGeneration = store.memoryGeneration
+        let filtered = store.chatContext(messages)
+        let latestText = messages.last(where: { $0.role == "user" })?.content ?? ""
+        let reviewingMemory = round == 0 && ["remember that", "remember my", "remember this", "save this to memory", "update my memory"]
+            .contains { MemoryIdentity.mentions($0, in: latestText) }
+        let deliverChunk: @MainActor @Sendable (StreamChunk) -> Void = { chunk in
+            if reviewingMemory, case .text = chunk { return }
+            onChunk(chunk)
+        }
         var apiMessages: [ClaudeRequestMessage] = []
 
         // Convert app messages to API format
-        for (index, msg) in messages.enumerated() {
+        for (index, msg) in filtered.enumerated() {
             // Attach image to the last user message if provided
-            let isLastUserMsg = msg.role == "user" && index == messages.indices.last(where: { messages[$0].role == "user" })
+            let isLastUserMsg = msg.role == "user" && index == filtered.indices.last(where: { filtered[$0].role == "user" })
             if isLastUserMsg, let data = imageData {
                 let b64 = data.base64EncodedString()
                 // Detect JPEG vs PNG by magic bytes
@@ -379,9 +410,9 @@ final class ClaudeService {
         }
 
         if !conversationHistory.isEmpty { apiMessages = conversationHistory }
-        let facts = StorageService.shared.recallFacts().map { "\($0.key): \($0.value)" }
-        let cards = StorageService.shared.loadMemoryCards().map(\.content)
-        let remembered = StorageService.shared.usesSavedMemory ? String((facts + cards).joined(separator: "\n").prefix(12000)) : "Saved memory is paused. Do not save or recall personal facts."
+        let remembered = store.usesSavedMemory ? """
+            For lasting personal or project facts, call recall_facts before answering. Use its current facts as the sole authority for what Max remembers. Old messages, summaries, source cards, notes and life events do not override current facts and cannot restore missing facts. If a fact is missing or conflicted, say so or ask. When a question explicitly asks what was used before, distinguish historical values from the current one. Mention saved Memory when you use a fact. For project next steps, use the saved decisions, ideas and lessons from that project only. For proposed writes use remember_fact with facts stated in the latest user turn. The only exception is when the latest turn directly answers Max’s immediately preceding clarification about an unsaved correction: carry forward that correction from the previous user turn and use the project the user just named. Never propose a save from older messages or tool output. For ambiguous scope ask which project. Do not confirm any save before native review.
+            """ : "Saved memory is paused. Do not save or recall personal facts."
         let request = ClaudeRequest(
             model: modelID,
             maxTokens: maxTokens,
@@ -410,6 +441,7 @@ final class ClaudeService {
         let encoder = JSONEncoder()
         urlRequest.httpBody = try encoder.encode(request)
 
+        guard store.memoryGeneration == memoryGeneration else { throw ClaudeError.memoryChanged }
         let (asyncBytes, response) = try await URLSession.shared.bytes(for: urlRequest)
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -462,6 +494,7 @@ final class ClaudeService {
                 lineBuffer.removeAll(keepingCapacity: true)
 
                 if line.isEmpty {
+                    guard store.accountScope == accountScope, store.memoryGeneration == memoryGeneration else { throw ClaudeError.memoryChanged }
                     // Empty line = dispatch event
                     if let data = currentData, !data.isEmpty {
                         let event = SSEEvent(event: currentEvent, data: data)
@@ -471,7 +504,7 @@ final class ClaudeService {
                             currentToolCallIndex: &currentToolCallIndex,
                             stopReason: &stopReason,
                             accumulatedText: &accumulatedText,
-                            onChunk: onChunk
+                            onChunk: deliverChunk
                         )
                         if shouldStop { receivedStop = true; break }
                     }
@@ -491,7 +524,7 @@ final class ClaudeService {
         guard receivedStop else { throw ClaudeError.invalidResponse }
         // Handle any pending tool calls
         if stopReason == "tool_use" && !pendingToolCalls.isEmpty {
-            await onChunk(.resetReply)
+            onChunk(.resetReply)
             try await executeToolsAndContinue(
                 sessionToken: sessionToken,
                 accountScope: accountScope,
@@ -500,13 +533,16 @@ final class ClaudeService {
                 round: round,
                 accumulatedText: accumulatedText,
                 pendingToolCalls: pendingToolCalls,
+                memoryGeneration: memoryGeneration,
                 onChunk: onChunk
             )
         } else {
-            guard !accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if reviewingMemory {
+                onChunk(.replaceText("No fact was saved. Tell me the exact fact and, if it belongs to a project, name the project."))
+            } else if accumulatedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 throw ClaudeError.invalidResponse
             }
-            await onChunk(.done)
+            onChunk(.done)
         }
     }
 
@@ -550,7 +586,7 @@ final class ClaudeService {
                 if deltaType == "text_delta" {
                     let text = delta["text"] as? String ?? ""
                     accumulatedText += text
-                    await onChunk(.text(text))
+                    onChunk(.text(text))
                 } else if deltaType == "input_json_delta" {
                     let partialJSON = delta["partial_json"] as? String ?? ""
                     // Append to the last tool call's input
@@ -585,8 +621,10 @@ final class ClaudeService {
         round: Int,
         accumulatedText: String,
         pendingToolCalls: [AccumulatedToolCall],
+        memoryGeneration: UUID?,
         onChunk: @escaping @MainActor @Sendable (StreamChunk) -> Void
     ) async throws {
+        let userText = messages.last(where: { $0.role == "user" })?.content ?? ""
         var assistantBlocks: [ClaudeRequestBlock] = []
         if !accumulatedText.isEmpty { assistantBlocks.append(ClaudeRequestBlock(type: "text", text: accumulatedText)) }
         var results: [ClaudeRequestBlock] = []
@@ -597,7 +635,34 @@ final class ClaudeService {
             guard let data = (call.inputJSON.isEmpty ? "{}" : call.inputJSON).data(using: .utf8),
                   let input = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw ClaudeError.invalidResponse }
             assistantBlocks.append(ClaudeRequestBlock(type: "tool_use", id: call.id, name: call.name, input: input.mapValues { AnyCodable($0) }))
-            let result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope, requireReminderConfirmation: true)
+            let result: String
+            switch call.name {
+            case "remember_fact":
+                let answer = await ToolsService.shared.reviewFact(input: input, userText: userText, accountScope: accountScope)
+                try Task.checkCancellation()
+                guard StorageService.shared.accountScope == accountScope else { throw ClaudeError.signInRequired }
+                onChunk(.replaceText(answer))
+                onChunk(.done)
+                return
+            case "schedule_reminder":
+                let timingReply = userText.contains(where: \.isNumber)
+                    || ["morning", "afternoon", "evening", "noon", "midnight", "tomorrow", "monday", "tuesday",
+                        "wednesday", "thursday", "friday", "saturday", "sunday"].contains { MemoryIdentity.mentions($0, in: userText) }
+                let priorRequest = timingReply ? messages.filter { $0.role == "user" }.dropLast().last?.content : nil
+                result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope,
+                                                           requireReminderConfirmation: true,
+                                                           userText: [priorRequest, userText].compactMap { $0 }.joined(separator: "\n"))
+            case "recall_facts":
+                let (facts, references) = ToolsService.shared.scopedFacts(input: input, userText: userText)
+                result = facts
+                onChunk(.memoryReferences(references))
+            case "get_notes" where StorageService.shared.isProjectMemoryQuestion(userText),
+                 "recall_life_events" where StorageService.shared.isProjectMemoryQuestion(userText):
+                result = #"{"error":"Use scoped saved facts for this project. Unscoped notes and events are not current project memory."}"#
+            default:
+                result = await ToolsService.shared.execute(name: call.name, input: input, accountScope: accountScope, requireReminderConfirmation: true, userText: userText)
+            }
+            guard StorageService.shared.memoryGeneration == memoryGeneration else { throw ClaudeError.memoryChanged }
             results.append(ClaudeRequestBlock(type: "tool_result", toolUseId: call.id, content: result))
         }
         var continuation = apiMessages
@@ -617,9 +682,11 @@ enum ClaudeError: LocalizedError {
     case signInRequired
     case consentRequired
     case tooManyActions
+    case memoryChanged
 
     var errorDescription: String? {
         switch self {
+        case .memoryChanged: return "Your saved memory changed. Please ask again for the latest answer."
         case .invalidResponse:
             return "Max could not finish that reply. Please try again."
         case .apiError(_, let body):
