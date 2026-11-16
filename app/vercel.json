@@ -1,6 +1,7 @@
 {
   "git": {
     "deploymentEnabled": {
+      "codex/max-v3-screenshots": false,
       "codex/max-v3-testflight-camera": false,
       "codex/max-v1-app-review": false,
       "codex/max-v1-apple-devices": false

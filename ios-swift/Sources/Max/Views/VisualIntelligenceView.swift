@@ -46,6 +46,12 @@ struct VisualIntelligenceView: View {
     @State private var confirmPhotoUpload = false
     let account: String
 
+    init(account: String, samplePhoto: UIImage? = nil, sampleAnswer: String? = nil) {
+        self.account = account
+        _photo = State(initialValue: samplePhoto)
+        _answer = State(initialValue: sampleAnswer)
+    }
+
     private let languages = ["English", "Hausa", "French", "Arabic", "Spanish", "German",
                              "Portuguese", "Chinese", "Japanese", "Korean"]
 
@@ -323,7 +329,7 @@ struct VisualIntelligenceView: View {
     }
 
     private func updateCameraPermission() async {
-        guard mode != .translateSpeech else { return }
+        guard mode != .translateSpeech, photo == nil else { return }
         let status = AVCaptureDevice.authorizationStatus(for: .video)
         if status == .notDetermined {
             _ = await AVCaptureDevice.requestAccess(for: .video)
