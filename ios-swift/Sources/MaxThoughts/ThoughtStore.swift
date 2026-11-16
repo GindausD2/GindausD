@@ -9,6 +9,7 @@ struct MaxThought: Codable, Identifiable {
     var createdAt = Date()
     var source: String
     var audio: Data?
+    var transcript: String? = nil
 }
 
 @MainActor

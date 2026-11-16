@@ -80,6 +80,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     private var transcriptionTask: Task<String?, Never>?
     var onUtteranceEnd: (() -> Void)?
     var onRecordingLimit: (() -> Void)?
+    var onThoughtInterruption: (() -> Void)?
     private let speechSynthesizer = AVSpeechSynthesizer()
     private var currentUtterance: AVSpeechUtterance?
     private let speakingFeedback = UIImpactFeedbackGenerator(style: .soft)
@@ -99,7 +100,11 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
             .receive(on: DispatchQueue.main).sink { [weak self] _ in
                 guard let self else { return }
                 // Permission prompts can make the app inactive before a recording exists.
-                if self.recognitionRequest != nil { self.stopRecording() }
+                if let onThoughtInterruption = self.onThoughtInterruption, self.isRecording {
+                    onThoughtInterruption()
+                } else if self.recognitionRequest != nil || self.isRecording {
+                    self.stopRecording()
+                }
                 if self.isSpeaking { self.stopSpeaking() }
             }.store(in: &interruptionSubscriptions)
     }
@@ -107,6 +112,10 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
     // MARK: - Native speech recognition
 
     func startRecording() async throws {
+        try await startRecording(localOnly: false)
+    }
+
+    func startRecording(localOnly: Bool) async throws {
         stopSpeaking()
         stopRecording()
         transcriptionNotice = nil
@@ -118,39 +127,49 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
             SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
         }
         guard recognitionID == permissionID, !Task.isCancelled else { throw CancellationError() }
-        guard speechStatus == .authorized else { throw VoiceError.speechDenied }
-        guard let recognizer = SFSpeechRecognizer(locale: Locale.current), recognizer.isAvailable else { throw VoiceError.unavailable }
+        let recognizer = speechStatus == .authorized ? SFSpeechRecognizer(locale: Locale.current) : nil
+        if !localOnly {
+            guard speechStatus == .authorized else { throw VoiceError.speechDenied }
+            guard recognizer?.isAvailable == true else { throw VoiceError.unavailable }
+        }
         guard UIApplication.shared.applicationState != .background else { throw VoiceError.unavailable }
         transcript = ""
         recognitionFinish = SpeechRecognitionFinish()
         let session = AVAudioSession.sharedInstance()
         try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
         try session.setActive(true)
-        let request = SFSpeechAudioBufferRecognitionRequest()
-        request.shouldReportPartialResults = true
-        request.taskHint = .dictation
-        request.contextualStrings = StorageService.shared.loadVocabulary()
-        request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
-        recognitionRequest = request
         let thisRecognition = UUID(); recognitionID = thisRecognition
-        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
-            Task { @MainActor in
-                guard self?.recognitionID == thisRecognition else { return }
-                if let result, let self {
-                    self.transcript = result.bestTranscription.formattedString
-                    if result.isFinal { self.recognitionFinish.complete() }
-                    self.silenceTask?.cancel()
-                    if self.isRecording, self.onUtteranceEnd != nil, !self.transcript.isEmpty {
-                        self.silenceTask = Task { @MainActor [weak self] in
-                            do { try await Task.sleep(for: .seconds(2)) } catch { return }
-                            if self?.isRecording == true { self?.onUtteranceEnd?() }
+        let request: SFSpeechAudioBufferRecognitionRequest?
+        if let recognizer, recognizer.isAvailable, !localOnly || recognizer.supportsOnDeviceRecognition {
+            let speechRequest = SFSpeechAudioBufferRecognitionRequest()
+            request = speechRequest
+            speechRequest.shouldReportPartialResults = true
+            speechRequest.taskHint = .dictation
+            speechRequest.contextualStrings = StorageService.shared.loadVocabulary()
+            speechRequest.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+            recognitionRequest = speechRequest
+            recognitionTask = recognizer.recognitionTask(with: speechRequest) { [weak self] result, error in
+                Task { @MainActor in
+                    guard self?.recognitionID == thisRecognition else { return }
+                    if let result, let self {
+                        self.transcript = result.bestTranscription.formattedString
+                        if result.isFinal { self.recognitionFinish.complete() }
+                        self.silenceTask?.cancel()
+                        if self.isRecording, self.onUtteranceEnd != nil, !self.transcript.isEmpty {
+                            self.silenceTask = Task { @MainActor [weak self] in
+                                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                                if self?.isRecording == true { self?.onUtteranceEnd?() }
+                            }
                         }
                     }
+                    // A preview failure must not throw away captured audio. The final
+                    // server transcription can still finish after the user selects Done.
+                    if error != nil { self?.recognitionFinish.complete() }
                 }
-                // A preview failure must not throw away captured audio. The final
-                // server transcription can still finish after the user selects Done.
-                if error != nil { self?.recognitionFinish.complete() }
             }
+        } else {
+            request = nil
+            transcriptionNotice = "Live text is unavailable for this recording. You can still save the audio."
         }
         let input = audioEngine.inputNode
         let format = input.outputFormat(forBus: 0)
@@ -158,7 +177,7 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         let capturedAudio = VerbatimAudioCapture(inputFormat: format)
         audioCapture = capturedAudio
         input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
-            request.append(buffer)
+            request?.append(buffer)
             if capturedAudio?.append(buffer) == true {
                 Task { @MainActor [weak self] in
                     guard let self, self.recognitionID == thisRecognition, self.isRecording else { return }
@@ -228,7 +247,16 @@ final class VoiceService: NSObject, ObservableObject, VoiceCapturing {
         return result.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : result
     }
 
+    func finishThoughtAudio() -> Data? {
+        audioEngine.stop()
+        if inputTapInstalled { audioEngine.inputNode.removeTap(onBus: 0); inputTapInstalled = false }
+        let data = audioCapture?.finish()
+        stopRecording()
+        return data
+    }
+
     func stopRecording() {
+        onThoughtInterruption = nil
         recognitionID = UUID()
         transcriptionTask?.cancel(); transcriptionTask = nil
         recognitionFinish.complete()

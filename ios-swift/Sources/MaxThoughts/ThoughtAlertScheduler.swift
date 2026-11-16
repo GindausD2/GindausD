@@ -42,9 +42,9 @@ enum ThoughtAlertScheduler {
                 throw ThoughtAlertError.alarmsUnavailable
             }
             let manager = AlarmManager.shared
-            guard try await manager.requestAuthorization() == .authorized else {
-                throw ThoughtAlertError.alarmPermission
-            }
+            let authorization = manager.authorizationState == .notDetermined
+                ? try await manager.requestAuthorization() : manager.authorizationState
+            guard authorization == .authorized else { throw ThoughtAlertError.alarmPermission }
             guard alert.date > Date.now else { throw ThoughtAlertError.timePassed }
             try Task.checkCancellation()
             let presentation = AlarmPresentation(alert: .init(
@@ -73,6 +73,19 @@ enum ThoughtAlertScheduler {
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, remaining), repeats: false)
             try await center.add(.init(identifier: alert.id.uuidString, content: content, trigger: trigger))
         }
+    }
+
+    static func hasAlarm(id: UUID) throws -> Bool {
+        #if os(iOS) && canImport(AlarmKit)
+        guard #available(iOS 26.0, *), !ProcessInfo.processInfo.isiOSAppOnMac else {
+            throw ThoughtAlertError.alarmsUnavailable
+        }
+        let manager = AlarmManager.shared
+        guard manager.authorizationState == .authorized else { throw ThoughtAlertError.alarmPermission }
+        return try manager.alarms.contains { $0.id == id }
+        #else
+        throw ThoughtAlertError.alarmsUnavailable
+        #endif
     }
 
     static func cancel(_ alert: ScheduledThoughtAlert) throws {

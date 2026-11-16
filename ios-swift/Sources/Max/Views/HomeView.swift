@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import Combine
 import UIKit
 import WidgetKit
@@ -28,7 +29,11 @@ struct HomeView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var islandNotice: String?
     @State private var showHistory: Bool = false
-    @State private var showCamera: Bool = false
+    @State private var showCamera = false
+    @State private var showImageSources = false
+    @State private var showPhotoLibrary = false
+    @State private var selectedPhoto: PhotosPickerItem?
+    @State private var photoLoadFailed = false
     @State private var capturedImage: UIImage? = nil
     @State private var pendingImage: UIImage? = nil
     @FocusState private var composerFocused: Bool
@@ -172,13 +177,38 @@ struct HomeView: View {
                 ReminderApprovalView(proposal: proposal) { approved in reminderApproval.resolve(id: proposal.id, approved: approved) }
                     .onDisappear { reminderApproval.resolve(id: proposal.id, approved: false) }
             }
+            .confirmationDialog("Add a Photo", isPresented: $showImageSources, titleVisibility: .visible) {
+                if UIImagePickerController.isSourceTypeAvailable(.camera) {
+                    Button("Take Photo") { showCamera = true }
+                }
+                Button("Choose from Library") { showPhotoLibrary = true }
+            }
             .fullScreenCover(isPresented: $showCamera) {
-                ImageSourcePicker(selectedImage: $capturedImage, isPresented: $showCamera)
-                    .ignoresSafeArea()
+                CameraPickerView(selectedImage: $capturedImage, isPresented: $showCamera).ignoresSafeArea()
+            }
+            .photosPicker(isPresented: $showPhotoLibrary, selection: $selectedPhoto, matching: .images)
+            .task(id: selectedPhoto) {
+                guard let item = selectedPhoto else { return }
+                let scope = StorageService.shared.accountScope
+                let data = try? await item.loadTransferable(type: Data.self)
+                guard !Task.isCancelled, StorageService.shared.accountScope == scope else { return }
+                selectedPhoto = nil
+                if let data, let image = UIImage(data: data) { pendingImage = image }
+                else { photoLoadFailed = true }
             }
             .sheet(item: Binding(get: { lifeApproval.pending }, set: { if $0 == nil { lifeApproval.cancel() } })) { proposal in
                 LifeEventEditor(event: proposal.event, scope: proposal.scope) { savedID in lifeApproval.resolve(id: proposal.id, savedID: savedID) }
                     .onDisappear { lifeApproval.resolve(id: proposal.id, savedID: nil) }
+            }
+            .alert("Max couldn’t open this photo", isPresented: $photoLoadFailed) {
+                Button("OK", role: .cancel) {}
+            } message: { Text("Try choosing the photo again.") }
+            .onChange(of: authService.currentUser?.storageScope) { _, _ in
+                selectedPhoto = nil
+                capturedImage = nil
+                pendingImage = nil
+                showPhotoLibrary = false
+                showCamera = false
             }
             .onChange(of: capturedImage) { _, img in
                 guard let img else { return }
@@ -422,6 +452,16 @@ struct HomeView: View {
         VStack(spacing: 8) {
             if voiceTurnActive {
                 statusPill.transition(.opacity)
+                if viewModel.conversationState == .listening, !viewModel.liveTranscript.isEmpty {
+                    ScrollView {
+                        Text(viewModel.liveTranscript)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 94)
+                    .padding(.horizontal, 12)
+                    .accessibilityLabel("Live transcription")
+                }
             } else if !isTyping {
                 Text(viewModel.inputText.isEmpty ? "Tap to hear Max · Hold for voice options" : "Draft ready · tap Type to edit")
                     .font(.caption).foregroundStyle(.secondary)
@@ -499,7 +539,7 @@ struct HomeView: View {
                 isTyping = false
                 viewModel.startNewChat()
             }
-            Button("Attach a photo", systemImage: "photo") { showCamera = true }
+            Button("Attach a photo", systemImage: "photo") { showImageSources = true }
             Button("Report a response", systemImage: "flag") {
                 viewModel.endConversation()
                 showReport = true
@@ -551,8 +591,18 @@ struct HomeView: View {
                 }
             }
             if viewModel.prefersTextReplyForDraft {
-                Text("Voice draft · edit, then send")
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 16) {
+                    Text("Voice draft").font(.caption).foregroundStyle(.secondary)
+                    if !viewModel.inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("Copy", systemImage: "document.on.document") {
+                            UIPasteboard.general.string = viewModel.inputText
+                        }
+                        .frame(minHeight: 44)
+                        ShareLink(item: viewModel.inputText) { Label("Share", systemImage: "square.and.arrow.up") }
+                            .frame(minHeight: 44)
+                    }
+                }
+                .font(.caption)
             }
         }
         .padding(.leading, 4)
@@ -643,7 +693,7 @@ struct HomeView: View {
         if viewModel.isTranscribing { return "Transcribing…" }
         switch viewModel.conversationState {
         case .idle:      return "Idle"
-        case .listening: return "Listening… tap to send"
+        case .listening: return "Recording… tap to send"
         case .thinking:  return "Thinking…"
         case .speaking:
             if let fallback = playback.playbackNotice { return fallback }
@@ -655,7 +705,7 @@ struct HomeView: View {
     // MARK: - Camera Button
 
     private var cameraButton: some View {
-        Button { showCamera = true } label: {
+        Button { showImageSources = true } label: {
             ZStack {
                 Circle()
                     .fill(Color(white: 0.0).opacity(0.06))
@@ -757,7 +807,10 @@ final class HomeViewModel: ObservableObject {
         let capture = capture ?? VoiceService.shared
         self.capture = capture
         capture.transcriptUpdates.sink { [weak self] text in
-            guard let self, self.isDictating, self.dictationScope == self.storage.accountScope else { return }
+            guard let self else { return }
+            let scope = self.isDictating ? self.dictationScope : self.loadedScope
+            guard scope == self.storage.accountScope,
+                  self.isDictating || self.conversationState == .listening else { return }
             self.liveTranscript = text
         }.store(in: &voiceSubscriptions)
         capture.recordingUpdates.sink { [weak self] recording in
@@ -767,6 +820,7 @@ final class HomeViewModel: ObservableObject {
             } else {
                 // An interruption ends the listening turn without sending partial speech.
                 self.continuousActive = false
+                self.liveTranscript = ""
                 self.conversationState = .idle
             }
         }.store(in: &voiceSubscriptions)
@@ -1044,6 +1098,7 @@ final class HomeViewModel: ObservableObject {
 
     private func startListening() {
         guard !startingVoice, !isTranscribing else { return }
+        liveTranscript = ""
         startingVoice = true
         dictationError = nil
         let activationID = UUID()
@@ -1079,6 +1134,7 @@ final class HomeViewModel: ObservableObject {
             let transcription = await capture.stopAndTranscribe()
             guard turnID == listeningID, storage.accountScope == scope, !Task.isCancelled else { return }
             isTranscribing = false
+            liveTranscript = ""
             guard let transcription, !transcription.isEmpty else {
                 addSystemError("Couldn't catch that — please try again.")
                 return
